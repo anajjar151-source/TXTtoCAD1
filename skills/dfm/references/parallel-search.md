@@ -44,7 +44,7 @@ relevant source from your results:
 npx -y @modelcontextprotocol/inspector@2.10.1 --cli \
   --config references/parallel-search.mcp.json --server parallel-search \
   --method tools/call --tool-name web_fetch \
-  --tool-arg 'urls=["https://www.protolabs.com/services/cnc-machining/design-guidelines/"]' \
+  --tool-arg 'urls=["https://www.protolabs.com/media/1021279/us_designing_for_cnc_automation.pdf"]' \
   --tool-arg 'objective=Find internal corner radius guidance, units, and material or tooling conditions.' \
   --tool-arg "session_id=$research_session"
 ```
