@@ -246,7 +246,7 @@ python -m pyrefly check --config packages/cadgen/pyproject.toml
 ```
 
 Pyrefly is pinned in `requirements-dev.txt`. The package's `[tool.pyrefly]`
-configuration uses the [basic preset](https://pyrefly.org/en/docs/configuration/#preset)
+configuration uses the [basic preset](https://pyrefly.org/en/docs/configuration/#preset-basic)
 over `packages/cadgen/src`. It checks a limited set of diagnostics, including
 undefined names in annotations, and skips unannotated function bodies and broader
 argument and assignment checks. Tests, scripts and skill helpers are outside this
