@@ -271,7 +271,7 @@ Then add the CAD server under **Agent → MCP**, named `cad`:
 {
   "cad": {
     "command": "uvx",
-    "args": ["--no-config", "--managed-python", "--python", "3.13", "--from", "cadgen==0.7.19", "cadgen", "mcp"],
+    "args": ["--no-config", "--managed-python", "--python", "3.13", "--from", "cadgen==0.7.21", "cadgen", "mcp"],
     "env": {"CADGEN_INSTALL_CHANNEL": "qwenpaw-manual"}
   }
 }
