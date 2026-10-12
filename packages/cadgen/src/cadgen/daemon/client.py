@@ -443,16 +443,24 @@ def _connect_or_spawn(address: str) -> transport.Channel | None:
             election.release()
 
 
-def _detach_kwargs() -> dict:
-    """How to start a daemon that outlives the command that needed it.
+def detach_kwargs() -> dict:
+    """How to start a process that outlives the command that needed it: the daemon, and
+    the CAD Viewer's ``--detach``.
 
     start_new_session is POSIX-only and Windows does not merely ignore it politely -- it
     is named `unused_start_new_session` in subprocess, so passing it there is silently
-    nothing and the daemon would share its parent's console and die with it.
+    nothing and the process would share its parent's console and die with it.
+
+    On Windows it gets a console of its own with no window (CREATE_NO_WINDOW), never no
+    console at all (DETACHED_PROCESS): every console program a process without a console
+    starts -- each warm worker, a build, Node, ffmpeg -- gets a NEW console, with a window.
+    That was a window per worker, open as long as the worker lived, and closing one ended
+    the worker with STATUS_CONTROL_C_EXIT (#597). A windowless console is inherited by
+    everything started under it, so nothing below opens a window.
     """
     if os.name == "nt":
         return {
-            "creationflags": subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+            "creationflags": subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP,
         }
     return {"start_new_session": True}
 
@@ -485,6 +493,9 @@ def _spawn_daemon(address: str) -> subprocess.Popen | None:
     # daemon serves every client, so it takes no telemetry switch from the one that
     # started it: each client's travels with its own builds (FORWARDED_ENV_VARS).
     env = for_others(worker_env())
+    # Nor its install channel: it reports the one its installation's plugin wrote down, whoever started it
+    # (``cadgen/_internal/channel.py``).
+    env.pop("CADGEN_INSTALL_CHANNEL", None)
     env["CADGEN_DAEMON_CHILD"] = "1"
     env.setdefault("CADGEN_DAEMON_SOCKET", str(address))
     try:
@@ -502,7 +513,7 @@ def _spawn_daemon(address: str) -> subprocess.Popen | None:
                 # directory while any live process has it as cwd.
                 cwd=tempfile.gettempdir(),
                 env=env,
-                **_detach_kwargs(),
+                **detach_kwargs(),
             )
     except OSError:
         return None
