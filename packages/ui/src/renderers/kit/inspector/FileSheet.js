@@ -48,7 +48,7 @@ export const FILE_SHEET_PRECISION_SLIDER_CLASSES = [
   "h-4",
   "[&_[data-slot=slider-track]]:h-px",
   "[&_[data-slot=slider-track]]:rounded-full",
-  "[&_[data-slot=slider-track]]:bg-border",
+  "[&_[data-slot=slider-track]]:bg-foreground/20",
   "[&_[data-slot=slider-range]]:bg-primary",
   "[&_[data-slot=slider-thumb]]:h-2.5",
   "[&_[data-slot=slider-thumb]]:w-1.5",
@@ -364,18 +364,37 @@ export function FileSheetValueInput({
 }
 
 // The value box's width: as narrow as a joint's figure allows — an angle ("-102°", "0.00°") fits
-// five characters, a length with its unit ("0.00 mm") seven — so a unit is never cut off.
-const valueInputWidth = value => {
+// five characters, a length with its unit ("0.00 mm") seven — so a unit is never cut off. Each
+// holds its characters, the padding (0.75rem) and the box's 1px borders, and a character's room
+// more for a glyph wider than a figure ("×6000"; a figure is 1ch); a longer value ("×9500000",
+// "×120000000") takes the box its length needs, so its last figures are never cut off.
+export const valueInputWidth = value => {
   const length = String(value ?? "").length;
-  return length <= 5 ? "w-[calc(5ch+0.75rem)]" : length <= 7 ? "w-[calc(7ch+0.75rem)]" : "w-[calc(9ch+0.75rem)]";
+  if (length <= 5) return "w-[calc(6ch+0.75rem+2px)]";
+  if (length <= 7) return "w-[calc(8ch+0.75rem+2px)]";
+  if (length <= 9) return "w-[calc(10ch+0.75rem+2px)]";
+  if (length <= 11) return "w-[calc(12ch+0.75rem+2px)]";
+  return "w-[calc(14ch+0.75rem+2px)]";
 };
 
 /**
- * A slider row (a joint of Position), compact: its label tight above its slider in the flexible
- * left column, and a small committed value input (24px tall, as wide as its figure and unit need,
- * its figures tabular) in the right column (`docs/settings-ui.md`).
+ * A slider with its committed value (`docs/settings-ui.md`): a compact value input (24px tall, as
+ * wide as its figure and unit need, its figures tabular) in the right column. Its label sits tight
+ * above the slider in the flexible left column (Position's joints). `wideLabel` is for a narrow
+ * panel whose labels are sentences (an FEA result's controls): the label, wrapping between words,
+ * shares its line with the value field, and the slider takes the whole row's width under them.
  */
-export function FileSheetSliderField({ label, value, onValueCommit, valueInputProps, labelTitle, children }) {
+export function FileSheetSliderField({ label, value, onValueCommit, valueInputProps, labelTitle, children, wideLabel = false, action = null }) {
+  if (wideLabel) {
+    return <FileSheetControlRow>
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-1.5" data-position-control="" data-slider-layout="wide">
+        {label != null ? <span className={cn(FILE_SHEET_FIELD_LABEL_CLASSES, "whitespace-normal [overflow-wrap:break-word]")} title={labelTitle && labelTitle !== label ? labelTitle : undefined}>{label}</span> : <span />}
+        <span className="flex items-center gap-1">{action}{onValueCommit ? <FileSheetValueInput value={value} onValueCommit={onValueCommit} {...valueInputProps}
+          className={cn("h-6 px-1.5", valueInputWidth(value), valueInputProps?.className)} /> : null}</span>
+        <div className="col-span-2 min-w-0">{children}</div>
+      </div>
+    </FileSheetControlRow>;
+  }
   return <FileSheetControlRow>
     <div className="grid min-h-7 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5" data-position-control="">
       <div className="min-w-0">
@@ -384,8 +403,8 @@ export function FileSheetSliderField({ label, value, onValueCommit, valueInputPr
             until its thumb's top meets the label's foot. */}
         <div className="-mt-0.5 min-w-0">{children}</div>
       </div>
-      {onValueCommit ? <FileSheetValueInput value={value} onValueCommit={onValueCommit} {...valueInputProps}
-        className={cn("h-6 px-1.5", valueInputWidth(value), valueInputProps?.className)} /> : null}
+      <span className="flex items-center gap-1">{action}{onValueCommit ? <FileSheetValueInput value={value} onValueCommit={onValueCommit} {...valueInputProps}
+        className={cn("h-6 px-1.5", valueInputWidth(value), valueInputProps?.className)} /> : null}</span>
     </div>
   </FileSheetControlRow>;
 }
