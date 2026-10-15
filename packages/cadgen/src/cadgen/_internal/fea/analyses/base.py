@@ -11,6 +11,9 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, Protocol
 
+# The study's verdict is every judging verb's: CAM's shape, read off the findings (`cadgen._internal.checklist`).
+from cadgen._internal.checklist import verdict
+
 if TYPE_CHECKING:
     import numpy as np
     from cadgen._internal.fea.femspace import FemSpace
@@ -21,7 +24,7 @@ if TYPE_CHECKING:
 __all__ = [
     "Analysis", "AnalysisBase", "AnalysisResult", "CheckSpec", "FieldSpec", "Inputs", "Rung", "Scaling", "Series",
     "SeriesFrame", "SeriesKind", "SolveContext", "Tier", "by_severity", "finding", "frame_attributes", "plan_value",
-    "max_frames", "mirrored", "unfold_result", "xyz",
+    "max_frames", "mirrored", "unfold_result", "verdict", "xyz",
 ]
 
 Tier = Literal[1, 2, 3]
@@ -143,6 +146,7 @@ class Analysis(Protocol):
     upstream: ClassVar[tuple[str, ...]]                # solved first, on the same mesh, same study document
     ladder: ClassVar[tuple[Rung, ...]]                 # rungs it may take, in order (section 9)
 
+    def material_from_spec(self, spec: Any) -> "Material | None": ...  # the study's ``material``, as it solves with it
     def parse(self, document: dict) -> Inputs: ...                     # stdlib; ValueError names the field
     def estimate(self, ctx: SolveContext, inputs: Inputs) -> "Estimate": ...   # cost of the current ctx.plan
     def apply(self, rung: Rung, ctx: SolveContext, inputs: Inputs) -> "Step | None": ...  # changes ctx.plan; None if it does not apply
@@ -161,7 +165,7 @@ class AnalysisBase:
     """The protocol's defaults: a subclass states only what is its own.
 
     Optional hooks that ``run.py`` and ``fit.py`` probe with ``hasattr`` (``governing``, ``refined_record``,
-    ``upstream_for``, ``settle_steps``, ``write_files``, ``symmetric_about``) are never defined here."""
+    ``upstream_for``, ``settle_steps``, ``write_files``, ``symmetric_about``, ``ready_words``) are never defined here."""
 
     tier: ClassVar[Tier] = 3
     estimate_only: ClassVar[bool] = False
@@ -173,6 +177,15 @@ class AnalysisBase:
     #: What follows the document's stem in the GLB's extras name: "bracket creep".
     extras_word: ClassVar[str] = ""
 
+    def material_from_spec(self, spec: Any) -> "Material | None":
+        """The study's ``material`` as the solve takes it: a name from the material table, or an object of numbers
+        (:func:`cadgen._internal.fea.materials.material_from_spec`). The one hook for an analysis that reads its material
+        its own way: a table of its own with numbers the solver's has not (a workpiece's cutting force), or a ``material``
+        its ``parse`` reads (``None`` here)."""
+        from cadgen._internal.fea.materials import material_from_spec
+
+        return material_from_spec(spec)
+
     def needs_finer(self, result: AnalysisResult, inputs: Inputs, check_results: list[dict]) -> bool:
         return False
 
@@ -183,10 +196,29 @@ class AnalysisBase:
         return f"{stem} {self.extras_word}"
 
 
-def finding(severity: str, kind: str, summary: str, description: str, items=()) -> dict:
-    """One entry of a study's findings."""
-    return {"check": "fea", "severity": severity, "type": kind, "summary": summary, "description": description,
-            "items": list(items)}
+def finding(severity: str, kind: str, summary: str, description: str, items=(), *,
+            measured: dict | None = None, fix: dict | None = None) -> dict:
+    """One entry of a study's findings: a check an engineer reads and an agent acts on.
+
+    severity: ``error`` (fails: the part as designed is likely to fail or be defective), ``warning`` (a risk
+        to fix or confirm), ``info`` (passed, or a note).
+    measured: the number judged, when there is one: ``{"value", "limit", "units", "pass_when"}`` with
+        ``pass_when`` ``"below"`` or ``"above"`` the limit, and optionally ``"quantity"``, what the value is in
+        a few words (``"liquid cut off"``). An ``info`` with ``measured`` is a check that passed; every check
+        an analysis makes should say so when it passes, so the checklist lists the passes too.
+    fix: what to change so it passes: ``{"action", "summary", "where", "params"}``; ``action`` a short verb
+        id (``add_feeder``, ``thicken``, ``increase_radius``...), ``summary`` the sentence an engineer reads,
+        ``where`` face refs or points, ``params`` the target values (``{"thickness_mm": 4}``). It may carry
+        ``alternatives``: other fixes of the same shape, in order of preference, for when the first cannot be
+        made. Every ``error`` and ``warning`` should carry one.
+    """
+    entry = {"check": "fea", "severity": severity, "type": kind, "summary": summary, "description": description,
+             "items": list(items)}
+    if measured is not None:
+        entry["measured"] = dict(measured)
+    if fix is not None:
+        entry["fix"] = dict(fix)
+    return entry
 
 
 _SEVERITY = {"error": 0, "warning": 1, "info": 2}

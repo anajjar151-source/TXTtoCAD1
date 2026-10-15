@@ -49,6 +49,7 @@ fixtures to work against.
 | `rectangular_clamp_block.py` | `STEP/rectangular_clamp_block.step` | Rectangular clamp block with a split slot and two transverse screw holes |
 | `retainer_plate.py` | `STEP/retainer_plate.step` | Retainer plate with elongated slot, two circular holes, and chamfered perimeter |
 | `shaft_collar.py` | `STEP/shaft_collar.step` | Shaft collar with a central bore, radial set-screw hole, and chamfered faces |
+| `sheet_metal_bracket.py` | `STEP/sheet_metal_bracket.step` | Bent 1.5 mm sheet: a channel with flanges at R = t and a tab bent down out of its base's edge with no relief (a fixture for the `sheet_metal` estimate) |
 | `small_enclosure_cover.py` | `STEP/small_enclosure_cover.step` | Small enclosure cover with raised rim, corner screw holes, and shallow recessed center |
 | `spur_gear_blank.py` | `STEP/spur_gear_blank.step + STL/spur_gear_blank.stl, 3MF/spur_gear_blank.3mf, GLB/spur_gear_blank.glb` | Spur gear blank with central bore, raised hub, and simplified perimeter teeth |
 | `square_mounting_block.py` | `STEP/square_mounting_block.step` | Square mounting block with a vertical through-hole and two side clearance holes |

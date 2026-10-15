@@ -94,7 +94,9 @@ def stopped_finding(sentence: str) -> dict:
     from cadgen._internal.fea.analyses.base import finding
 
     return finding("warning", "time_limit", sentence, "the march ran past its time limit (twice the study's fit.seconds, "
-                   "at least 30 s) and stopped there; the frames, curves and checks cover only the time it reached")
+                   "at least 30 s) and stopped there; the frames, curves and checks cover only the time it reached",
+                   fix={"action": "raise_time_limit", "where": [], "params": {},
+                        "summary": "Give the study a larger fit.seconds, or a coarser mesh, and solve again"})
 
 
 def stopped_check(judged: dict, reached: str | None) -> dict:

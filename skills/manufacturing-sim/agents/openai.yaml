@@ -1,0 +1,4 @@
+interface:
+  display_name: "Manufacturing Sim"
+  short_description: "Check a part will cast, mould, quench, print, cut, weld or bend"
+  default_prompt: "Use $manufacturing-sim to check this part through its process with cadgen manufacturing check, read the verdict and each fix, make the fixes and check it again until it is ready."

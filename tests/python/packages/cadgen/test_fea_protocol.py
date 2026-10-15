@@ -391,6 +391,57 @@ class CliLines(unittest.TestCase):
         self.assertFalse([line for line in lines if "dB" in line and "×" in line])
 
 
+class Checklist(unittest.TestCase):
+    """What a judged part's findings say at the end of its lines and in its verdict (``cadgen._internal.checklist``)."""
+
+    FINDINGS = (
+        {"severity": "info", "type": "hand_check", "summary": "s", "items": [],
+         "measured": {"quantity": "simulation against the rule", "value": 1.1149, "limit": 3.0, "units": "×", "pass_when": "below"}},
+        {"severity": "info", "type": "no_feeder", "summary": "a note", "items": []},
+        {"severity": "warning", "type": "low_niyama", "summary": "s", "items": [{"text": "t", "ref": None, "at": [49.665, 1.287, 12.304]}],
+         "measured": {"quantity": "lowest Niyama", "value": 0.0441, "limit": 0.3, "units": "(°C·s)^½/mm", "pass_when": "above"},
+         "fix": {"action": "add_chill", "summary": "Chill it", "where": ["#o1.f7"], "params": {}}},
+        {"severity": "error", "type": "shrinkage_hot_spot", "summary": "s", "items": [{"text": "t", "ref": "#o1.f7", "at": [50.0, 0.0, 16.0]}],
+         "measured": {"quantity": "liquid cut off", "value": 6667.2, "limit": 15.94, "units": "mm³", "pass_when": "below"},
+         "fix": {"action": "add_feeder", "summary": "Feed it from #o1.f7", "where": ["#o1.f7"], "params": {"riser_modulus_mm": 2.85}}},
+    )
+
+    def test_the_checklist_lists_failures_first_with_the_measure_the_place_and_the_fix_then_the_verdict(self):
+        from cadgen._internal.checklist import checklist_lines
+
+        self.assertEqual(checklist_lines(self.FINDINGS), [
+            "FAIL  shrinkage_hot_spot  liquid cut off: 6667 mm³, needs below 15.9 mm³; at #o1.f7 [50.0, 0.0, 16.0] mm; "
+            "fix: Feed it from #o1.f7",
+            "WARN  low_niyama          lowest Niyama: 0.0441 (°C·s)^½/mm, needs above 0.3 (°C·s)^½/mm; "
+            "at [49.665, 1.287, 12.304] mm; fix: Chill it",
+            "PASS  hand_check          simulation against the rule: 1.11×, needs below 3×",
+            "Verdict: 1 to fix · shrinkage hot spot · 1 failed, 1 warning, 1 passed",
+        ])
+        self.assertEqual(checklist_lines(self.FINDINGS[:2], fail_on="warning")[-1],
+                         "Verdict: Ready · 0 failed, 0 warnings, 1 passed; passes --fail-on warning")
+        # A degree, as a percent or a factor, is written against its number.
+        bend = {"severity": "info", "type": "springback_within_tolerance", "summary": "s", "items": [],
+                "measured": {"quantity": "bend 1 springback", "value": 0.7241, "limit": 3.0, "units": "°", "pass_when": "below"}}
+        self.assertEqual(checklist_lines([bend])[0], "PASS  springback_within_tolerance  bend 1 springback: 0.724°, needs below 3°")
+        # A quantity the check judges no limit for is reported as it is.
+        moved = {"severity": "warning", "type": "distortion", "summary": "s", "items": [],
+                 "measured": {"quantity": "largest distortion (elastic)", "value": 0.06374, "units": "mm"}}
+        self.assertEqual(checklist_lines([moved])[0], "WARN  distortion  largest distortion (elastic): 0.0637 mm")
+
+    def test_the_verdict_is_cams_shape_and_a_gate_fails_on_what_it_names(self):
+        from cadgen._internal.checklist import exit_code, fail_on_value, gate_failed, verdict
+
+        failing = verdict(self.FINDINGS, ready="Ready to cast · solid in 40 s")
+        self.assertEqual(failing, {"status": "fix", "headline": "1 to fix · shrinkage hot spot", "errors": 1, "warnings": 1,
+                                   "passed": 1})
+        warned = verdict(self.FINDINGS[:3], ready="Ready to cast · solid in 40 s")
+        self.assertEqual((warned["status"], warned["headline"]), ("ready", "Ready to cast · solid in 40 s"))
+        self.assertEqual([gate_failed(warned, fail_on) for fail_on in (None, "error", "warning")], [False, False, True])
+        self.assertEqual([exit_code(failing, fail_on) for fail_on in (None, "error")], [0, 3])
+        self.assertIn("fail_on: 'errors' is not a severity to fail on; use error or warning",
+                      value_error(self, fail_on_value, "errors"))
+
+
 def _cantilever(directory: Path) -> Path:
     return box_step(directory, "cantilever", (40.0, 4.0, 4.0), "x")
 

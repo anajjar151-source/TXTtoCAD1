@@ -1,4 +1,5 @@
-"""Shared fixtures for the FEA suites (``tests/python/packages/cadgen/test_fea*.py``).
+"""Shared fixtures for the FEA suites (``tests/python/packages/cadgen/test_fea*.py``) and the manufacturing checks'
+(``tests/python/packages/cadgen/manufacturing/``), which run on fea's pipeline.
 
 Importing this puts cadgen's source on ``sys.path`` and says whether the optional
 ``cadgen[fea]`` stack is installed; the heavy imports (build123d, numpy, cadgen.fea)
@@ -72,6 +73,36 @@ def solve_keeping(analysis: str, step: Path, out: Path, study: dict):
 
     with mock.patch.object(kind, "solve", keep):
         return solve(step, out, study), kept.get("result")
+
+
+def check(step: Path, study: dict, **options):
+    """``cadgen.manufacturing.check`` with its progress lines silenced: ``<stem>.<process>.glb`` beside ``step``."""
+    from cadgen import manufacturing
+
+    with quiet():
+        return manufacturing.check(step, study=study, **options)
+
+
+def check_keeping(step: Path, study: dict, **options):
+    """Run the check; also hand back the process's own result (its fields on the nodes it solved)."""
+    from cadgen._internal.manufacturing.processes import get_process
+
+    kind, kept = type(get_process(study["process"])), {}
+    original = kind.solve
+
+    def keep(self, ctx, inputs):
+        kept["result"] = original(self, ctx, inputs)
+        return kept["result"]
+
+    with mock.patch.object(kind, "solve", keep):
+        return check(step, study, **options), kept.get("result")
+
+
+def read_study(study: dict):
+    """A manufacturing study parsed as ``cadgen manufacturing check`` reads it (stdlib only)."""
+    from cadgen._internal.manufacturing.run import read_study as read
+
+    return read(study)
 
 
 def heavy_at_import(*modules: str) -> str:

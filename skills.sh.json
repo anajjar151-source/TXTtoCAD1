@@ -13,6 +13,7 @@
         "dfm",
         "dfam-check",
         "fea",
+        "manufacturing-sim",
         "gcode",
         "bambu-labs",
         "sendcutsend"

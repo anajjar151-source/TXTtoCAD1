@@ -390,6 +390,10 @@ src/cadgen/
   fea.py                 # linear static stress: `faces` and `solve` over a
                          #   STEP part (the `fea` extra: netgen, scikit-fem,
                          #   pyamg); mechanism in _internal/fea/
+  manufacturing.py       # `check`: a part through a manufacturing process
+                         #   (casting, molding, ...) on fea's pipeline, its
+                         #   findings a CI check's; mechanism in
+                         #   _internal/manufacturing/
   authoring.py           # @step/@dxf/@stl/@glb/@threemf decorators; a call
                          #   builds at top level and composes (a lazy child)
                          #   inside a body; a model's outputs are what they
@@ -451,7 +455,7 @@ src/cadgen/
 Verbs by format: `step` compile · build · snapshot;
 `stl`/`3mf`/`glb` build · snapshot; `dxf` snapshot; `urdf`/`sdf`
 validate · snapshot; `srdf` validate; `fea` faces · solve (a linear static study of a STEP part, with
-the `fea` extra). `cadgen snapshot` routes any suffix.
+the `fea` extra); `manufacturing` check (a process on a STEP part, with the `fea` extra). `cadgen snapshot` routes any suffix.
 `cadgen store|daemon|doctor` are status commands, `cadgen viewer
 [stop]` the CAD Viewer's launcher, and `cadgen mcp`
 the server an agent host starts — all deliberately outside the mirror pattern. `cadgen step compile` is internal tooling: skills never

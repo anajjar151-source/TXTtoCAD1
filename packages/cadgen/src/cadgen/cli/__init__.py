@@ -68,6 +68,9 @@ _COMMANDS: dict[str, tuple[str, str]] = {
     "fea faces": ("cadgen.cli.fea_faces", "list a part's faces with their #o1.fN selectors"),
     "fea parts": ("cadgen.cli.fea_parts", "list an assembly's parts and the pairs that touch"),
     "fea solve": ("cadgen.cli.fea_solve", "run a linear static stress study on a STEP part"),
+    # Manufacturing. `check` simulates the part being made by the process its study names
+    # (casting, molding, ...) on fea's solvers, and writes the result GLB beside the part.
+    "manufacturing check": ("cadgen.cli.manufacturing_check", "simulate a manufacturing process on a part and check it"),
     # Generic / services
     "doctor": ("cadgen.cli.doctor", "print installed cadgen and verify a skill's pin"),
     # The store. `store why <model>` is the debugging surface STORE.md describes.

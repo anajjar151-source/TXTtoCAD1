@@ -12,6 +12,7 @@
 import { FEA_CHECK_KINDS } from "../checkKinds.js";
 import acoustic from "./acoustic.js";
 import bolt from "./bolt.js";
+import casting from "./casting.js";
 import buckling from "./buckling.js";
 import cfd from "./cfd.js";
 import cfd_compressible from "./cfd_compressible.js";
@@ -26,14 +27,19 @@ import fatigue from "./fatigue.js";
 import fracture from "./fracture.js";
 import fsi from "./fsi.js";
 import harmonic from "./harmonic.js";
+import heat_treatment from "./heat_treatment.js";
 import impact from "./impact.js";
+import machining from "./machining.js";
 import modal from "./modal.js";
+import molding from "./molding.js";
 import multiphase from "./multiphase.js";
 import nonlinear from "./nonlinear.js";
 import piezo from "./piezo.js";
+import printing from "./printing.js";
 import random_vibration from "./random_vibration.js";
 import rotordynamics from "./rotordynamics.js";
 import shock from "./shock.js";
+import sheet_metal from "./sheet_metal.js";
 import staticAnalysis from "./static.js";
 import { planned } from "./stub.js";
 import thermal from "./thermal.js";
@@ -41,6 +47,7 @@ import thermal_stress from "./thermal_stress.js";
 import thermal_transient from "./thermal_transient.js";
 import topology from "./topology.js";
 import transient from "./transient.js";
+import welding from "./welding.js";
 
 export const ANALYSES = Object.freeze({
   static: staticAnalysis, modal, buckling, thermal, thermal_transient, thermal_stress, harmonic, random_vibration, shock, transient,
@@ -53,6 +60,13 @@ export const ANALYSES = Object.freeze({
   fsi,
   piezo,
   multiphase,
+  casting,
+  heat_treatment,
+  machining,
+  sheet_metal,
+  molding,
+  printing,
+  welding,
 });
 
 /** Every analysis this viewer knows, by name. */

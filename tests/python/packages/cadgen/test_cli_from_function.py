@@ -335,6 +335,22 @@ class Serialization(unittest.TestCase):
         out = io.StringIO()
         self.assertEqual(1, run_cli(failing, ["a.py", "--json"], prog="t", stdout=out))
 
+    def test_a_result_that_ran_but_failed_its_gate_exits_three_and_one_that_did_not_run_still_exits_one(self):
+        from cadgen._internal.checklist import exit_code
+
+        @dataclass(frozen=True)
+        class Judged:
+            ok: bool
+            gate_failed: bool
+
+        for ok, gated, code in ((True, True, 3), (True, False, 0), (False, True, 1)):
+            def judged(target: Path):
+                return Judged(ok, gated)
+
+            with self.subTest(ok=ok, gate_failed=gated):
+                self.assertEqual(code, run_cli(judged, ["a.py", "--json"], prog="t", stdout=io.StringIO()))
+        self.assertEqual((3, 0), (exit_code({"errors": 1, "warnings": 0}, "error"), exit_code({"errors": 0, "warnings": 1}, "error")))
+
 
 if __name__ == "__main__":
     unittest.main()

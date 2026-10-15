@@ -26,6 +26,7 @@ __all__ = [
     "FeaPart",
     "FeaPartsResult",
     "FeaResult",
+    "ManufacturingCheckResult",
     "MeshExportFile",
     "MeshExportResult",
     "SnapshotFile",
@@ -477,7 +478,10 @@ class FeaResult:
     ``summary`` carries the answer an engineer asks for first (static: max von Mises, nodal and Gauss-point, the
     safety factor, max displacement, the applied-versus-reaction balance) and each check judged (``checks``);
     another ``analysis`` writes its own summary and CLI lines. ``findings`` is what an engineer would say about it,
-    errors first, in the KiCad findings' shape. The JSON sidecar holds this whole result plus the study.
+    errors first, in the KiCad findings' shape; each may carry what it ``measured`` against its limit and the ``fix``
+    that makes it pass. ``verdict`` reads them as a CI check does (``cadgen._internal.checklist``), and the lines end
+    with them as a checklist. The JSON sidecar holds this whole result plus the study. ``ok`` says the study was
+    solved, nothing more: a part that fails every check is still ``ok``.
     """
 
     ok: bool
@@ -496,6 +500,10 @@ class FeaResult:
     analysis: str = "static"
     #: The fit-the-budget ladder's steps, in order (``rung``, ``words``, ``accuracy``, ...); empty when none was taken.
     fit: tuple[dict, ...] = ()
+    #: The findings read as a CI check reads them, the sidecar's ``verdict`` too: ``status`` ``ready`` (no error) or
+    #: ``fix``, the ``headline`` ("Ready to cast · solid in 41 s", "1 to fix · shrinkage hot spot"), and how many
+    #: ``errors``, ``warnings`` and ``passed`` checks.
+    verdict: dict = field(default_factory=dict)
 
     def human_lines(self) -> list[str]:
         from cadgen._internal.fea.checks import safety_factor_text  # stdlib only; kept out of module import time
@@ -529,7 +537,59 @@ class FeaResult:
         lines += [f"adapted: {step['words']}" + (f" ({step['accuracy']})" if step.get("accuracy") else "") for step in self.fit]
         lines += [f"{finding['severity']}: {finding['summary']}" for finding in self.findings]
         lines += [f"warning: {warning}" for warning in self.warnings]
-        return lines
+        from cadgen._internal.checklist import checklist_lines  # stdlib only
+
+        return lines + checklist_lines(self.findings, self.verdict)
+
+
+@dataclass(frozen=True)
+class ManufacturingCheckResult:
+    """The outcome of ``cadgen manufacturing check``: the verdict, what was written, and the numbers.
+
+    ``process`` is what the study checked (``casting``, ``molding``, ...). ``verdict`` reads the findings as a CI check
+    does: ``status`` ``ready`` (no error) or ``fix``, the ``headline`` ("Ready to cast · solid in 41 s", "1 to fix ·
+    shrinkage hot spot"), and how many ``errors``, ``warnings`` and ``passed`` checks. ``findings`` are the process's
+    checks, in the KiCad/FEA/CAM shape (``check`` the process, ``severity``, ``type``, ``summary``, ``description``,
+    ``items``), each with what it ``measured`` against its limit and the ``fix`` that makes it pass; the run's own
+    (``check`` ``fea``) say what it adapted or where it stopped. ``gate_failed`` is true when the verdict fails
+    ``fail_on``: the CLI then exits 3, as a failing CI check does; ``ok`` says only that the check ran. ``summary`` is
+    the process's numbers, ``limits`` what the simulation leaves out (quote them with its numbers), ``fit`` what the
+    run adapted to fit its budget (``rung``, ``words``, ``accuracy``). The sidecar holds all of it and the study.
+    """
+
+    ok: bool
+    document: Path
+    occurrence: str
+    process: str
+    glb: Path | None
+    sidecar: Path | None
+    summary: dict = field(default_factory=dict)
+    verdict: dict = field(default_factory=dict)
+    findings: tuple[dict, ...] = ()
+    gate_failed: bool = False
+    #: The severity the caller fails on (``error``, ``warning``), or ``None`` for no gate.
+    fail_on: str | None = None
+    fit: tuple[dict, ...] = ()
+    limits: tuple[str, ...] = ()
+    mesh: dict = field(default_factory=dict)
+    timings: dict = field(default_factory=dict)
+    warnings: tuple[str, ...] = ()
+
+    def human_lines(self) -> list[str]:
+        from cadgen._internal.checklist import checklist_lines  # stdlib only
+        from cadgen._internal.manufacturing.processes import REGISTRY, get_process  # stdlib only
+
+        size = f"{self.mesh.get('elements')} tets, {self.mesh.get('size_mm')} mm elements"
+        lines = [
+            f"checked {self.occurrence} of {_display(self.document)} ({self.process}): {size}",
+            *get_process(self.process).human_lines(self.summary),
+            f"wrote GLB: {_display(self.glb)}, sidecar: {_display(self.sidecar)}",
+        ]
+        lines += [f"{REGISTRY[self.process].status}: {limit}" for limit in self.limits]
+        lines += [f"adapted: {step['words']}" + (f" ({step['accuracy']})" if step.get("accuracy") else "") for step in self.fit]
+        lines += [f"{finding['severity']}: {finding['summary']}" for finding in self.findings]
+        lines += [f"warning: {warning}" for warning in self.warnings]
+        return lines + checklist_lines(self.findings, self.verdict, fail_on=self.fail_on)
 
 
 @dataclass(frozen=True)

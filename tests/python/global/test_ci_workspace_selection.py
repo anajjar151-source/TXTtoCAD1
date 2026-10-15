@@ -256,8 +256,10 @@ class ChangesRunWhatCanBreak(unittest.TestCase):
         self.assertIn("cadgen[fea]", JOBS["fea"])
         # The accuracy tests' margins were measured with this mesher; pyproject only sets a floor.
         self.assertIn('"netgen-mesher==6.2.2608"', JOBS["fea"])
-        # One glob runs every analysis's suite, so a new test_fea_<name>.py needs no workflow edit.
+        # One glob runs every analysis's suite, and one every manufacturing process's, so a new
+        # test_fea_<name>.py or manufacturing/test_<name>.py needs no workflow edit.
         self.assertIn(f"{CADGEN}/test_fea*.py", JOBS["fea"])
+        self.assertIn(f"{CADGEN}/manufacturing/test_*.py", JOBS["fea"])
         self.assertIn("timeout-minutes: 40", JOBS["fea"])
         # Every FEA suite on disk is one the glob runs, and a change to it selects the job.
         on_disk = sorted(path.name for path in (REPO_ROOT / CADGEN).glob("test_fea*.py"))
@@ -265,17 +267,34 @@ class ChangesRunWhatCanBreak(unittest.TestCase):
         for name in on_disk:
             with self.subTest(name=name):
                 self.assertIn("fea", jobs_for(f"{CADGEN}/{name}"))
+        processes = sorted(path.name for path in (REPO_ROOT / CADGEN / "manufacturing").glob("test_*.py"))
+        self.assertLessEqual({"test_check.py", "test_casting.py"}, set(processes))
+        for name in processes:
+            with self.subTest(name=name):
+                self.assertIn("fea", jobs_for(f"{CADGEN}/manufacturing/{name}"))
         fea = {"fea", "skills"}
         for path in (
             "packages/cadgen/src/cadgen/_internal/fea/solve.py",
             "packages/cadgen/src/cadgen/fea.py",
             "packages/cadgen/src/cadgen/cli/fea_solve.py",
+            "packages/cadgen/src/cadgen/manufacturing.py",
+            "packages/cadgen/src/cadgen/cli/manufacturing_check.py",
+            "packages/cadgen/src/cadgen/_internal/manufacturing/processes/casting.py",
             "packages/cadgen/src/cadgen/results.py",
             "skills/fea/SKILL.md",
+            "skills/manufacturing-sim/SKILL.md",
         ):
             with self.subTest(path=path):
                 self.assertIn("fea", jobs_for(path))
         self.assertEqual(jobs_for("skills/fea/SKILL.md"), fea)
+        self.assertEqual(jobs_for("skills/manufacturing-sim/references/casting.md"), fea)
+        self.assertEqual(jobs_for("skills/manufacturing-sim/references/heat-treatment.md"), fea)
+        self.assertEqual(jobs_for("skills/manufacturing-sim/references/machining.md"), fea)
+        self.assertEqual(jobs_for("skills/manufacturing-sim/references/sheet_metal.md"), fea)
+        self.assertEqual(jobs_for("skills/manufacturing-sim/references/molding.md"), fea)
+        self.assertEqual(jobs_for("skills/manufacturing-sim/references/printing.md"), fea)
+        self.assertEqual(jobs_for("skills/manufacturing-sim/references/welding.md"), fea)
+        self.assertEqual(jobs_for("skills/manufacturing-sim/references/checks.md"), fea)
         self.assertEqual(jobs_for(f"{CADGEN}/test_fea.py"), {"cadgen-linux", "cadgen-windows", "fea", "skills"})
         self.assertNotIn("fea", jobs_for("packages/cadgen/src/cadgen/step.py"))
 

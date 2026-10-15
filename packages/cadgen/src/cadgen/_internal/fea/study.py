@@ -24,6 +24,8 @@ caller) of this shape::
 That is the static study. ``analysis`` names another (modal, thermal, ...): the keys above except ``fixtures`` and
 ``loads`` are common to every analysis (:data:`COMMON_KEYS`), and each analysis reads its own (``study_keys``) through
 its ``parse``. The view's checks, fields and drives, the mesh orders and the connection types are the analysis's. A
+caller outside fea may parse a study with an analysis of its own that fea's registry does not hold, named by a key of
+its own (``cadgen manufacturing check``: the study's ``process``; :func:`parse_study`). A
 static load may also be a body load, with no faces: ``{"type": "gravity", "vector_g": [0, 0, -1]}`` or ``{"type":
 "acceleration", "vector_g": [5, 0, 0]}`` (in g).
 
@@ -49,8 +51,7 @@ from cadgen._internal.fea.materials import Material, material_from_spec, require
 
 __all__ = [
     "CHECK_KINDS", "COMMON_KEYS", "Connection", "Fixture", "Load", "ORTHOTROPIC_ANALYSES", "Study", "VIEW_SECTIONS",
-    "parse_fixtures",
-    "parse_loads", "parse_study",
+    "load_document", "parse_fixtures", "parse_loads", "parse_study",
 ]
 
 #: A fixed face is held still; a roller face slides in its own plane but never moves along its normal (supports.py).
@@ -166,6 +167,8 @@ class Study:
     mesh_order: int = 2
     #: ``mesh.refine``: balls meshed finer, ``(centre (x, y, z), radius_mm, size_mm)`` each.
     mesh_refine: tuple = ()
+    #: The analysis that parsed it, which solves it: fea's registered one, or a caller's own (:func:`parse_study`).
+    analysis_object: Any = field(default=None, compare=False, repr=False)
 
     @property
     def face_refs(self) -> tuple[str, ...]:
@@ -194,7 +197,7 @@ class Study:
             return DEFAULT_CHECKS
         from cadgen._internal.fea.analyses import get_analysis
 
-        return tuple(get_analysis(self.analysis).default_checks)
+        return tuple((self.analysis_object or get_analysis(self.analysis)).default_checks)
 
     @property
     def check_faces(self) -> tuple[str, ...]:
@@ -202,7 +205,8 @@ class Study:
         return tuple(dict.fromkeys(ref for check in self.checks for ref in check.get("faces", ())))
 
 
-def _load_document(study: str | dict | Path) -> dict:
+def load_document(study: str | dict | Path) -> dict:
+    """The study's document: a dict as given, inline JSON, or a JSON file's."""
     if isinstance(study, dict):
         return study
     if isinstance(study, Path):
@@ -628,10 +632,14 @@ def refine_points(balls) -> list[list[float]]:
     return points
 
 
-def parse_study(study: str | dict | Path | None) -> Study:
+def parse_study(study: str | dict | Path | None, *, analysis=None, named_by: str = "analysis") -> Study:
     """Validate a study document and return the typed :class:`Study`.
 
     The common keys are read here; the analysis's own through its ``parse``.
+
+    analysis: the analysis to read it with, for a caller outside fea whose analyses fea's registry does not hold
+        (``cadgen manufacturing check``'s processes); the study names it by ``named_by`` (``"process"``) instead of
+        ``analysis``, which it may not carry. Omitted, the study's ``analysis`` names one from fea's registry.
     """
     from cadgen._internal.fea.analyses import DEFAULT_ANALYSIS, get_analysis
 
@@ -640,22 +648,27 @@ def parse_study(study: str | dict | Path | None) -> Study:
             "a study is required: --study study.json (or inline JSON) naming the material, "
             "the fixed faces and the loads; run `cadgen fea faces IN.step` to list face refs"
         )
-    document = _load_document(study)
-    name = document.get("analysis", DEFAULT_ANALYSIS)
-    if not isinstance(name, str):
-        raise ValueError(f"study.analysis: expected the analysis's name, like \"modal\", got {_json_text(name)}")
-    analysis = get_analysis(name)
-    allowed = {*COMMON_KEYS, *analysis.study_keys}
+    document = load_document(study)
+    if analysis is None:
+        named_by = "analysis"
+        name = document.get("analysis", DEFAULT_ANALYSIS)
+        if not isinstance(name, str):
+            raise ValueError(f"study.analysis: expected the analysis's name, like \"modal\", got {_json_text(name)}")
+        analysis = get_analysis(name)
+    name = analysis.name
+    common = (named_by, *(key for key in COMMON_KEYS if key != "analysis"))
+    allowed = {*common, *analysis.study_keys}
     unknown = set(document) - allowed
     if unknown:
         order = [key for key in ("material", *sorted(analysis.study_keys)) if key in allowed] + [
-            key for key in COMMON_KEYS if key not in ("analysis", "material")
+            key for key in common if key not in (named_by, "material")
         ]
-        raise ValueError(f"study: unknown keys {sorted(unknown)}; {name} studies take {', '.join(['analysis', *order])}")
+        raise ValueError(f"study: unknown keys {sorted(unknown)}; {name} studies take {', '.join([named_by, *order])}")
     material_required = getattr(analysis, "material_required", True)
     if "material" not in document and material_required:
         raise ValueError("study: 'material' is required (a table name or {E_MPa, nu, yield_MPa})")
-    material = material_from_spec(document["material"]) if "material" in document else None
+    # The analysis reads its material (AnalysisBase.material_from_spec: the table's, unless it reads its own).
+    material = analysis.material_from_spec(document["material"]) if "material" in document else None
 
     inputs = analysis.parse(document)
     fixtures = tuple(getattr(inputs, "fixtures", ()))
@@ -719,5 +732,5 @@ def parse_study(study: str | dict | Path | None) -> Study:
     return Study(
         material, fixtures, loads, mesh_size, deformation_scale, margin, document,
         parts=parts, connections=connections, contact_tolerance_mm=tolerance, view=view,
-        analysis=name, inputs=inputs, fit=fit, mesh_order=int(order), mesh_refine=refine,
+        analysis=name, inputs=inputs, fit=fit, mesh_order=int(order), mesh_refine=refine, analysis_object=analysis,
     )

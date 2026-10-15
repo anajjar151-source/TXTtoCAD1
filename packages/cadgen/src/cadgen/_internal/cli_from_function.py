@@ -22,7 +22,12 @@ an argument-parsing framework:
   convention, so no docstring-parser dependency rides in the runtime.
 * The return value is a dataclass: ``--json`` serializes it to one line,
   otherwise it prints human lines. A raised exception becomes
-  ``{"ok": false, "error": ...}`` + exit 1.
+  ``{"ok": false, "error": ...}`` + exit 1, and so does a result whose ``ok``
+  is false. A result that is ``ok`` but whose ``gate_failed`` is true exits
+  :data:`GATE_EXIT`: it ran and wrote everything, and what it found reached the
+  severity the caller asked to fail on (a ``fail_on``, read by
+  :mod:`cadgen._internal.checklist`), as a CI check fails. ``ok`` never carries
+  that: it says the verb ran.
 * A flag the verb USED to take is declared on the function as
   ``__cadgen_retired_options__`` (see :func:`retired_options`). It is the one
   thing in a generated parser that is not a parameter, because a deleted
@@ -58,6 +63,12 @@ from typing import Any, Callable
 # contract rather than the function's signature, so the signature-sync policy
 # test exempts it structurally instead of through a per-command allowlist.
 JSON_FLAG_DEST = "json_output"
+
+# The exit code of a result that ran but failed the caller's gate
+# (``gate_failed``): distinct from 1, a verb that did not run, and from 2, a
+# command line argparse refused, so a CI script can tell "the design failed its
+# checks" from "the check broke".
+GATE_EXIT = 3
 
 # Annotations a mirror-able verb may use.
 _SCALARS: dict[Any, Callable[[str], Any]] = {
@@ -464,7 +475,9 @@ def emit(
     Every command in the schema prints through here, generated or not, so a
     hand-written ADAPTER cannot end up serializing differently from a mirror:
     one JSON line under ``--json``, the Result's human lines otherwise, and
-    ``{"ok": false, "error": ...}`` + exit 1 for an exception.
+    ``{"ok": false, "error": ...}`` + exit 1 for an exception. The exit code:
+    1 for a result that is not ``ok``, :data:`GATE_EXIT` for one that is but
+    failed the caller's gate (``gate_failed``), else 0.
     """
     out = stdout if stdout is not None else sys.stdout
     try:
@@ -482,7 +495,9 @@ def emit(
     else:
         for line in result_lines(result):
             print(line, file=out)
-    return 0 if getattr(result, "ok", True) else 1
+    if not getattr(result, "ok", True):
+        return 1
+    return GATE_EXIT if getattr(result, "gate_failed", False) else 0
 
 
 def call_verb(

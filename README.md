@@ -343,6 +343,7 @@ robot description files, simulation, and local review.
 | DfAM Check   | Measures mesh printability per process: wall thickness, overhangs, support volume, and build orientation.                                          | [skills/dfam-check](skills/dfam-check/SKILL.md)     |
 | DFM | Reviews a part for sheet metal, CNC machining, or injection molding, with measured evidence and the cited rule behind every finding; measures draft, undercuts and projected area from a mesh. | [skills/dfm](skills/dfm/SKILL.md) |
 | FEA | Runs a linear static stress study on a STEP part, reporting peak stress, safety factor and displacement with a colour-mapped result. | [skills/fea](skills/fea/SKILL.md) |
+| Manufacturing Sim | Checks a part through its process as CI checks code: simulates casting, injection moulding, quench hardening, 3D printing, machining and welding, estimates sheet metal bending, and gives each problem's fix; labelled hand estimates for reflow and forming. | [skills/manufacturing-sim](skills/manufacturing-sim/SKILL.md) |
 | G-code       | Slices models into printer-ready G-code with OrcaSlicer, using your own printer presets.                                                           | [skills/gcode](skills/gcode/SKILL.md)               |
 | Bambu Labs   | Sends prints to Bambu Lab printers through Bambu Connect, Bambu Lab's official app, or Bambu Studio.                                               | [skills/bambu-labs](skills/bambu-labs/SKILL.md)     |
 

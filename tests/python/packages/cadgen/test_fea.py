@@ -527,6 +527,8 @@ class Cantilever(unittest.TestCase):
         self.assertEqual(payload["summary"]["max_displacement_mm"], self.result.summary["max_displacement_mm"])
         self.assertEqual(payload["mesh"]["dofs"], self.result.mesh["dofs"])
         self.assertEqual(payload["findings"], [])
+        self.assertEqual(payload["verdict"], {"status": "ready", "headline": "Ready", "errors": 0, "warnings": 0, "passed": 0})
+        self.assertEqual(sidecar(self.result)["verdict"], payload["verdict"])
 
     def test_a_comfortable_part_solves_once_and_has_nothing_to_say(self):
         self.assertEqual(self.solver.calls, 1)

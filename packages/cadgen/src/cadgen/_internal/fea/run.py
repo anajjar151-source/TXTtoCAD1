@@ -423,7 +423,10 @@ class _NotConnected(Exception):
 
 def _unsolved(document: Path, occurrence_ref: str, findings: list[dict]) -> FeaResult:
     """The result of a study that was stopped before the solve, by errors a person fixes in the study."""
-    return FeaResult(ok=False, document=document, occurrence=occurrence_ref, glb=None, sidecar=None, findings=tuple(findings))
+    from cadgen._internal.checklist import verdict
+
+    return FeaResult(ok=False, document=document, occurrence=occurrence_ref, glb=None, sidecar=None, findings=tuple(findings),
+                     verdict=verdict(findings))
 
 
 def _mesh_assembly(mesh_assembly, scene, plan: _Plan, parsed, resolved, ordinal_of: dict[str, int], max_h: float | None, log, refine: float = 1.0, **mesh_options):
@@ -571,7 +574,7 @@ def one_blas_thread():
 
 
 def solve_study(target: Path, out: Path | None, *, study, occurrence: str | None = None, mesh_size: float | None = None,
-                vtu: bool = False, verbose: bool = False) -> FeaResult:
+                vtu: bool = False, verbose: bool = False, sidecar: Path | None = None) -> FeaResult:
     """Mesh, solve and check one study, then write its GLB and sidecar, with BLAS on one thread (:func:`one_blas_thread`).
 
     The study's analysis (static by default) does the physics: its ``parse``, ``solve``, checks, findings and
@@ -583,18 +586,25 @@ def solve_study(target: Path, out: Path | None, *, study, occurrence: str | None
     finer by the same ratio at curved features, and solved again. When that succeeds its numbers are the ones
     written, reported and checked (the first solve's peak is kept for convergence only); when it fails the GLB
     stays the first solve's and the result carries one warning saying why.
+
+    The findings' verdict (:func:`cadgen._internal.checklist.verdict`, with the analysis's ``ready_words`` when it
+    has them) is the result's and the sidecar's.
+
+    ``study`` may be a :class:`~cadgen._internal.fea.study.Study` its caller parsed with an analysis of its own (one
+    fea's registry does not hold: ``cadgen manufacturing check``'s processes), which then solves it here as any other;
+    ``sidecar`` names where its sidecar goes when that is not the GLB's name with ``.json`` (``None``).
     """
     with one_blas_thread():
-        return _solve_study(Path(target), out, study, occurrence, mesh_size, vtu, verbose)
+        return _solve_study(Path(target), out, study, occurrence, mesh_size, vtu, verbose, sidecar)
 
 
 def _solve_study(document: Path, out: Path | None, study, occurrence: str | None, mesh_size: float | None, vtu: bool,
-                 verbose: bool) -> FeaResult:
+                 verbose: bool, sidecar: Path | None = None) -> FeaResult:
     from cadgen._internal.fea.analyses import get_analysis
-    from cadgen._internal.fea.study import parse_study
+    from cadgen._internal.fea.study import Study, parse_study
 
-    parsed = parse_study(study)  # stdlib, before any heavy import
-    analysis = get_analysis(parsed.analysis)
+    parsed = study if isinstance(study, Study) else parse_study(study)  # stdlib, before any heavy import
+    analysis = parsed.analysis_object or get_analysis(parsed.analysis)
     inputs = parsed.inputs
     static = parsed.analysis == _STATIC
     logger = CliLogger("fea", verbose=verbose)
@@ -602,7 +612,7 @@ def _solve_study(document: Path, out: Path | None, study, occurrence: str | None
     glb_path = Path(out) if out is not None else document.with_name(f"{document.stem}.fea.glb")
     if glb_path.suffix.lower() != ".glb":
         raise ValueError(f"OUT names the result GLB and must end in .glb: {out}")
-    sidecar_path = glb_path.with_suffix(".json")
+    sidecar_path = Path(sidecar) if sidecar is not None else glb_path.with_suffix(".json")
     vtu_path = glb_path.with_suffix(".vtu") if vtu else None
 
     from cadgen._internal.fea import checks
@@ -647,6 +657,7 @@ def _solve_study(document: Path, out: Path | None, study, occurrence: str | None
 
     import numpy as np
 
+    from cadgen._internal.checklist import verdict
     from cadgen._internal.fea import fit, solve
     from cadgen._internal.fea.analyses.base import SolveContext
     from cadgen._internal.fea.femspace import FemSpace
@@ -969,6 +980,8 @@ def _solve_study(document: Path, out: Path | None, study, occurrence: str | None
                  "size_mm": round(volume.max_h, 4), "order": fit_plan.order, "mesher": "netgen", "solver": result.solver}
     timings = {"mesh_s": round(volume.seconds, 3), **{k: round(v, 3) for k, v in result.timings.items()}}
     fixtures = getattr(inputs, "fixtures", None)
+    # Optional: `ready_words(summary) -> str`, the verdict's headline when nothing is to fix ("Ready to cast · ...").
+    found_verdict = verdict(findings, **({"ready": analysis.ready_words(summary)} if hasattr(analysis, "ready_words") else {}))
     sidecar = {
         "generator": "cadgen fea",
         "document": str(document),
@@ -988,6 +1001,8 @@ def _solve_study(document: Path, out: Path | None, study, occurrence: str | None
         "timings": timings,
         "warnings": warnings,
         "findings": findings,
+        # The findings read as a CI check reads them: ready or fix, a headline, and how many of each (the result's too).
+        "verdict": found_verdict,
         # An assembly: how its parts are joined (the parts' own results are in the summary).
         **({} if plan is None else {"connections": connections}),
         # An assembly: the pairs of parts whose solids overlap (never bonded).
@@ -1013,4 +1028,4 @@ def _solve_study(document: Path, out: Path | None, study, occurrence: str | None
     logger.debug(f"wrote {glb_path.name}, {sidecar_path.name}" + (f", {vtu_path.name}" if vtu_path else ""))
     return FeaResult(ok=True, document=document, occurrence=occurrence_ref, glb=glb_path, sidecar=sidecar_path, vtu=vtu_path,
                      summary=summary, mesh=mesh_info, timings=timings, warnings=tuple(warnings), findings=tuple(findings),
-                     analysis=analysis.name, fit=tuple(fit_steps))
+                     analysis=analysis.name, fit=tuple(fit_steps), verdict=found_verdict)

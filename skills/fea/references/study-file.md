@@ -458,7 +458,8 @@ must end in `.glb`) plus its `.json` twin:
   forces; for an assembly also `parts`, one entry per part with its material, peak stress, safety
   factor and displacement, and the weakest part's name and peak; and `checks`, each check judged,
   also in the GLB's `extras.checks`), per-fixture reactions, mesh statistics, timings and warnings,
-  the `findings` (also in the GLB's mesh `extras`) and `refined`: the first and the finer solve's
+  the `findings` (also in the GLB's mesh `extras`), their `verdict` (`status` `ready` or `fix`, a
+  `headline`, and how many `errors`, `warnings` and `passed` checks) and `refined`: the first and the finer solve's
   element size and peak when the run solved twice, else `null`. When the run adapted to fit, `fit`
   lists each step ([`fit`](#fit)); it is left out when no step was taken.
 - for an assembly the sidecar also records `connections` (each joint: parts, type, area, gap,

@@ -4,7 +4,10 @@ The registry is written once, here, in the order the skill and the viewer list
 them: the Tier 1 solvers, the Tier 2 estimate, then the Tier 3 lite solvers.
 Every entry is built today (none is ``planned``). Each entry names the module
 and class that implement it; an entry whose module is not in this cadgen makes
-:func:`get_analysis` say so in a sentence, never an ImportError. Stdlib only: the modules import lazily.
+:func:`get_analysis` say so in a sentence, never an ImportError. A manufacturing
+process (casting, molding, ...) is not here: it is ``cadgen manufacturing
+check``'s (``cadgen._internal.manufacturing.processes``), and naming one as an
+analysis says so. Stdlib only: the modules import lazily.
 """
 
 from __future__ import annotations
@@ -112,6 +115,12 @@ def get_analysis(name: str) -> "Analysis":
         return _INSTANCES[name]
     entry = REGISTRY.get(name) if isinstance(name, str) else None
     if entry is None:
+        from cadgen._internal.manufacturing.processes import PROCESS_NAMES  # stdlib only
+
+        if name in PROCESS_NAMES:
+            raise ValueError(f"analysis: {name!r} is a manufacturing process, not an analysis: check it with "
+                             f"`cadgen manufacturing check part.step --study study.json`, the study naming "
+                             f"\"process\": \"{name}\" in place of \"analysis\"")
         raise ValueError(f"analysis: {name!r} is not an analysis cadgen knows; use one of {', '.join(ANALYSIS_NAMES)}")
     module = _module(entry)
     if module is None or not hasattr(module, entry.cls):

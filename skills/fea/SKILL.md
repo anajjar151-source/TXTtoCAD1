@@ -73,6 +73,8 @@ it is `static`.
 Each reference holds its analysis's full schema. A test keeps this table and the study file's
 `analysis` table in step with what cadgen registers.
 
+How the part fares while it is made (cast, moulded, quenched, printed, machined, welded or bent) is `$manufacturing-sim`'s.
+
 ### When the question needs an analysis that is not here
 
 ([planned-next.md](references/planned-next.md) says the same: nothing is registered as planned.)
@@ -386,3 +388,8 @@ under 10 % settles it); above the margin they would not change the answer.
 
 A `warning:` line that is not a finding (a slow solve, reactions that do not balance, a finer solve
 that failed) is about the run itself: read it, and mention it when it bears on the answer.
+
+The lines end on a checklist (`FAIL`, `WARN`, `PASS`, failures first) and a verdict, also the
+sidecar's `verdict` (`ready` with no error, else `fix`). A finding that carries `measured` and `fix`
+(`action`, `where`, `params`) is one to act on in a loop: make the fix, rebuild, solve again until
+the verdict is `ready`, as `$manufacturing-sim` does for a casting.

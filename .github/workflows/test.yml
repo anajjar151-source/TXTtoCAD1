@@ -217,8 +217,9 @@ jobs:
         shell: bash
 
   # The solvers need the optional cadgen[fea] stack (netgen, scikit-fem, pyamg), which no other
-  # job installs: without it every test_fea*.py skips its solves. Every analysis's suite matches
-  # the glob below, so a new one needs no edit here. Linux only: the stack is the same wheels
+  # job installs: without it every test_fea*.py and every manufacturing check's suite skips its
+  # solves. Every analysis's and process's suite matches the globs below, so a new one needs no
+  # edit here. Linux only: the stack is the same wheels
   # everywhere, and the solves are CPU-bound. 40 minutes for every analysis's benchmarks; past
   # 25 measured minutes the job splits into shards (structural, dynamics, thermal and flow).
   fea:
@@ -253,7 +254,7 @@ jobs:
           python -c "import sys; from cadgen._internal.fea.calculix_install import ensure_calculix as e; c = e(say=print); print(c); sys.exit(c.path is None)"
 
       - name: Run the fea tests
-        run: scripts/test/test-python.sh --select cadgen --print-weights tests/python/packages/cadgen/test_fea*.py
+        run: scripts/test/test-python.sh --select cadgen --print-weights tests/python/packages/cadgen/test_fea*.py tests/python/packages/cadgen/manufacturing/test_*.py
         shell: bash
 
   core-js:
