@@ -24,7 +24,7 @@ class RenderBoundary extends Component<{ children: ReactNode; errorTitle: string
  * of formats comes from registrations. With no file it shows the host's home.
  */
 export function FileViewer({ file, host, renderers, state, onStateChange, displayActions, appSettings, update, fullSize, history, features, notice, onError, presentation }: FileViewerProps) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const source = host.files;
   const onOpenFile = host.navigation.openFile;
   const appearance = host.environment;
@@ -77,8 +77,10 @@ export function FileViewer({ file, host, renderers, state, onStateChange, displa
       navbarSlot={navbarSlot} onFullscreenChange={onFullscreenChange} onReady={onReady} onNavigationActionsChange={onNavigationActionsChange}
       onOpenFile={onOpenFile} appearance={appearance}
       state={rendererState} onStateChange={setRendererState} reload={reload} /></RenderBoundary>;
+  // Watches `locale`, not `t` — one function for the page's life — so the boundary's title is
+  // the current language's even when this memo stands.
   }, [shown, key, onError, displayActions, notice, features, source, navbarSlot, onFullscreenChange, onReady,
-    onNavigationActionsChange, onOpenFile, appearance, rendererState, setRendererState, reload, t]);
+    onNavigationActionsChange, onOpenFile, appearance, rendererState, setRendererState, reload, locale, t]);
 
   let body: ReactNode;
   if (loaded.status === "empty") body = presentation?.home ?? null;

@@ -28,6 +28,7 @@ function createStorage(entries = {}) {
 test("English and 简体中文 are the languages, and the browser's own tags land on one", () => {
   assert.deepEqual(LOCALES, ["en", "zh-CN"]);
   assert.equal(detectLocale({ stored: SIMPLIFIED_CHINESE_LOCALE_ID, languages: ["en"] }), SIMPLIFIED_CHINESE_LOCALE_ID, "the person's choice first");
+  assert.equal(detectLocale({ stored: ENGLISH_LOCALE_ID, languages: ["zh-CN"] }), ENGLISH_LOCALE_ID, "a kept English beats the browser's Chinese");
   assert.equal(detectLocale({ stored: "", languages: ["fr-FR", "zh-TW"] }), SIMPLIFIED_CHINESE_LOCALE_ID, "a zh-TW browser reads zh-CN");
   assert.equal(detectLocale({ stored: "nonsense", languages: ["fr-FR", "en-US"] }), ENGLISH_LOCALE_ID);
   assert.equal(detectLocale({ stored: "", languages: [] }), ENGLISH_LOCALE_ID);
@@ -83,6 +84,7 @@ test("the first paint names the document in the saved language, else the browser
   assert.ok(html.indexOf('lang="en"') < html.indexOf("</head>"), "the page ships as English and fixes itself before paint");
   assert.equal(firstPaint({ stored: "zh-CN" }).lang, "zh-CN");
   assert.equal(firstPaint({ stored: "zh-CN", languages: ["en"] }).lang, "zh-CN", "a kept choice beats the browser");
+  assert.equal(firstPaint({ stored: "en", languages: ["zh-CN"] }).lang, "en", "a kept English is kept, never a sentinel for 'ask the browser'");
   assert.equal(firstPaint({ stored: "", languages: ["zh-TW"] }).lang, "zh-CN");
   assert.equal(firstPaint({ stored: "nonsense", languages: ["fr-FR"] }).lang, "en");
   assert.equal(firstPaint({ blocked: true, languages: [] }).lang, "en", "blocked storage still paints");

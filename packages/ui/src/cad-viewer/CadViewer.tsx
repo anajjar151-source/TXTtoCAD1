@@ -87,7 +87,7 @@ const reportError = (error: Error) => console.error(error);
  */
 export function CadViewer<Model extends LibraryModel = LibraryModel>({ client, host, tabStore, live, file, onShow, onShown,
   library, onThumbnail, displayActions, appSettings, features, notice, update, fullSize, history, onError = reportError }: CadViewerProps<Model>) {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const preferences = tabStore.settings;
   // One viewer renderer per file family, sharing one client and the tab's preferences; each
   // lazy-loads only its own code.
@@ -167,8 +167,10 @@ export function CadViewer<Model extends LibraryModel = LibraryModel>({ client, h
 
   const layout = settings.library.layout;
   const changeLayout = useCallback((next: LibraryLayout) => preferences.update({ library: { layout: next } }), [preferences]);
-  // A file that will not open says why, with the way home where the host has one.
-  const goHome = useMemo(() => homed ? <Button size="sm" variant="outline" onClick={home}>{t("file.goHome")}</Button> : null, [homed, home, t]);
+  // A file that will not open says why, with the way home where the host has one. The memos
+  // watch `locale`, not `t` — one function for the page's life — so their strings are the
+  // current language's, however the memo came by them.
+  const goHome = useMemo(() => homed ? <Button size="sm" variant="outline" onClick={home}>{t("file.goHome")}</Button> : null, [homed, home, locale, t]);
   const presentation = useMemo(() => ({
     home: library ? <ModelLibrary library={library} layout={layout} onLayoutChange={changeLayout} picture={picture}
       links={host.links} update={update} fullSize={fullSize} onError={onError} /> : undefined,
@@ -176,7 +178,7 @@ export function CadViewer<Model extends LibraryModel = LibraryModel>({ client, h
     error: ({ message, missing }: { message: string; missing: boolean }) => missing
       ? <EmptyState icon={FileX} title={t("file.missing")} description={path} tone="warn" action={goHome} />
       : <EmptyState icon={FileWarning} title={t("file.openFailed")} description={message} tone="warn" action={goHome} />,
-  }), [library, layout, changeLayout, path, picture, host.links, update, fullSize, onError, goHome, t]);
+  }), [library, layout, changeLayout, path, picture, host.links, update, fullSize, onError, goHome, locale, t]);
   return <>
     <FileViewer file={path || null} host={viewerHost} renderers={renderers} state={state} onStateChange={onStateChange}
       displayActions={displayActions} appSettings={appSettings} update={update} fullSize={fullSize} history={history} features={features} notice={notice} onError={onError} presentation={presentation} />
