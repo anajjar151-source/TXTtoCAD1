@@ -21,8 +21,8 @@ ziglang==0.16.0
 # - skills/dfam-check/requirements.txt
 rtree
 scipy
-# - skills/cadjoint/requirements.txt (pinned commit; brings jax)
-cadjoint @ git+https://github.com/andrinr/cadjoint@d2aa5e74fd6ab7be0bc7a605f915cd348c25d758
+# - skills/cadjoint/requirements.txt (exact pin, pre-1.0 API; brings jax)
+cadjoint==0.1.0
 
 # Repo tests only.
 networkx
