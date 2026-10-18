@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import os
+import re
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from tests.python.support.paths import add_repo_path
+from tests.python.support.tmp_root import generated_cad_directory
 
 add_repo_path("packages/cadgen/src")
 
@@ -89,6 +93,33 @@ class UnnamedLabelSceneTests(unittest.TestCase):
         self.assertEqual((leaf.name, leaf.source_name), ("plain_box", "plain_box"))
         self.assertIsNone(root.name, "the wrapper the writer added has no authored name")
         self.assertEqual(scene.prototype_names[leaf.prototype_key], "plain_box")
+
+    def test_an_assembly_placing_the_file_names_its_products_after_the_part(self) -> None:
+        """Composed through ``read_step``, the part writes its name, never an id or entry.
+
+        Read through the store, the wrapper XCAF added has no name and the canonical tree
+        gives it its occurrence id (``o1``). Placed twice in an assembly, each wrapper is
+        still one placed part, so it carries the part's name: the composed STEP names its
+        products ``assy`` and ``part``, not ``=>[0:1:1:2]`` (the old reading) or ``o1``."""
+        from cadgen._internal.step_scene_mesh import import_step
+
+        with generated_cad_directory(prefix="unnamed-labels-") as directory:
+            root = Path(directory)
+            environment = {"CADGEN_CACHE_DIR": str(root / "store"), "CADGEN_DAEMON": "0"}
+            with mock.patch.dict(os.environ, environment):
+                part = Box(20, 20, 10).moved(Location())
+                part.label = "part"
+                part_path = root / "part.step"
+                export_build123d_step_file(part, part_path)
+                placed = import_step(part_path)
+                assembly = Compound(
+                    children=[placed.moved(Location((0, 0, 0))), placed.moved(Location((50, 0, 0)))],
+                    label="assy",
+                )
+                assembly_path = root / "assy.step"
+                export_build123d_step_file(assembly, assembly_path)
+            products = re.findall(r"PRODUCT\('([^']*)'", assembly_path.read_text(encoding="utf-8"))
+        self.assertEqual(set(products), {"assy", "part"}, products)
 
 
 if __name__ == "__main__":
