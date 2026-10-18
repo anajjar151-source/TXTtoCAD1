@@ -137,25 +137,17 @@ face = selection.shape()  # owned native geometry, in document world coordinates
 print(selection.ref, face.area)
 ```
 
-A note from the viewer's Quick Edit reads: what the person wants, then
-`File:` (the document it is about), `References:` (one per line, as above), and
-snapshot context. Every prompt includes the current view and any distinct views
-with remaining annotation ink. Copy, Queue and Send capture this at the press.
-Packets up to 1 KiB of compact UTF-8 JSON appear under `Snapshot JSON (cadgen
-snapshot --job):`; larger packets are written to a temporary `.snapshot.json`
-file named under `Snapshot (cadgen snapshot --job):`. Nothing renders at handoff,
-and no PNGs are attached. Both forms use the same schema: shared input, inline
-annotation and measurements, and one job per view.
-Read `measurements` in that JSON for the dimension endpoints (model units) and
-displayed labels. They are references for interpreting the request, not constraints
-automatically applied to geometry. For inline JSON, save the object to a temporary
-`.snapshot.json` before rendering: `--job` takes a file path, not inline JSON.
-When annotations are provided, render with `cadgen snapshot --job <snapshot file>`
-and inspect them before editing. Without annotations, the captured view is optional
-context: render it when it helps interpret the request, or proceed from the text,
-references and measurements. After an edit, replay relevant views to check the change
-where the person looked
-([annotations and Quick Edit views](references/snapshot-review.md#annotations-and-quick-edit-views)).
+A Quick Edit prompt names its document under `File:`, selected entities under
+`References:`, and snapshot context as inline JSON or a `.snapshot.json` path.
+Read `measurements` for endpoints in model units and displayed labels; these are
+reference dimensions, not constraints automatically applied to geometry.
+To render, save inline JSON to a temporary `.snapshot.json` and run
+`cadgen snapshot --job <snapshot file>` (`--job` takes a file path).
+Inspect supplied annotations before editing. Without annotations, the captured
+view is optional context; render it when useful to the request. After editing,
+replay relevant views to check the change. See
+[annotations and Quick Edit views](references/snapshot-review.md#annotations-and-quick-edit-views)
+for the packet schema and capture behavior.
 
 A reference into a file that is not a STEP names what the viewer picked in it, in that
 file's own terms (none is a STEP selector `read_scene` resolves):
