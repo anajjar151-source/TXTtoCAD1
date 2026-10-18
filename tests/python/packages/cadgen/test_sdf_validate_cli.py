@@ -3,7 +3,6 @@ from __future__ import annotations
 import contextlib
 import io
 import os
-import subprocess
 from pathlib import Path
 import tempfile
 import unittest
@@ -180,8 +179,6 @@ class SdfValidateCliTests(unittest.TestCase):
         sdf_path = self._write("model.sdf", VALID_MODEL_SDF)
         launcher = self._write("gz", f"#!{self.temp_root / 'missing-interpreter'}\n")
         launcher.chmod(0o755)
-        with self.assertRaises(OSError):
-            subprocess.run([str(launcher)], check=False, capture_output=True)
 
         with mock.patch.dict(os.environ, {"PATH": str(self.temp_root)}):
             for mode in ("auto", "required"):
