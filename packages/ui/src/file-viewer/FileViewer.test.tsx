@@ -195,8 +195,8 @@ it('ends the app menu with the version the host runs, a link to its release note
     return shown;
   };
   const notes = 'https://github.com/earthtojake/text-to-cad/releases/tag/v0.7.15';
-  expect(await footer(viewerLinks({ version: '0.7.15' }))).toEqual(['v0.7.15·Made by @earthtojake', notes]);
-  expect(await footer(viewerLinks({ version: '0.7.15', build: 'b80844940-dirty' }))).toEqual(['v0.7.15-dev.b80844940-dirty·Made by @earthtojake', notes]);
+  expect(await footer(viewerLinks({ version: '0.7.15' }))).toEqual(['v0.7.15Made by @earthtojake', notes]);
+  expect(await footer(viewerLinks({ version: '0.7.15', build: 'b80844940-dirty' }))).toEqual(['v0.7.15-dev.b80844940-dirtyMade by @earthtojake', notes]);
 });
 
 it('opens the explorer from the file\'s name where the host\'s files can be browsed, and a pick there is shown through the host', async () => {
