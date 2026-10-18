@@ -1,7 +1,11 @@
 import { readSourceColor } from './surfaceMaterials.js';
 
 // Stencil winding borrows display geometry. Each part's winding pair is followed
-// by its own opaque fill and stencil clear, preserving both color and holes.
+// by its own opaque fill, preserving both color and holes. The fill writes the
+// stencil back to 0 wherever it covers (Replace with ref 0, on pass and fail
+// alike), and it covers the whole model on the plane, where every winding lies:
+// the next part starts from a clear stencil without clearing the buffer per part
+// (a full-screen clear each, which cost more than all the parts' draws).
 function disposeCut(cut) {
   for (const mesh of cut.stencils) {
     mesh.removeFromParent();
@@ -66,7 +70,6 @@ export function syncSectionCaps(runtime, clipPlane, settings = null) {
       plane.name = 'Section fill';
       plane.frustumCulled = false;
       plane.raycast = () => {};
-      plane.onAfterRender = renderer => renderer.clearStencil();
       parent.add(plane);
       const stencils = [
         [THREE.BackSide, THREE.IncrementWrapStencilOp],

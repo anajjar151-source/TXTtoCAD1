@@ -83,8 +83,9 @@ omitting it cuts through the middle of the authored bounds. A disabled clip cuts
 `clip.partColors` defaults to true. Caps use each part's normal base material color,
 without selection/hover tints or opacity; false uses uniform amber (`0xe9a451`).
 Caps stay opaque even for transparent parts, and outer materials are unchanged.
-Each intersected part has a winding pair and an opaque fill followed by a stencil
-clear, so holes remain empty. Cap geometry/materials are owned by Clip; stencil
+Each intersected part has a winding pair and an opaque fill, so holes remain empty;
+the fill (as wide as the model on the plane) writes the stencil back to 0 wherever it
+covers, so no part needs a stencil clear of the whole buffer after it. Cap geometry/materials are owned by Clip; stencil
 geometry is borrowed from the display meshes. Generic scene looks preserve
 `mesh.userData.cadBaseColor` before highlight ink; STEP records use `baseColor`
 and normal effect colors. A mesh with several materials uses its first material
