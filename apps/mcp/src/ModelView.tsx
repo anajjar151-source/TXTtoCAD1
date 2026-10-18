@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { createHttpPromptFiles, type CadClient } from '@text-to-cad/core/client';
 import { unavailablePromptContext } from '@text-to-cad/core/prompt';
 import { CadViewer, createCadFileActions, createCadFileSource, normalizePath } from '@text-to-cad/ui/cad-viewer';
-import type { AppSetting, ColorSchemeSetting } from '@text-to-cad/ui/file-viewer';
+import type { AppSetting, ColorSchemeSetting, LanguageSetting } from '@text-to-cad/ui/file-viewer';
 import type { ViewerHost, ViewerLinks } from '@text-to-cad/ui/host';
 import type { ModelLibrarySource } from '@text-to-cad/ui/library';
 import type { TabStore } from '@text-to-cad/ui/tab-store';
@@ -30,7 +30,7 @@ export interface ViewReporter {
  * Codex's file handler (`surface: file`, `alone`) shows its file alone: the host's own file tree is
  * its navigation.
  */
-export default function ModelView({ launch, sequence, alone = false, bridge, client, tunnel, tabStore, live, links, colorScheme, theme, platform, reporter, sync, chat, appSettings, update, fullSize }: {
+export default function ModelView({ launch, sequence, alone = false, bridge, client, tunnel, tabStore, live, links, colorScheme, theme, locale, language, platform, reporter, sync, chat, appSettings, update, fullSize }: {
   launch: Launch; sequence: number; bridge: Bridge; tabStore: TabStore; live: LiveRegistry; links: ViewerLinks;
   /**
    * The view shows the one file its host opened, and nothing else (Codex's file handler): no home,
@@ -45,6 +45,9 @@ export default function ModelView({ launch, sequence, alone = false, bridge, cli
   colorScheme: 'light' | 'dark'; platform: string; reporter: ViewReporter;
   /** The person's theme, the app menu's Theme rows. */
   theme?: ColorSchemeSetting;
+  /** The language the view reads in, and the person's choice of it: the app menu's Language row. */
+  locale?: string;
+  language?: LanguageSetting;
   /** The view's one call each second: it carries what this view's client would otherwise poll for. */
   sync: ViewSync;
   /** What the chat takes from a Quick Edit: context for the next message, a message now, or neither (Copy Prompt alone). */
@@ -120,12 +123,12 @@ export default function ModelView({ launch, sequence, alone = false, bridge, cli
     files: source, fileActions, clipboard: frameClipboard, promptContext, promptFiles, links,
     // A Quick Edit copied, queued or sent, counted by the CAD app's server for its telemetry.
     usage: { used: feature => { if (feature === 'quickEdit') client.reportActivity({ quickEdit: true }); } },
-    environment: { colorScheme, platform },
-  }), [client, source, fileActions, promptContext, promptFiles, links, colorScheme, platform]);
+    environment: { colorScheme, locale, platform },
+  }), [client, source, fileActions, promptContext, promptFiles, links, colorScheme, locale, platform]);
 
   // The file on screen joins the library every CAD view shares, with its picture.
   return <CadViewer client={client} host={host} tabStore={tabStore} live={live} file={file} onShow={navigate}
     onShown={path => { if (path) void client.changeRecents({ action: 'open', path }).catch(() => {}); }}
-    library={library} appSettings={appSettings} colorScheme={theme} update={update} fullSize={fullSize} history={viewerHistory}
+    library={library} appSettings={appSettings} colorScheme={theme} language={language} update={update} fullSize={fullSize} history={viewerHistory}
     onThumbnail={(png, pictured) => client.keepThumbnail(png, pictured)} />;
 }

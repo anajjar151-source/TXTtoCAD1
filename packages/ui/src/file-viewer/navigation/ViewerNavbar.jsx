@@ -74,7 +74,7 @@ function HistoryButtons({ viewHistory }) {
 /** The ⋯ after the file's name: what the host can do with the file. A host that can do nothing has none. */
 function FileMenu({ path, platform, capabilities, onAction }) {
   const { t } = useI18n();
-  const items = entryMenu(platform, capabilities);
+  const items = entryMenu(platform, capabilities, t);
   if (!items.length) return null;
   return <DropdownMenu modal={false}>
     <DropdownMenuTrigger asChild><button aria-label={t("navbar.fileActions")} data-testid="file-actions" type="button"

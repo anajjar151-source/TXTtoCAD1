@@ -1,6 +1,9 @@
 import type { ComponentType, ElementType, ReactNode } from "react";
 import type { EntryAction, Platform } from "./navigation/index.js";
 import type { ViewerHost } from "../host/types.js";
+import type { LanguageSetting } from "../i18n/index.js";
+
+export type { LanguageSetting };
 
 export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 export interface FileEntry { path: string; name: string; kind: "file" | "directory" }
@@ -144,6 +147,8 @@ export interface FileViewerProps {
   onStateChange: (next: FileViewerState) => void;
   /** The person's colour scheme, its rows in the app menu the navbar's logo opens over every file. */
   colorScheme?: ColorSchemeSetting;
+  /** The person's language, its row in the app menu over every file (Automatic, or one they chose). */
+  language?: LanguageSetting;
   /**
    * The person's on/off settings, in the app menu the navbar's logo opens over every file, with
    * the host's links (`host.links`).

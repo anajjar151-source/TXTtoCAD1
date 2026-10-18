@@ -588,6 +588,17 @@ what the host supplies:
   the tab's; the CAD app's follows its host's theme, Light or Dark overriding it for as long as
   the view is open. Neither app has a light/dark button of its own: Theme is the one
   control, the same on the home.
+- **Language**, where the host hands the person's language (`language`, both apps): one row,
+  its name and then the language in force, whose submenu offers **Automatic (<the inferred
+  language>)** and then each language under its own name — English, 简体中文, 繁體中文, 日本語,
+  한국어 — whatever the menu is reading in; a press changes it without closing the menu.
+  Automatic is the default: the web infers the language from the browser's languages, the CAD
+  app from its host's locale (then the frame's browser languages); Simplified script or
+  mainland China and Singapore read 简体中文, Traditional script or Taiwan, Hong Kong and Macau
+  繁體中文, any Japanese 日本語, any Korean 한국어, anything else English. A language chosen
+  overrides the inference until Automatic clears it. The host resolves the language and hands
+  it down as `environment.locale` (`@text-to-cad/ui/i18n`'s `useLanguage`); the shared UI holds
+  no locale of its own.
 - The host's own on/off settings (`appSettings`), a checkbox item each, in the order they
   come, checked at the right; a press turns one without closing the menu. **Share
   usage stats**, in both apps.
@@ -604,6 +615,11 @@ Nothing of a file is in it: a file's view is
 view's or a tab's: the host keeps it where every view of theirs reads it (both apps: their
 settings, `settings.json` in cadgen's state directory), and a view reads it again whenever
 the person comes back to the page.
+
+Every string of the chrome reads through `@text-to-cad/ui/i18n` (`useI18n().t`), English
+first: `en.js` holds every key, each other locale the same keys (a parity test), and a key a
+locale misses reads English. What a file or cadgen says (an alert's own title and message,
+a part's name, a loading step) stays as it was written.
 
 ## Position and references
 

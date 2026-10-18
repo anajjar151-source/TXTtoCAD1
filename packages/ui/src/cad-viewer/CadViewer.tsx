@@ -5,7 +5,8 @@ import { FileViewer } from '../file-viewer/FileViewer.js';
 import { ViewerLoadingOverlay } from '../file-viewer/presentation.js';
 import { EmptyState } from '../file-viewer/navigation/index.js';
 import { Button } from '../primitives/button.jsx';
-import type { AppSetting, ColorSchemeSetting, ViewerHistory } from '../file-viewer/types.js';
+import type { AppSetting, ColorSchemeSetting, LanguageSetting, ViewerHistory } from '../file-viewer/types.js';
+import { I18nProvider, translator } from '../i18n/index.js';
 import type { ViewerHost } from '../host/types.js';
 import type { LiveRegistry } from '../host/liveRegistry.js';
 import { ModelLibrary, type LibraryModel, type ModelLibrarySource } from '../library/ModelLibrary.js';
@@ -48,6 +49,11 @@ export interface CadViewerProps<Model extends LibraryModel = LibraryModel> {
   onThumbnail?(png: Blob, file: string): Promise<unknown>;
   /** The person's colour scheme, its rows in the app menu over every file and on the home. */
   colorScheme?: ColorSchemeSetting;
+  /**
+   * The person's language, its row in the app menu over every file and on the home: Automatic
+   * (what the context infers) or one they chose. The language in force is the host's `environment.locale`.
+   */
+  language?: LanguageSetting;
   /** The host's on/off settings, in the app menu the logo opens over every file and on the home (analytics). */
   appSettings?: readonly AppSetting[];
   /** The host's notice: a file's viewport, top-right, once the file is on screen; never the home. */
@@ -83,7 +89,10 @@ const reportError = (error: Error) => console.error(error);
  * navigates: showing a file, or the home, is the host's `onShow`.
  */
 export function CadViewer<Model extends LibraryModel = LibraryModel>({ client, host, tabStore, live, file, onShow, onShown,
-  library, onThumbnail, colorScheme, appSettings, notice, update, fullSize, history, onError = reportError }: CadViewerProps<Model>) {
+  library, onThumbnail, colorScheme, language, appSettings, notice, update, fullSize, history, onError = reportError }: CadViewerProps<Model>) {
+  // The language the host names: the pages drawn here (the home, a file that will not open) read in it.
+  const locale = host.environment.locale;
+  const t = translator(locale);
   const preferences = tabStore.settings;
   // One viewer renderer per file family, sharing one client and the tab's preferences; each
   // lazy-loads only its own code.
@@ -164,18 +173,18 @@ export function CadViewer<Model extends LibraryModel = LibraryModel>({ client, h
   const layout = settings.library.layout;
   const changeLayout = useCallback((next: LibraryLayout) => preferences.update({ library: { layout: next } }), [preferences]);
   // A file that will not open says why, with the way home where the host has one.
-  const goHome = useMemo(() => homed ? <Button size="sm" variant="outline" onClick={home}>Go home</Button> : null, [homed, home]);
+  const goHome = useMemo(() => homed ? <Button size="sm" variant="outline" onClick={home}>{t("file.goHome")}</Button> : null, [homed, home, t]);
   const presentation = useMemo(() => ({
     home: library ? <ModelLibrary library={library} layout={layout} onLayoutChange={changeLayout} picture={picture}
       links={host.links} onError={onError} /> : undefined,
     loading: <div className="relative h-full"><ViewerLoadingOverlay viewerLoading /></div>,
     error: ({ message, missing }: { message: string; missing: boolean }) => missing
-      ? <EmptyState icon={FileX} title="File does not exist" description={path} tone="warn" action={goHome} />
-      : <EmptyState icon={FileWarning} title="Could not open that file" description={message} tone="warn" action={goHome} />,
-  }), [library, layout, changeLayout, path, picture, host.links, onError, goHome]);
-  return <>
+      ? <EmptyState icon={FileX} title={t("file.missing")} description={path} tone="warn" action={goHome} />
+      : <EmptyState icon={FileWarning} title={t("file.openFailed")} description={message} tone="warn" action={goHome} />,
+  }), [library, layout, changeLayout, path, picture, host.links, onError, goHome, t]);
+  return <I18nProvider locale={locale}>
     <FileViewer file={path || null} host={viewerHost} renderers={renderers} state={state} onStateChange={onStateChange}
-      colorScheme={colorScheme} appSettings={appSettings} update={update} fullSize={fullSize} history={history} notice={notice} onError={onError} presentation={presentation} />
+      colorScheme={colorScheme} language={language} appSettings={appSettings} update={update} fullSize={fullSize} history={history} notice={notice} onError={onError} presentation={presentation} />
     {drawing && !path ? <OffscreenPicture key={drawing.source.file} source={drawing.source} host={host} preferences={preferences} onDone={drawn} /> : null}
-  </>;
+  </I18nProvider>;
 }

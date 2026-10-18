@@ -2,7 +2,11 @@ import { ArrowLeft, Check, MessageCircle, Monitor, Moon, Sun } from "lucide-reac
 import { Fragment } from "react";
 
 import { DropdownMenu as MenuPrimitive } from "radix-ui";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@text-to-cad/ui/primitives/dropdown-menu";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator,
+  DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger
+} from "@text-to-cad/ui/primitives/dropdown-menu";
+import { LOCALES, useI18n } from "@text-to-cad/ui/i18n";
 import { cn } from "@text-to-cad/ui/utils";
 
 import { FLOATING_SURFACE_CLASS } from "../../lib/floatingSurface.js";
@@ -13,13 +17,16 @@ import { feedbackUrl, MadeBy, useFollow } from "./NavbarLinks.jsx";
 const NONE = Object.freeze([]);
 // A setting's row: 32px, its name and its control spaced apart, the control's centre on one line.
 const SETTING_ROW_CLASS = "flex min-h-8 items-center justify-between gap-2 py-0.5 pr-1 pl-2 text-tiny text-foreground";
-const COLOR_SCHEMES = Object.freeze([["system", "System", Monitor], ["light", "Light", Sun], ["dark", "Dark", Moon]]);
+const COLOR_SCHEMES = Object.freeze([["system", Monitor], ["light", Sun], ["dark", Moon]]);
+// AUTOMATIC is the Language submenu's value for "no choice": the context decides.
+const AUTOMATIC = "automatic";
 
 /**
  * The app's menu, from the navbar's logo over every file and over the host's home: what is the
  * person's rather than a file's. First, where the host has a home, Back to files (`onHome`). Then the colour scheme (`colorScheme`):
  * Theme, one row, its System, Light and Dark a segmented control, the one in force lit, a press keeping the
- * menu open. Then the host's on/off settings (`appSettings`:
+ * menu open; then Language (`language`), one row naming the language in force, whose submenu offers
+ * Automatic (the language the context infers, named) and each language under its own name. Then the host's on/off settings (`appSettings`:
  * sharing anonymous usage data), checked at the right, which a press turns without closing
  * the menu; then Send feedback (a new issue on the host's tracker, naming the version and the
  * `platform`), GitHub and Discord; and last, in gray, the version this host runs (a link to its
@@ -31,31 +38,50 @@ const COLOR_SCHEMES = Object.freeze([["system", "System", Monitor], ["light", "L
  *   links?: import("../../host/types.js").ViewerLinks, appSettings?: readonly import("../types.js").AppSetting[],
  *   colorScheme?: import("../types.js").ColorSchemeSetting, platform?: string }} props
  */
-export function AppMenu({ trigger, onHome, links, appSettings = NONE, colorScheme, platform }) {
+export function AppMenu({ trigger, onHome, links, appSettings = NONE, colorScheme, language, platform }) {
+  const { t } = useI18n();
   const follow = useFollow(links);
   const feedback = links ? feedbackUrl(links, platform) : "";
   const outward = [
-    feedback ? { id: "feedback", label: "Send feedback", href: feedback, icon: MessageCircle } : null,
+    feedback ? { id: "feedback", label: t("menu.feedback"), href: feedback, icon: MessageCircle } : null,
     links?.github ? { id: "github", label: "GitHub", href: links.github, icon: GitHubMark } : null,
     links?.discord ? { id: "discord", label: "Discord", href: links.discord, icon: DiscordMark } : null,
   ].filter(Boolean);
   const groups = [
-    onHome ? [<DropdownMenuItem key="home" onSelect={onHome} data-menu-home=""><ArrowLeft aria-hidden="true" />Back to files</DropdownMenuItem>] : [],
+    onHome ? [<DropdownMenuItem key="home" onSelect={onHome} data-menu-home=""><ArrowLeft aria-hidden="true" />{t("menu.backToFiles")}</DropdownMenuItem>] : [],
     // The person's settings, one group of like rows: a name on the left in the menu's own text, and
     // its control on the right — Theme's System, Light and Dark as a segmented control, the one in
     // force lit; an on/off setting's checkbox, always drawn, filled while on. A press keeps the menu open.
     [
       ...(colorScheme ? [<div key="theme" className={SETTING_ROW_CLASS} data-menu-theme="">
-        <span className="min-w-0">Theme</span>
-        <MenuPrimitive.RadioGroup value={colorScheme.preference} onValueChange={colorScheme.onPreferenceChange} aria-label="Theme"
+        <span className="min-w-0">{t("menu.theme")}</span>
+        <MenuPrimitive.RadioGroup value={colorScheme.preference} onValueChange={colorScheme.onPreferenceChange} aria-label={t("menu.theme")}
           className="-mr-0.5 flex shrink-0 items-center gap-0.5 rounded-md bg-muted p-0.5">
-          {COLOR_SCHEMES.map(([id, label, Icon]) => <MenuPrimitive.RadioItem key={id} value={id} aria-label={label} onSelect={event => event.preventDefault()}
+          {COLOR_SCHEMES.map(([id, Icon]) => <MenuPrimitive.RadioItem key={id} value={id} aria-label={t(`appearance.${id}`)} onSelect={event => event.preventDefault()}
             className="grid size-6 cursor-default place-items-center rounded-sm text-muted-foreground outline-none transition-colors hover:text-foreground focus:bg-accent focus:text-foreground data-[state=checked]:bg-background data-[state=checked]:text-foreground data-[state=checked]:shadow-xs"
             data-theme-option={id}>
             <Icon className="size-3.5" aria-hidden="true" />
           </MenuPrimitive.RadioItem>)}
         </MenuPrimitive.RadioGroup>
       </div>] : []),
+      // Language: the language in force at the row's end; its submenu, Automatic (what the context infers,
+      // named) then each language under its own name, whatever the menu is reading in.
+      ...(language ? [<DropdownMenuSub key="language">
+        <DropdownMenuSubTrigger className={cn(SETTING_ROW_CLASS, "pr-1.5")} data-menu-language="">
+          <span className="min-w-0">{t("menu.language")}</span>
+          <span className="ml-auto truncate text-muted-foreground" lang={language.locale}>{t(`language.${language.locale}`)}</span>
+        </DropdownMenuSubTrigger>
+        <DropdownMenuSubContent className={cn(FLOATING_SURFACE_CLASS, "min-w-40")} aria-label={t("menu.language")}>
+          <DropdownMenuRadioGroup value={language.choice ?? AUTOMATIC} onValueChange={value => language.onChoiceChange(value === AUTOMATIC ? null : value)}>
+            <DropdownMenuRadioItem value={AUTOMATIC} onSelect={event => event.preventDefault()} data-language-option={AUTOMATIC}>
+              {t("menu.languageAutomatic", { language: t(`language.${language.inferred}`) })}
+            </DropdownMenuRadioItem>
+            {LOCALES.map(id => <DropdownMenuRadioItem key={id} value={id} lang={id} onSelect={event => event.preventDefault()} data-language-option={id}>
+              {t(`language.${id}`)}
+            </DropdownMenuRadioItem>)}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuSubContent>
+      </DropdownMenuSub>] : []),
       ...appSettings.map(setting => <MenuPrimitive.CheckboxItem key={setting.id} checked={setting.checked} disabled={setting.disabled}
         onCheckedChange={checked => setting.onCheckedChange(checked === true)} onSelect={event => event.preventDefault()}
         className={cn(SETTING_ROW_CLASS, "group/setting cursor-default rounded-sm outline-none focus:bg-accent data-[disabled]:pointer-events-none data-[disabled]:opacity-50")}
@@ -80,7 +106,7 @@ export function AppMenu({ trigger, onHome, links, appSettings = NONE, colorSchem
   const madeBy = links?.x ? <MadeBy links={links} /> : null;
   return <DropdownMenu modal={false}>
     <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
-    <DropdownMenuContent align="start" sideOffset={6} collisionPadding={8} aria-label="Menu" data-app-menu=""
+    <DropdownMenuContent align="start" sideOffset={6} collisionPadding={8} aria-label={t("navbar.menu")} data-app-menu=""
       className={cn(FLOATING_SURFACE_CLASS, "w-60 max-w-(--radix-dropdown-menu-content-available-width) data-[state=closed]:animate-none!")}>
       {groups.map((group, index) => <Fragment key={index}>{index ? <DropdownMenuSeparator /> : null}{group}</Fragment>)}
       {version || madeBy ? <>

@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { isMissingFileError } from '@text-to-cad/core/client';
@@ -153,6 +153,34 @@ it('the app menu holds the person\'s theme in one row: System, Light and Dark as
   expect(new Set(rows.map(row => row.closest('[data-menu-theme]')))).toEqual(new Set([document.querySelector('[data-menu-theme]')]));
   await user.click(screen.getByRole('menuitemradio', { name: 'Dark' }));
   expect([change.mock.calls, Boolean(document.querySelector('[data-app-menu]'))]).toEqual([[['dark']], true]);
+});
+
+it('the app menu holds the person\'s language: the one in force, Automatic naming what it infers, then each language under its own name', async () => {
+  const user = userEvent.setup();
+  const change = vi.fn();
+  const language = (choice: string | null, inferred = 'ja') => ({ locale: choice ?? inferred, inferred, choice, onChoiceChange: change });
+  // The view reads in the language the host names (`environment.locale`): the whole menu, Theme and all.
+  open({ host: { ...host, environment: { colorScheme: 'light', locale: 'ja' } }, colorScheme: { preference: 'system', onPreferenceChange() {} },
+    language: language(null) } as any);
+  await screen.findByText('shown');
+  await user.click(screen.getByRole('button', { name: 'メニュー' }));
+  const row = document.querySelector<HTMLElement>('[data-menu-language]')!;
+  expect(row.textContent).toBe('言語日本語');
+  expect(screen.getAllByRole('menuitemradio').map(item => item.getAttribute('aria-label'))).toEqual(['システム', 'ライト', 'ダーク']);
+  await user.hover(row);
+  const options = await screen.findAllByRole('menuitemradio', { name: /自動|English|中文|日本語|한국어/ });
+  expect(options.map(option => [option.textContent, option.getAttribute('aria-checked')])).toEqual([
+    ['自動（日本語）', 'true'], ['English', 'false'], ['简体中文', 'false'], ['繁體中文', 'false'], ['日本語', 'false'], ['한국어', 'false']]);
+  fireEvent.click(screen.getByRole('menuitemradio', { name: '繁體中文' }));
+  expect(change.mock.calls).toEqual([['zh-TW']]);
+  cleanup();
+  // A choice made: it is checked, and Automatic gives the choice back to the context.
+  open({ host: { ...host, environment: { colorScheme: 'light', locale: 'zh-TW' } }, language: language('zh-TW') } as any);
+  await screen.findByText('shown');
+  await user.click(screen.getByRole('button', { name: '選單' }));
+  await user.hover(document.querySelector<HTMLElement>('[data-menu-language]')!);
+  fireEvent.click(await screen.findByRole('menuitemradio', { name: '自動（日本語）' }));
+  expect(change.mock.calls.at(-1)).toEqual([null]);
 });
 
 it('ends the app menu with the version the host runs, a link to its release notes: the release as it is, a custom build with its id', async () => {

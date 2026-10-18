@@ -8,7 +8,6 @@ import { CadViewer, createCadFileSource } from '../../dist/cad-viewer/index.js';
 import { createLiveRegistry } from '../../dist/host/liveRegistry.js';
 import { createTabStore, memoryTabRecord } from '../../dist/tab-store/tabStore.js';
 import { viewerLinks } from '../../dist/file-viewer/navigation/links.js';
-import { setLocale } from '../../dist/i18n/index.js';
 
 // The shared FileViewer, reduced to what this composition hands it: the view on screen, and the
 // one a card's picture is drawn in out of sight (a compact one), while it is mounted.
@@ -22,7 +21,7 @@ vi.mock('../../dist/file-viewer/FileViewer.js', async () => {
     return null;
   } };
 });
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); viewer.props = null; viewer.hidden = null; setLocale('en'); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); viewer.props = null; viewer.hidden = null; });
 
 function cadClient() {
   let snapshot = { hydrated: false, entries: [] as Record<string, unknown>[], error: '', revision: 0, refreshing: true, catalogRevision: '' };
@@ -104,24 +103,23 @@ test('a file that does not exist says so by its path, and any other failure says
   expect(failure(true).queryByRole('button', { name: 'Go home' })).toBeNull();
 });
 
-test('the failure states follow the language the moment it changes, not the one they were drawn in', () => {
+test('the failure states read in the language the host names, and follow it when it changes', () => {
   const client = cadClient();
-  const view = () => <CadViewer client={client as never} host={ports(client)} tabStore={createTabStore(memoryTabRecord())} live={createLiveRegistry()}
+  const tabStore = createTabStore(memoryTabRecord());
+  const live = createLiveRegistry();
+  const view = (locale?: string) => <CadViewer client={client as never} host={ports(client, { environment: { colorScheme: 'light', locale } })} tabStore={tabStore} live={live}
     file="/models/gone.step" library={library} onShow={() => {}} />;
   const { rerender } = render(view());
-  // `t` is one function for the page's life, so the memos that show it must watch
-  // the locale itself: a change re-draws "Go home" and both failure titles in place.
+  // The host's `environment.locale` is the language: a change re-draws "Go home" and both failure titles.
   const failure = (missing: boolean) => render(<>{props().presentation!.error!({ message: 'The viewer stopped', missing })}</>);
   expect(failure(true).getByText('File does not exist')).toBeTruthy();
   failure(true).unmount();
-  act(() => setLocale('zh-CN'));
-  rerender(view());
+  rerender(view('zh-CN'));
   const zh = failure(true);
   expect(zh.getByText('文件不存在')).toBeTruthy();
   expect(zh.getByRole('button', { name: '返回主页' })).toBeTruthy();
   zh.unmount();
-  act(() => setLocale('en'));
-  rerender(view());
+  rerender(view('fr'));
   const back = failure(false);
   expect(back.getByText('Could not open that file')).toBeTruthy();
   back.unmount();

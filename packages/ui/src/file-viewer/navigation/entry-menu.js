@@ -3,12 +3,11 @@
  * shown in the desktop's file manager — each only where the host can do it, so an item that cannot
  * work is never offered. `ViewerNavbar.jsx` draws it; the host performs it.
  *
- * Pure, so `node --test` loads it without the bundler's aliases: the labels read the i18n core's
- * current locale directly (still no environment, no aliases), which is why they answer in the
- * viewer's language however the host runs this module.
+ * Pure, so `node --test` loads it without the bundler's aliases: the labels are in the language of
+ * the `t` its caller hands it (`useI18n()`'s), English where it hands none.
  */
 
-import { translate } from "../../i18n/core.js";
+import { english } from "../../i18n/core.js";
 
 /** Every action the menu can carry. */
 export const ENTRY_ACTIONS = Object.freeze(["copy-path", "reveal"]);
@@ -20,14 +19,14 @@ export const ENTRY_ACTIONS = Object.freeze(["copy-path", "reveal"]);
  */
 
 /** What the OS calls its file browser. */
-export function revealLabel(platform) {
+export function revealLabel(platform, t = english) {
   switch (platform) {
     case "win32":
-      return translate("file.revealExplorer");
+      return t("file.revealExplorer");
     case "linux":
-      return translate("file.revealFileManager");
+      return t("file.revealFileManager");
     default:
-      return translate("file.revealFinder");
+      return t("file.revealFinder");
   }
 }
 
@@ -36,9 +35,10 @@ export function revealLabel(platform) {
  *
  * @param {Platform} platform
  * @param {ReadonlySet<EntryAction>} capabilities What this host can perform.
+ * @param {(key: string) => string} [t] The view's translator; English by default.
  * @returns {EntryMenuItem[]}
  */
-export function entryMenu(platform, capabilities) {
-  return [{ action: "copy-path", label: translate("file.copyPath") }, { action: "reveal", label: revealLabel(platform) }]
+export function entryMenu(platform, capabilities, t = english) {
+  return [{ action: "copy-path", label: t("file.copyPath") }, { action: "reveal", label: revealLabel(platform, t) }]
     .filter((item) => capabilities.has(item.action));
 }

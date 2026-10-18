@@ -3,7 +3,7 @@ import { Box, FolderOpen, LayoutGrid, List, Pin, Search, X } from "lucide-react"
 import { Button } from "../primitives/button.jsx";
 import { Input } from "../primitives/input.jsx";
 import { Spinner } from "../primitives/spinner.jsx";
-import { translate, useI18n } from "../i18n/index.js";
+import { english, useI18n } from "../i18n/index.js";
 import type { LibraryLayout } from "../tab-store/tabRecord.js";
 import wordmark from "../assets/logo-texttocad.svg";
 import { HomeLinks } from "../file-viewer/navigation/NavbarLinks.jsx";
@@ -54,17 +54,21 @@ export function filterModels<Model extends LibraryModel>(items: readonly Model[]
 }
 
 const MONTHS = { month: "short", day: "numeric" } as const;
-/** "Edited 16h ago": how long since the file changed, in the largest unit that is at least one. */
-export function editedLabel(modified: number | null, now = Date.now()): string {
+/**
+ * "Edited 16h ago": how long since the file changed, in the largest unit that is at least one, in
+ * the language of `t` (the view's; English by default), an older date written as `locale` writes it.
+ */
+export function editedLabel(modified: number | null, now = Date.now(),
+  t: (key: string, params?: Record<string, unknown>) => string = english, locale?: string): string {
   if (modified === null || !Number.isFinite(modified)) return "";
   const seconds = Math.max(0, (now - modified * 1000) / 1000);
-  if (seconds < 60) return translate("home.editedJustNow");
-  if (seconds < 3600) return translate("home.editedMinutesAgo", { n: Math.floor(seconds / 60) });
-  if (seconds < 86400) return translate("home.editedHoursAgo", { n: Math.floor(seconds / 3600) });
-  if (seconds < 7 * 86400) return translate("home.editedDaysAgo", { n: Math.floor(seconds / 86400) });
+  if (seconds < 60) return t("home.editedJustNow");
+  if (seconds < 3600) return t("home.editedMinutesAgo", { n: Math.floor(seconds / 60) });
+  if (seconds < 86400) return t("home.editedHoursAgo", { n: Math.floor(seconds / 3600) });
+  if (seconds < 7 * 86400) return t("home.editedDaysAgo", { n: Math.floor(seconds / 86400) });
   const date = new Date(modified * 1000);
   const sameYear = date.getFullYear() === new Date(now).getFullYear();
-  return translate("home.editedOn", { date: date.toLocaleDateString(undefined, sameYear ? MONTHS : { ...MONTHS, year: "numeric" }) });
+  return t("home.editedOn", { date: date.toLocaleDateString(locale, sameYear ? MONTHS : { ...MONTHS, year: "numeric" }) });
 }
 
 const message = (failure: unknown) => failure instanceof Error ? failure.message : String(failure);
@@ -150,7 +154,7 @@ export function ModelLibrary<Model extends LibraryModel>({ library, layout = "gr
   const [items, setItems] = useState<readonly Model[] | null>(null);
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   // The host's library as it is now: a host may hand a new one each render.
   const current = useRef(library);
   current.current = library;
@@ -220,7 +224,7 @@ export function ModelLibrary<Model extends LibraryModel>({ library, layout = "gr
     <Button variant="ghost" size="icon-xs" aria-label={t(item.pinned ? "home.unpinAria" : "home.pinAria", { name: item.name })} aria-pressed={item.pinned} onClick={() => change(item.pinned ? "unpin" : "pin", item)}><Pin aria-hidden="true" fill={item.pinned ? "currentColor" : "none"} /></Button>
     {removable ? <Button variant="ghost" size="icon-xs" aria-label={t("home.removeAria", { name: item.name })} onClick={() => change("remove", item)}><X aria-hidden="true" /></Button> : null}
   </div>;
-  const status = (item: Model) => item.missing ? t("home.fileUnavailable") : editedLabel(item.modified, now);
+  const status = (item: Model) => item.missing ? t("home.fileUnavailable") : editedLabel(item.modified, now, t, locale);
   const models = layout === "list"
     ? <ul className="cad-library-list" aria-label={t("home.filesAria")}>{shown.map(item => <li key={item.path} className="cad-library-row" data-missing={item.missing || undefined} data-opening={opening === item.path || undefined}>
       <button type="button" className="cad-library-open" disabled={item.missing} aria-label={t("home.openAria", { name: item.name })} aria-busy={opening === item.path || undefined} onClick={() => open(item)}>

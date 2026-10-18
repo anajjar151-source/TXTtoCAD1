@@ -1,14 +1,27 @@
-import { useSyncExternalStore } from "react";
+import { createContext, createElement, useContext, useMemo } from "react";
 
-import { getLocale, setLocale, subscribe, translate } from "./core.js";
+import { DEFAULT_LOCALE, normalizeLocale, translator } from "./core.js";
+
+const I18nContext = createContext({ locale: DEFAULT_LOCALE, t: translator(DEFAULT_LOCALE) });
 
 /**
- * The component's view of the locale: `{ locale, t, setLocale }`, where `t`
- * reads the current one. The subscription is the point — a locale change puts
- * every mounted reader back on the screen in the new language, and a re-render
- * is also what carries a pure helper's `t()` (`entry-menu.js`) along.
+ * The language a view reads in, from its host (`environment.locale`): `FileViewer` and
+ * `CadViewer` put it around everything they draw, the nodes a host hands them (the update
+ * button, the home's links) included. A locale this viewer does not speak reads English.
+ *
+ * @param {{ locale?: string, children?: import("react").ReactNode }} props
+ */
+export function I18nProvider({ locale, children }) {
+  const resolved = normalizeLocale(locale) || DEFAULT_LOCALE;
+  const value = useMemo(() => ({ locale: resolved, t: translator(resolved) }), [resolved]);
+  return createElement(I18nContext.Provider, { value }, children);
+}
+
+/**
+ * The component's view of the language: `{ locale, t }`. `t` is one function per locale, so a
+ * memo that lists it is redone when the person changes language, and a pure helper handed it
+ * (`entryMenu(platform, capabilities, t)`) answers in that language.
  */
 export function useI18n() {
-  const locale = useSyncExternalStore(subscribe, getLocale, getLocale);
-  return { locale, setLocale, t: translate };
+  return useContext(I18nContext);
 }

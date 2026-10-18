@@ -11,6 +11,9 @@ The host contains `files`, optional native `fileActions`, `clipboard`,
 `home()`), the optional `links` (the app menu's), the optional `usage`
 (`used(feature)`: what the person used, for the host's telemetry to count, never what
 they made; absent, nothing is counted) and `environment`. `environment` carries the resolved `colorScheme`,
+the resolved `locale` (the language the view reads in: the person's choice, else what the
+context infers, as `@text-to-cad/ui/i18n`'s `useLanguage` resolves it; none, or one the viewer
+does not speak, reads English),
 the keyboard `platform` (`darwin` shows ⌘, anything else Ctrl), the app's own
 `reducedMotion`, honoured beside the system's `prefers-reduced-motion`, and
 `compact`: a view drawn as a picture (the home draws its thumbnails this way, out
@@ -450,7 +453,10 @@ the ordinary way unless the host supplies
 `links.open` (a page in a sandboxed frame hands it to its host), which every link of the
 menu follows. The colour scheme is the menu's Theme row (`colorScheme`, a `CadViewer`
 prop), over a file and on the home alike; no host has a light/dark button of its own, and
-Display holds no appearance control. `appSettings` (`{ id, section, label, checked, disabled?, onCheckedChange }[]`,
+Display holds no appearance control. `language` (`{ locale, inferred, choice, onChoiceChange }`, a `CadViewer` prop) is the person's
+language for the app menu's Language row: `choice` null is Automatic, `inferred` what Automatic
+means; both apps keep the choice in the person's settings (`/__cad/language`, the `language`
+section of `settings.json`), so it holds for every CAD view. `appSettings` (`{ id, section, label, checked, disabled?, onCheckedChange }[]`,
 a `CadViewer` prop) are the host's own on/off settings: checkbox items of the app menu, in the
 order they come (Share anonymous usage data, in both apps), the same in the
 logo's menu and the home's; nothing of them reaches a renderer, and Display holds none. The
