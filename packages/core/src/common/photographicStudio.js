@@ -15,6 +15,7 @@ import {
 } from "./photographicStudioRig.js";
 import { createStudioContactShadow, syncDitherScale } from "./studioContactShadow.js";
 import { createStudioFloorReflection } from "./studioFloorReflection.js";
+import { collectLitMeshes, RadiosityStage } from "../lib/viewer/radiosityStage.js";
 
 function component(value, axis, fallback) {
   if (Array.isArray(value)) return finiteOr(value[axis], fallback);
@@ -53,7 +54,8 @@ function resolvedConfiguration(configuration = {}) {
       enabled: lighting.enabled !== false,
       rotation: clamp(finiteOr(lighting.rotation, DEFAULT_RENDER_LIGHTING.rotation), -180, 180),
       size: clamp(finiteOr(lighting.size, DEFAULT_RENDER_LIGHTING.size), 0.25, 3),
-      fill: clamp(finiteOr(lighting.fill, DEFAULT_RENDER_LIGHTING.fill), 0, 1)
+      fill: clamp(finiteOr(lighting.fill, DEFAULT_RENDER_LIGHTING.fill), 0, 1),
+      globalIllumination: lighting.globalIllumination !== false
     },
     backdrop: {
       ...(Object.hasOwn(backdrop, "opacity") ? { opacity: clamp(finiteOr(backdrop.opacity, 1), 0, 1) } : {}),
@@ -155,6 +157,10 @@ function createState(THREE, runtime) {
     shadowMapSize: null,
     ground: null,
     contactShadow: null,
+    radiosity: null,
+    radiosityRoot: null,
+    radiosityStep: null,
+    keyDirection: new THREE.Vector3(...PHOTOGRAPHIC_STUDIO_KEY_DIRECTION).normalize(),
     reflection: null,
     reflectionHidden: null,
     restoreSceneHook: null,
@@ -346,6 +352,7 @@ function updateKeyLight(THREE, state, configuration, bounds, shadowMapSize, soft
   const rotation = THREE.MathUtils.degToRad(configuration.lighting.rotation);
   const direction = new THREE.Vector3(...PHOTOGRAPHIC_STUDIO_KEY_DIRECTION).normalize();
   direction.applyAxisAngle(new THREE.Vector3(0, 0, 1), rotation);
+  state.keyDirection = direction;
 
   const distance = Math.max(bounds.radius * 5, 1e-4);
   const center = new THREE.Vector3(...bounds.center);
@@ -383,6 +390,91 @@ function updateKeyLight(THREE, state, configuration, bounds, shadowMapSize, soft
   state.keyLight.shadow.needsUpdate = true;
   state.keyLight.updateMatrixWorld(true);
   state.target.updateMatrixWorld(true);
+}
+
+// Irradiance the key spotlight gives an unoccluded up-facing surface at the model:
+// its illuminance is set along its own direction (`updateKeyLight`), and rotating the
+// rig about Z leaves the direction's elevation alone.
+// The key softbox's apparent radius (radians) at Size 1, and how it grows with Size: the
+// bake jitters the key's shadow direction inside this cone, so the shadow softens with
+// distance from the caster and with the softbox.
+const KEY_SHADOW_CONE = Object.freeze({ base: 0.06, perSize: 0.05 });
+
+function disposeGlobalIllumination(runtime, state) {
+  if (!state.radiosity) return;
+  state.radiosity.group.removeFromParent();
+  if (runtime?.refineFrame === state.radiosityStep) runtime.refineFrame = null;
+  state.radiosity.dispose();
+  state.radiosity = null;
+  state.radiosityRoot = null;
+  state.radiosityStep = null;
+}
+
+/**
+ * Global illumination (`lighting.globalIllumination`): a progressive radiosity bake
+ * (`lib/viewer/radiosityStage.js`) that refines over a few seconds lights the model from
+ * the studio environment — the key card, fill cards, softbox, strips and sweep of the
+ * PMREM — with soft shadows and contact occlusion baked into a lightmap, and shadows the
+ * key spotlight the same way: the spotlight stays, with its highlights and its pool on the
+ * floor, but each surface receives it by the fraction of the softbox it can see, so its
+ * shadow softens with distance and it never lights the inside of a part it cannot reach.
+ * The spotlight's shadow map and the floor's contact-shadow layer are not drawn; the bake's
+ * floor catches both the environment's occlusion and the key's shadow.
+ *
+ * It needs a host that steps the bake every frame — `host.root` names the meshes to bake
+ * and the host calls `runtime.refineFrame()` before each draw — and a renderer with float
+ * render targets. A snapshot passes no host, and a software renderer bakes nothing: both
+ * keep the spotlight's shadow map.
+ */
+function updateGlobalIllumination(THREE, runtime, state, configuration, extentBounds, host) {
+  const wanted = configuration.lighting.enabled && configuration.lighting.globalIllumination
+    && host?.root?.isObject3D === true && runtime.softwareRendering !== true
+    && RadiosityStage.supported(runtime.renderer);
+  if (!wanted) {
+    if (state.radiosity) {
+      disposeGlobalIllumination(runtime, state);
+      runtime.requestRender?.();
+    }
+    return;
+  }
+  let stage = state.radiosity;
+  if (!stage) {
+    stage = new RadiosityStage(runtime.renderer);
+    state.radiosity = stage;
+    state.group.add(stage.group);
+    state.radiosityStep = () => state.radiosity?.step() === true;
+  }
+  runtime.refineFrame = state.radiosityStep;
+  if (state.radiosityRoot !== host.root) {
+    const root = host.root;
+    stage.setMeshesProvider(() => collectLitMeshes(root));
+    state.radiosityRoot = root;
+  }
+  if (configuration.backdrop.ground && state.ground) {
+    stage.setFloor({
+      center: new THREE.Vector3(...extentBounds.center),
+      level: state.ground.position.z,
+      extent: Math.max(
+        extentBounds.max[0] - extentBounds.min[0],
+        extentBounds.max[1] - extentBounds.min[1],
+        extentBounds.max[2] - extentBounds.min[2],
+        1e-6
+      ),
+      albedo: new THREE.Color(configuration.backdrop.groundColor)
+    });
+  } else {
+    stage.setFloor(null);
+  }
+  stage.setEnvironment(runtime.scene.environment || null, runtime.scene.environmentRotation || null, 1);
+  // The spotlight's shadow is the bake's: its shadow map and the floor's contact layer
+  // are not drawn, and the light itself is scaled by the baked visibility of its softbox.
+  state.keyLight.castShadow = false;
+  state.contactShadow?.setEnabled(false);
+  stage.setDirectLights([{
+    direction: state.keyDirection,
+    angle: KEY_SHADOW_CONE.base + KEY_SHADOW_CONE.perSize * configuration.lighting.size,
+    irradiance: PHOTOGRAPHIC_STUDIO_KEY_ILLUMINANCE
+  }]);
 }
 
 function updateRendererAndScene(THREE, runtime, state, configuration) {
@@ -434,6 +526,12 @@ function updateRendererAndScene(THREE, runtime, state, configuration) {
  * `ditherScale` is how many drawn pixels a kept pixel spans across: a snapshot passes its
  * render scale, so the floor's dither survives its downsampling (`syncDitherScale`); a viewer,
  * which shows its pixels as drawn, keeps 1.
+ *
+ * `globalIllumination` is the host of the recipe's global illumination, when it can be one
+ * (`updateGlobalIllumination`): `{ root }` names the object whose meshes the bake lights, and
+ * the host steps the bake through `runtime.refineFrame()` before every frame it draws. Without
+ * it the recipe's `lighting.globalIllumination` is ignored and the key spotlight keeps its
+ * shadow map.
  */
 export function applyPhotographicStudio(THREE, runtime, configuration = {}, {
   bounds = runtime?.modelBounds,
@@ -441,7 +539,8 @@ export function applyPhotographicStudio(THREE, runtime, configuration = {}, {
   sceneScale = "cad",
   shadowMapSize = 2048,
   contactShadow = {},
-  ditherScale = 1
+  ditherScale = 1,
+  globalIllumination = null
 } = {}) {
   if (!THREE || !runtime?.scene || !runtime?.renderer) {
     throw new Error("applyPhotographicStudio requires THREE and a runtime with scene and renderer");
@@ -463,10 +562,11 @@ export function applyPhotographicStudio(THREE, runtime, configuration = {}, {
     shadowMapSize,
     runtime.softwareRendering === true
   );
-  updateGround(THREE, state, resolved, resolvedBounds, sceneScale,
-    groundBounds ? resolveBounds(groundBounds, runtime.modelRadius) : resolvedBounds,
+  const resolvedGroundBounds = groundBounds ? resolveBounds(groundBounds, runtime.modelRadius) : resolvedBounds;
+  updateGround(THREE, state, resolved, resolvedBounds, sceneScale, resolvedGroundBounds,
     { contactShadow, softwareRendering: runtime.softwareRendering === true,
       guides: () => [runtime.gridHelper, runtime.originAxis], ditherScale });
+  updateGlobalIllumination(THREE, runtime, state, resolved, resolvedGroundBounds, globalIllumination);
 
   runtime.invalidateShadows?.();
   runtime.requestRender?.();
@@ -476,6 +576,7 @@ export function applyPhotographicStudio(THREE, runtime, configuration = {}, {
 export function disposePhotographicStudio(runtime) {
   const state = runtime?.photographicStudio;
   if (!state) return;
+  disposeGlobalIllumination(runtime, state);
   disposeGround(state);
   state.keyLight.shadow?.map?.dispose?.();
   state.keyLight.shadow.map = null;
