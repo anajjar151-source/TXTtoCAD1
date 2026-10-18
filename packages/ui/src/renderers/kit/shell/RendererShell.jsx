@@ -41,8 +41,8 @@ const INSET = `${VIEWPORT_INSET_PX}px`;
 // (`left: 50%`) it would shrink to the half right of it, and the strip would wrap at half the view.
 const TOOLBAR_POSITION = Object.freeze({ top: INSET, left: INSET, right: INSET, bottom: VIEWPORT_STACK_BOTTOM });
 // On a phone with a file sidebar its one tile stands at the left of the strip's line (46px: a 36px
-// tile in its toolbar's padding and border): the strip starts 8px right of it, left-aligned, and
-// fits what it can in the room to the view's right inset. With no sidebar it is centred.
+// tile in its toolbar's padding and border): reserve its width plus an 8px gap for overflow fitting.
+// The controls centre on the viewport, clamped inside this available column by the measure below.
 const PHONE_SIDEBAR_TILE_ROOM = `${VIEWPORT_INSET_PX + 46 + 8}px`;
 const TOOLBAR_POSITION_PHONE_SIDEBAR = Object.freeze({ ...TOOLBAR_POSITION, left: PHONE_SIDEBAR_TILE_ROOM });
 // The file sidebar runs down the left edge, the viewer's full height within its inset: the cube is
@@ -340,7 +340,7 @@ export default function RendererShell({ shell, tools, toolPanels = null, subTool
   // alone, not the tools, Quick Edit, the view actions or the cube; shown full size, all return.
   const compact = Boolean(view.appearance?.compact);
   const toolsHidden = chromeHidden || compact;
-  // A phone's strip starts beside the sidebar's tile where there is one, else it is centred.
+  // Reserve the sidebar tile's room; the toolbar is centred on the viewport whenever it fits.
   const besideSidebarTile = mobile && !previewing && Boolean(sidebar || hasAnimation);
   // On a phone Annotate's controls are its chevron's menu on the strip.
   const stripTools = mobile ? tools.map(tool => tool.id === "annotate" ? { ...tool, menu: <AnnotationMenu annotation={frame.annotation} history={frame.history}
@@ -355,6 +355,16 @@ export default function RendererShell({ shell, tools, toolPanels = null, subTool
     const viewport = controls?.closest("[data-cad-scene-backdrop]");
     if (!controls || !viewport) return undefined;
     const measure = () => {
+      const column = controls.parentElement;
+      if (mobile && column) {
+        const viewBox = viewport.getBoundingClientRect(), columnBox = column.getBoundingClientRect();
+        const width = controls.getBoundingClientRect().width;
+        const room = Math.max(0, columnBox.width - width);
+        const centered = viewBox.left + (viewBox.width - width) / 2 - columnBox.left;
+        // Start at the viewport centre, keeping the sidebar gap and the right edge padding.
+        // Offset the flex-centred controls without changing the room TouchStrip uses for More.
+        controls.style.left = `${Math.min(room, Math.max(0, centered)) - room / 2}px`;
+      } else controls.style.removeProperty("left");
       // The rows with something in them: an empty one (no update under way) still takes the
       // column's gap, which would leave a wider gap over the sidebar than at its sides.
       const rows = [...controls.children].map(row => row.getBoundingClientRect()).filter(box => box.height > 0);
@@ -391,9 +401,10 @@ export default function RendererShell({ shell, tools, toolPanels = null, subTool
     }
     return () => {
       resized.disconnect(); changed?.disconnect();
+      controls.style.removeProperty("left");
       for (const name of ["--cad-tools-bottom", "--cad-file-sidebar-max-width", "--cad-top-right-left"]) viewport.style.removeProperty(name);
     };
-  }, [toolsHidden, mobile, Boolean(sidebar), Boolean(references)]);
+  }, [toolsHidden, mobile, besideSidebarTile, Boolean(sidebar), Boolean(references)]);
   // Display's tile is its mode's sphere; on a phone with no room for it, its More row shows the same.
   const DisplayIcon = (frame.displayMode?.options?.find(option => option.value === frame.displayMode.value) || frame.displayMode?.options?.[0])?.Icon;
   const copyAction = () => {
@@ -550,11 +561,11 @@ export default function RendererShell({ shell, tools, toolPanels = null, subTool
                   onClose={() => setPreviewPanelOpen(false)} render={frame.previewSettings} /> : null}>
 
               {/* The file explorer floats over the top-left corner, above the sidebar, which stays drawn under it. */}
-              {toolsHidden ? null : <div className={cn("group/tool-stack pointer-events-none absolute z-20 flex flex-col gap-2", besideSidebarTile ? "items-start" : "items-center")} style={besideSidebarTile ? TOOLBAR_POSITION_PHONE_SIDEBAR : TOOLBAR_POSITION}
+              {toolsHidden ? null : <div className="group/tool-stack pointer-events-none absolute z-20 flex flex-col items-center gap-2" style={besideSidebarTile ? TOOLBAR_POSITION_PHONE_SIDEBAR : TOOLBAR_POSITION}
                 data-mobile={mobile ? "" : undefined} data-cad-tool-groups=""><StripTouchProvider value={mobile}>
                 {/* The view's controls end the strip, after a rule: Projection, Display, then Preview (on a
                     phone, always in its More menu). */}
-                <div ref={topControls} className={cn("flex max-w-full shrink-0 flex-col gap-2", besideSidebarTile ? "items-start" : "items-center")} data-cad-top-controls="">
+                <div ref={topControls} className="relative flex max-w-full shrink-0 flex-col items-center gap-2" data-cad-top-controls="">
                   <FloatingToolBar tools={stripTools} touch={mobile} views={shell.previewable && !previewing ? [
                     { id: "projection", label: "Projection", icon: <ProjectionIcon value={frame.projection.value} />, disabled: shell.idle,
                       tile: <ProjectionPopover disabled={shell.idle} boundary={frame.hostElement} projection={frame.projection} />,

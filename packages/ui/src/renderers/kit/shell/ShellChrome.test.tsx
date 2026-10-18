@@ -215,13 +215,13 @@ it("on a phone the file sidebar is one tile at the top-left, on the strip's line
   frame({ mobile: true });
   const strip = screen.getByRole('group', { name: 'Interaction tools' });
   const toggle = screen.getByRole('button', { name: 'Sidebar' });
-  // The sidebar's toolbar is its one tile, not the strip's: the strip starts 8px right of it,
-  // left-aligned, and runs to the view's right inset.
+  // The sidebar's tile reserves its width and an 8px gap; the controls centre within that
+  // room, with their viewport-centering offset verified in the real-browser layout test.
   expect([strip.contains(toggle), toggle.hasAttribute('data-file-sidebar-toggle'), document.querySelectorAll('[data-file-sidebar-tools] button').length])
     .toEqual([false, true, 1]);
   const column = document.querySelector<HTMLElement>('[data-cad-tool-groups]')!;
   expect(column.style).toMatchObject({ left: '62px', right: '8px' });
-  expect(column.className).toMatch(/\bitems-start\b/);
+  expect(column.className).toMatch(/\bitems-center\b/);
   // Its room runs from the top-left corner to the view's bottom inset, clear of Quick Edit's peek.
   expect(document.querySelector<HTMLElement>('[data-file-sidebar-room]')!.style).toMatchObject({ top: '8px', left: '8px', bottom: 'calc(var(--cad-quick-edit-peek, 0px) + 8px)' });
   const tabs = () => [...document.querySelectorAll<HTMLElement>('[data-file-sidebar-tab]')].map(tab => [tab.getAttribute('aria-label'), tab.getAttribute('data-state')]);

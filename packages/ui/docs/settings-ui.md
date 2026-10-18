@@ -114,9 +114,10 @@ none.
   an even 4px apart, a tool's chevron touching its button, in a 34px row (`FloatingToolBar`,
   `data-cad-toolbar`). A file with no tools has no strip. On a phone
   ([mobile](#the-file-sidebar-and-the-tool-stack)) the tiles are 36px with 18px icons, a chevron
-  20px wide, in one row that never wraps, clear of the file sidebar's tile at its left: what does
-  not fit goes, from the strip's end (the view's controls where the strip has them, then the
-  tools from the last), into **More tools** (an ellipsis, last), a tool a row ticked while it is
+  20px wide, in one row that never wraps. Centre it on the viewport whenever it fits;
+  clamp its position to keep 8px from the edges and from the file sidebar's tile at its left.
+  Its available width still uses all the room after that tile. What does not fit goes, from the
+  strip's end (the view's controls where the strip has them, then the tools from the last), into **More tools** (an ellipsis, last), a tool a row ticked while it is
   in hand and Display opening its popover from More (`touchStripFit`).
 - **Sub-toolbar** under the strip, 8px below it, centred: the tool in hand's one row of
   controls (`SubToolbar`, `data-cad-sub-toolbar`), there for as long as the tool is up (see

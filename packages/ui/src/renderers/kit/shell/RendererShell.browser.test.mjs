@@ -82,6 +82,37 @@ const settle = page => page.evaluate(() => new Promise(resolve => requestAnimati
 // temporary harness.
 const mesh = 'solid triangle\nfacet normal 0 0 1\nouter loop\nvertex 0 0 0\nvertex 20 0 0\nvertex 0 20 0\nendloop\nendfacet\nendsolid triangle\n';
 
+test('mobile tools centre on the viewport and keep the sidebar gap as space runs out', async (t) => {
+  const origin = await serve(t);
+  const { page, errors } = await newPage(t);
+  await page.goto(`${origin}/?file=panel.harness`);
+  const pane = page.getByTestId('one');
+  await pane.getByRole('group', { name: 'Interaction tools' }).waitFor();
+  for (const width of [599, 390, 320, 240, 600, 599]) {
+    await page.locator('#root > div').evaluate((element, width) => element.style.setProperty('width', `${width}px`, 'important'), width);
+    await page.waitForFunction(width => {
+      const pane = document.querySelector('[data-testid="one"]');
+      const viewport = pane.querySelector('[data-cad-scene-backdrop]');
+      const strip = pane.querySelector('[aria-label="Interaction tools"]');
+      const column = pane.querySelector('[data-cad-tool-groups]');
+      if (!viewport || !strip || !column) return false;
+      const view = viewport.getBoundingClientRect(), tools = strip.getBoundingClientRect();
+      const mobile = width < 600;
+      if (Math.abs(view.width - width) > 1 || column.hasAttribute('data-mobile') !== mobile) return false;
+      const expected = view.left + Math.max(mobile ? 62 : 8, (view.width - tools.width) / 2);
+      return Math.abs(tools.left - expected) < 1 && tools.right <= view.right - 7;
+    }, width);
+    if (width < 600) {
+      const sidebar = await pane.getByRole('button', { name: 'Sidebar', exact: true }).boundingBox();
+      const strip = await pane.getByRole('group', { name: 'Interaction tools' }).boundingBox();
+      assert.ok(strip.x >= sidebar.x + sidebar.width + 8, 'keeps the sidebar button clear');
+    }
+  }
+  await pane.getByRole('button', { name: 'More tools', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Preview', exact: true }).waitFor();
+  assert.deepEqual(errors, []);
+});
+
 test('a shell renderer restores isolated view state on a remount', async (t) => {
   const requests = [];
   const catalogFiles = [];
