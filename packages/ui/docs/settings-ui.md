@@ -594,8 +594,9 @@ what the host supplies:
   한국어 — whatever the menu is reading in; a press changes it without closing the menu. The
   row is a setting row like Theme: its name, then the language in force, muted, right-aligned
   before the chevron, centred on the column Theme's last segment and the checkboxes share. A
-  phone has no room beside the menu for a submenu: there the choices follow the row, in the
-  menu itself.
+  phone has no room beside the menu for a submenu: there a press of the same row opens the
+  choices under it, in the menu itself (closed each time the menu opens, the chevron turning
+  down while they show), and a choice closes them again.
   Automatic is the default: the web infers the language from the browser's languages, the CAD
   app from its host's locale (then the frame's browser languages); Simplified script or
   mainland China and Singapore read 简体中文, Traditional script or Taiwan, Hong Kong and Macau
@@ -623,7 +624,9 @@ the person comes back to the page.
 Every string of the chrome reads through `@text-to-cad/ui/i18n` (`useI18n().t`), English
 first: `en.js` holds every key, each other locale the same keys (a parity test), and a key a
 locale misses reads English. What a file or cadgen says (an alert's own title and message,
-a part's name, a loading step) stays as it was written.
+a part's name) stays as it was written. The loading and view-update lines are a closed
+vocabulary (`kit/status/loadingState.js`), English in the code and said in the view's language
+on screen (`kit/status/statusLabels.js`).
 
 ## Position and references
 

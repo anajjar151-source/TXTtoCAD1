@@ -2,6 +2,7 @@ import { TooltipHint } from "@text-to-cad/ui/primitives/tooltip";
 import LoadingIcon from "@text-to-cad/ui/loading-icon";
 import { useContext, useEffect, useState } from "react";
 import { useI18n } from "@text-to-cad/ui/i18n";
+import { statusLabel } from "./statusLabels.js";
 import { ViewerHostContext } from "../../../host/context.js";
 import { Progress } from "@text-to-cad/ui/primitives/progress";
 
@@ -23,10 +24,10 @@ export default function LoadingIndicator({ progress, operationKey = "" }) {
     <div className="flex w-[22rem] max-w-[90vw] flex-col gap-3" role="status" aria-live="polite" data-viewer-loading="true">
       <LoadingIcon size={80} active={!waiting} reducedMotion={reducedMotion} className="self-center" />
       <div className="flex items-baseline justify-between gap-4 text-xs opacity-75">
-        <span className="truncate">{waiting ? t("loading.lastStep", { label: progress?.label || t("loading.openingModel") }) : progress?.label || t("loading.preparingView")}</span>
+        <span className="truncate">{waiting ? t("loading.lastStep", { label: statusLabel(progress?.label, t) || t("loading.openingModel") }) : statusLabel(progress?.label, t) || t("loading.preparingView")}</span>
         <span className="shrink-0 tabular-nums">{progress?.counts || ""}</span>
       </div>
-      <Progress value={progress?.percent ?? null} aria-label={progress?.label || t("loading.preparingView")}
+      <Progress value={progress?.percent ?? null} aria-label={statusLabel(progress?.label, t) || t("loading.preparingView")}
         className={waiting ? "[&_[data-slot=progress-indicator]]:[animation-play-state:paused]" : undefined} />
       {waiting ? <div className="text-xs opacity-75" aria-live="off">{t("loading.waitingForResponse")}</div> : null}
       {long && progress?.detail ? <TooltipHint content={progress.detail}><div className="truncate text-xs opacity-60" >{progress.detail}</div></TooltipHint> : null}

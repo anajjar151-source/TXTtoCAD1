@@ -395,7 +395,7 @@ function ColorPicker({
         {showOpacity ? (
           <div className="space-y-1">
             <div className="flex items-center justify-between gap-2 text-micro uppercase tracking-[0.08em] text-muted-foreground">
-              <span>Opacity</span>
+              <span>{t("colorPicker.opacityHeading")}</span>
               <span>{Math.round(normalizedOpacity * 100)}%</span>
             </div>
             <div className="flex items-center gap-1.5">

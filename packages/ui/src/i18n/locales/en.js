@@ -131,6 +131,20 @@ export default {
   "loading.openingModel": "Opening model",
   "loading.preparingView": "Preparing view",
   "loading.waitingForResponse": "Waiting for a response. Retrying…",
+  "loading.findingFile": "Finding file",
+  "loading.readingModel": "Reading model",
+  "loading.importingModel": "Importing model",
+  "loading.buildingModel": "Building model",
+  "loading.meshingParts": "Meshing parts",
+  "loading.loadingGeometry": "Loading geometry",
+  "loading.readingDrawing": "Reading drawing",
+  "viewUpdate.updatingModel": "Updating model…",
+  "viewUpdate.updatingDrawing": "Updating drawing…",
+  "viewUpdate.updatingView": "Updating view…",
+  "viewUpdate.meshingParts": "Meshing parts{counts}…",
+  "viewUpdate.failed": "Couldn’t update view",
+  "viewUpdate.failedWith": "Couldn’t update view: {error}",
+  "viewUpdate.retry": "Retry view update",
 
   // Display: its tile and menu, the modes (`DisplayModeOptions.js`, by value) and the Grid switch.
   "display.label": "Display",
@@ -205,4 +219,5 @@ export default {
   "colorPicker.hex": "Hex color",
   "colorPicker.eyedropper": "Eyedropper",
   "colorPicker.pickFromScreen": "Pick color from screen",
+  "colorPicker.opacityHeading": "Opacity",
 };

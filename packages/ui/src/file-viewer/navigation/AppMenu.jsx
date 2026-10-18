@@ -1,5 +1,5 @@
-import { ArrowLeft, Check, MessageCircle, Monitor, Moon, Sun } from "lucide-react";
-import { Fragment } from "react";
+import { ArrowLeft, Check, ChevronRight, MessageCircle, Monitor, Moon, Sun } from "lucide-react";
+import { Fragment, useState } from "react";
 
 import { DropdownMenu as MenuPrimitive } from "radix-ui";
 import {
@@ -23,11 +23,11 @@ const COLOR_SCHEMES = Object.freeze([["system", Monitor], ["light", Sun], ["dark
 const AUTOMATIC = "automatic";
 
 /** Language's choices: Automatic, naming what the context infers, then each language under its own name. */
-const languageOptions = (language, t) => [
-  <DropdownMenuRadioItem key={AUTOMATIC} value={AUTOMATIC} onSelect={event => event.preventDefault()} data-language-option={AUTOMATIC}>
+const languageOptions = (language, t, className = undefined) => [
+  <DropdownMenuRadioItem key={AUTOMATIC} value={AUTOMATIC} onSelect={event => event.preventDefault()} className={className} data-language-option={AUTOMATIC}>
     {t("menu.languageAutomatic", { language: t(`language.${language.inferred}`) })}
   </DropdownMenuRadioItem>,
-  ...LOCALES.map(id => <DropdownMenuRadioItem key={id} value={id} lang={id} onSelect={event => event.preventDefault()} data-language-option={id}>
+  ...LOCALES.map(id => <DropdownMenuRadioItem key={id} value={id} lang={id} onSelect={event => event.preventDefault()} className={className} data-language-option={id}>
     {t(`language.${id}`)}
   </DropdownMenuRadioItem>),
 ];
@@ -52,6 +52,8 @@ const languageOptions = (language, t) => [
 export function AppMenu({ trigger, onHome, links, appSettings = NONE, colorScheme, language, platform }) {
   const { t } = useI18n();
   const mobile = useViewerMobile();
+  // A phone's Language row opens its choices in place; each opening of the menu starts it closed.
+  const [languageOpen, setLanguageOpen] = useState(false);
   const follow = useFollow(links);
   const feedback = links ? feedbackUrl(links, platform) : "";
   const outward = [
@@ -78,11 +80,18 @@ export function AppMenu({ trigger, onHome, links, appSettings = NONE, colorSchem
       </div>] : []),
       // Language: the language in force at the row's end; its submenu, Automatic (what the context infers,
       // named) then each language under its own name, whatever the menu is reading in. A phone has no
-      // room beside the menu for a submenu, so there the choices follow the row, in the menu itself.
-      ...(language && mobile ? [<div key="language" className={SETTING_ROW_CLASS} data-menu-language="">
-        <span className="min-w-0">{t("menu.language")}</span>
-      </div>, <DropdownMenuRadioGroup key="language-options" aria-label={t("menu.language")} value={language.choice ?? AUTOMATIC}
-        onValueChange={value => language.onChoiceChange(value === AUTOMATIC ? null : value)}>{languageOptions(language, t)}</DropdownMenuRadioGroup>] : []),
+      // room beside the menu for a submenu: there the same row opens its choices under it, in the menu
+      // itself (its chevron turning down), and a choice closes them again.
+      ...(language && mobile ? [<MenuPrimitive.Item key="language" onSelect={event => { event.preventDefault(); setLanguageOpen(open => !open); }}
+        aria-expanded={languageOpen} className={cn(SETTING_ROW_CLASS, "cursor-default rounded-sm pr-2 outline-none focus:bg-accent")}
+        data-slot="dropdown-menu-item" data-menu-language="" data-state={languageOpen ? "open" : "closed"}>
+        <span className="min-w-0 flex-1">{t("menu.language")}</span>
+        <span className="shrink-0 text-muted-foreground" lang={language.locale}>{t(`language.${language.locale}`)}</span>
+        <ChevronRight className={cn("size-4 shrink-0 text-muted-foreground transition-transform", languageOpen && "rotate-90")} aria-hidden="true" />
+      </MenuPrimitive.Item>, ...(languageOpen ? [<DropdownMenuRadioGroup key="language-options" aria-label={t("menu.language")} value={language.choice ?? AUTOMATIC}
+        onValueChange={value => { language.onChoiceChange(value === AUTOMATIC ? null : value); setLanguageOpen(false); }}>
+        {languageOptions(language, t, "pl-5")}
+      </DropdownMenuRadioGroup>] : [])] : []),
       ...(language && !mobile ? [<DropdownMenuSub key="language">
         {/* The chevron's 16px box is centred where the checkbox's and Theme's last segment are (16px in
             from the row's end), and the row keeps the setting rows' text colour while its submenu is open. */}
@@ -118,7 +127,7 @@ export function AppMenu({ trigger, onHome, links, appSettings = NONE, colorSchem
       title={`v${links.version}`} data-menu-version="">v{links.version}</a>
     : <span className="min-w-0 truncate" title={`v${links.version}`} data-menu-version="">v{links.version}</span>) : null;
   const madeBy = links?.x ? <MadeBy links={links} /> : null;
-  return <DropdownMenu modal={false}>
+  return <DropdownMenu modal={false} onOpenChange={() => setLanguageOpen(false)}>
     <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
     <DropdownMenuContent align="start" sideOffset={6} collisionPadding={8} aria-label={t("navbar.menu")} data-app-menu=""
       className={cn(FLOATING_SURFACE_CLASS, "w-60 max-w-(--radix-dropdown-menu-content-available-width) data-[state=closed]:animate-none!")}>
