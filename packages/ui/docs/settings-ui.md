@@ -203,7 +203,7 @@ Explode or Clip with its effect set takes it up again, as it is; unset, it start
 | Select | The default tool of every 3D file but an STL; picks what its filter ticks, or a GLB's nodes, a 3MF's objects (Shift adds; Delete deletes annotations and measurements); what is picked is Quick Edit's chips | None: its filter is the chevron after its button | The selection stays, lit and in Quick Edit, under any tool |
 | Annotate | Draws on the view | Its tools, what is drawn next, Undo, Redo and Clear annotations (on a phone, the menu of a chevron after its tile instead) | The annotations stay in the model, their chip in Quick Edit; the tool in hand stays, the strip's Annotate showing its icon |
 | Measure | Arms picking between points on the model (a STEP's exact vertices, edges and faces; a mesh's triangles, approximately, in its file's unit; a drawing's ends, centres and lines, in the unit it declares, else "units"); each result a chip in Quick Edit, in its colour | None | Unfinished picks are cancelled; completed measurements stay, Quick Edit's chips |
-| Explode / Clip | The effect as it is set, or neutral; an edit applies it (Explode's, as a motion: see below) | The slider, its amount beside it, Reset (Clip's: its axis first, and Flip clip before Reset) | The effect stays on the model |
+| Explode / Clip | The effect as it is set, or neutral; an edit applies it (Explode's, as a motion: see below) | The slider, its amount beside it, Reset (Clip's: its axis first, whose dropdown holds its settings) | The effect stays on the model |
 
 **One motion at a time.** Every tool's state stands beside every other's — the selection,
 measurements, the annotations, Clip — except the two that move the parts: **Explode** and
@@ -223,7 +223,8 @@ before it acts.
 
 **Removing an effect.** Explode's and Clip's sub-toolbars end in
 Reset ("Reset explode", "Reset clip"): always there, disabled while there
-is nothing to take away, it removes the effect and leaves the tool up. Position's way back is its Pose row's Default. A
+is nothing to take away, it removes the effect — the amount back at zero, nothing else (Clip's
+axis and its settings stay as set) — and leaves the tool up. Position's way back is its Pose row's Default. A
 measurement's chip X deletes it; the Annotation chip's X clears the annotations.
 
 **Select is the one tool with a menu on the strip**: the chevron right after its button
@@ -233,8 +234,8 @@ open, never with the tool. A press on any other tool is its only action. Whateve
 be set to while it is up is its sub-toolbar. A dropdown is ordinary — under its own button,
 free to overlap the view — and closes with no exit animation, so a quick second tap (touch
 included) always reaches its trigger. Choosing a value closes it; ticking an option leaves
-it open. Menu checks sit on the right. The other dropdowns over the viewport are Display,
-the sub-toolbars' (Clip's axis, Annotate's colour, weight, line style and placement), its
+it open, as do Clip's axes and the app menu's Theme. Menu checks sit on the right. The other dropdowns over the viewport are Display,
+the sub-toolbars' (Clip's axis and settings, Annotate's colour, weight, line style and placement), its
 context menu, and the Animation section's routine and Playback settings (`PlaybackMenu.jsx`, on
 `ToolPopover`). Preview's settings are a panel, not a dropdown (see [Preview](#camera-animation-and-preview)).
 
@@ -279,9 +280,11 @@ under the strip, centred, 8px below it, on the strip's surface, its buttons the 
 thin rule. It stays up for as long as its tool does, and has no heading: the tool's lit
 button above names it. Explode's and Clip's are one shape — what leads
 the slider, the slider, its value right beside it and only as wide as
-its text, the tool's actions, then Reset, last, at the same spot in both, with no rules —
-and a shared base width (`SLIDER_SUB_TOOLBAR_CLASS`). Clip uses 320px to fit
-its Part colors checkbox; the slider takes the rest of the row.
+its text, the tool's actions (neither has any), then Reset, last, at the same spot in both,
+with no rules — and one width (`SLIDER_SUB_TOOLBAR_CLASS`, 202px; a phone's 320px). The slider
+takes the rest of the row. A tool's options never sit in the row as checkboxes, labels or
+buttons of their own, which would squeeze the slider: they are the dropdown of what leads it
+(Clip's axis).
 
 **Annotate.** Its sub-toolbar, "Annotation controls", while Annotate is up
 (`annotation/toolbar.jsx`'s `AnnotationToolbar`): **Annotation tools**, a button each — Pen,
@@ -322,16 +325,19 @@ every other tool; a press on Measure while it is up does nothing.
 
 **Explode and Clip** have no enabled checkbox, and their sub-toolbars are drawn alike.
 Explode's: its slider, the amount (a percentage), **Reset explode**. Clip's: its axis — a
-borderless button reading the axis in hand, "X ⌄", whose dropdown lists X, Y and Z — its
-slider, the amount, **Flip clip** (which side of the plane is cut away, the cut keeping its
-share; disabled while nothing is cut), **Reset clip**. A compact **Part colors**
-checkbox follows the slider in the same row, checked by default. Checked section
-caps use normal part colors without hover/selection tints; unchecked caps use
-uniform amber. Both stay opaque, including caps of transparent parts. Changing
-only this choice never applies or moves a cut. The choice follows the existing
-Clip state across tool changes; **Reset clip**, reopening an unset Clip and
-changing files restore the checked default. Clip's row is 320px wide to keep
-room for its slider and checkbox; other slider toolbars keep their existing width. Explode opens at 0%, Clip at no
+borderless button reading the axis in hand, "X ⌄", lit while its menu is open — its slider, the
+amount, **Reset clip**. The axis's dropdown holds all of Clip's settings, on Display's surface
+and in its type, as narrow as its content, with no heading and no glyphs: first X, Y and Z, a
+compact group of the app menu's Theme buttons (24px squares, its radius, no track) in a row as
+tall as an item (a phone's 40px, as Theme's row), the axis in hand in the accent a highlighted
+item wears; a rule; then two of Display's `DropdownMenuCheckboxItem`s, plain text with the check
+at the right: **Part colors** (ticked by default: each section cap in its
+part's normal colour, without hover or selection tints; unticked, every cap one amber) and
+**Reverse** (unticked by default: which side of the plane is kept). Caps stay opaque, a
+transparent part's too. A press on any of them leaves the menu open, and none of them applies a
+cut; on a cut, a new axis or Reverse turns it keeping its share. They are settings of the
+file's view (`clip.axis`, `clip.partColors`, `clip.invert`, stored and restored with its
+display), kept across tools, by Reset clip and by taking up an unset Clip. Explode opens at 0%, Clip at no
 cut; an edit applies the effect, and the slider back at zero removes it. An axis alone is not
 an effect. The view settings own both effects, so a mode reset preserves them and a restored
 effect reappears on the model. Clip's slider, left to right, cuts deeper through the original

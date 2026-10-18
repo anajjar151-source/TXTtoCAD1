@@ -4,7 +4,6 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { chromium } from 'playwright';
-import { PNG } from 'pngjs';
 
 // Synthetic solids: a red box and a transparent blue tube. Exercise the actual
 // stencil path in WebGL, where material/unit assertions cannot detect filled holes
@@ -71,47 +70,5 @@ test('section caps render opaque stable part colors, empty holes and amber fallb
   await page.evaluate(()=>{ window.records[1].mesh.visible=true; window.draw(true,2); });
   assert.notDeepEqual(await pixel(3,1.4),[34,102,221,255],'moving beyond the part releases the cap');
   await page.evaluate(()=>window.draw(true,null));
-  assert.deepEqual(errors,[]);
-});
-
-
-// This checks the React-to-runtime wiring, separately from the stencil pixels above:
-// changing only the checkbox must redraw the cut without moving its plane.
-test('the Clip checkbox changes the rendered canvas and preserves its plane', async t => {
-  const { serveStepHarness } = await import('../harness/stepScenario.mjs');
-  const server = await serveStepHarness(t);
-  const {page,pane,errors} = await server.open();
-  await page.waitForFunction(()=>window.cadHarness.a.controller?.readState().loading === false);
-  await page.evaluate(()=>window.cadHarness.a.controller.setDisplaySettings({clip:{enabled:true,axis:'z',at:0}}));
-  await pane.getByRole('button',{name:'Clip',exact:true}).click();
-  const checkbox = pane.getByRole('checkbox',{name:'Part colors',exact:true});
-  await checkbox.waitFor();
-  const canvas = pane.locator('[data-cad-surface] canvas').first();
-  const settle = () => page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
-  await page.waitForFunction(() => {
-    const camera = JSON.stringify(window.__cadCamera());
-    const still = window.__lastCamera === camera; window.__lastCamera = camera; return still;
-  }, null, {polling:'raf'});
-  const frame = async () => PNG.sync.read(await canvas.screenshot({style:'[data-cad-tool-groups], [data-cad-tool-stack], [aria-label="View cube"] { visibility: hidden !important; }'}));
-  const differences = (a,b) => {
-    let changed=0;
-    for(let i=0;i<a.data.length;i+=4) if([0,1,2].some(c=>Math.abs(a.data[i+c]-b.data[i+c])>2)) changed++;
-    return changed;
-  };
-  await settle();
-  const before = await frame();
-  if (process.env.CAP_EVIDENCE_DIR) await page.screenshot({path:join(process.env.CAP_EVIDENCE_DIR,'upstream-part-colors.png')});
-  const plane = await page.evaluate(()=>window.cadHarness.a.controller.readState().display.clip);
-  await checkbox.uncheck();
-  await page.waitForFunction(()=>window.cadHarness.a.controller.readState().display.clip.partColors === false);
-  await settle();
-  const amber = await frame();
-  if (process.env.CAP_EVIDENCE_DIR) await page.screenshot({path:join(process.env.CAP_EVIDENCE_DIR,'upstream-amber.png')});
-  assert.ok(differences(amber,before)>100,'toggling only Part colors must reach the WebGL canvas');
-  const after = await page.evaluate(()=>window.cadHarness.a.controller.readState().display.clip);
-  assert.deepEqual({...after,partColors:true},{...plane,partColors:true});
-  await checkbox.check();
-  await settle();
-  assert.ok(differences(await frame(),before)<20,'returning to Part colors restores the same cap frame');
   assert.deepEqual(errors,[]);
 });

@@ -75,7 +75,9 @@ it('Cross-section turns on at an X centre cut; its body is the axis dropdown and
   // The same share of Y's -50..50.
   expect(resolveViewSettings(current).clip.at).toBeCloseTo(50 - share, 9);
   expect(Number(amount().getAttribute('aria-valuenow'))).toBeCloseTo(share, 9);
-  // The dropdown hands focus back to its trigger as it closes; take it to the slider after that.
+  // An axis chosen keeps the dropdown open; Escape closes it and hands focus back to its trigger.
+  // Take it to the slider after that.
+  await user.keyboard('{Escape}');
   await waitFor(() => expect(screen.queryByRole('menu')).toBeNull());
   await act(async () => {});
   amount().focus();

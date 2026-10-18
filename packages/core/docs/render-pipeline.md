@@ -77,8 +77,8 @@ a view does not offer resolves as Solid without rewriting storage. Surface opaci
 multiplies authored opacity; colours remain presentation settings, never model material
 edits.
 
-Clip keeps coordinates below its plane by default (`invert: false`); Flip keeps
-coordinates above it. `clip.at` is the plane's coordinate on its axis in millimetres;
+Clip keeps coordinates below its plane by default (`invert: false`); Reverse (in Clip's axis dropdown)
+keeps coordinates above it. `clip.at` is the plane's coordinate on its axis in millimetres;
 omitting it cuts through the middle of the authored bounds. A disabled clip cuts nothing.
 `clip.partColors` defaults to true. Caps use each part's normal base material color,
 without selection/hover tints or opacity; false uses uniform amber (`0xe9a451`).
