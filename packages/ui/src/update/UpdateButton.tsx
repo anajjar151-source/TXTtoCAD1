@@ -4,6 +4,7 @@ import type { Popover as PopoverPrimitive } from "radix-ui";
 import { Button } from "../primitives/button.jsx";
 import { Popover, PopoverContent as PopoverContentPrimitive, PopoverTrigger as PopoverTriggerPrimitive } from "../primitives/popover.jsx";
 import { TooltipHint } from "../primitives/tooltip.jsx";
+import { useI18n } from "../i18n/index.js";
 import { UpdateCard } from "./UpdateCard.js";
 import type { UpdateNotice } from "./useUpdateNotice.js";
 
@@ -28,11 +29,12 @@ export function UpdateButton({ notice, send, copy, onLink }: {
 }) {
   const id = useId();
   const [open, setOpen] = useState(false);
+  const { t } = useI18n();
   const blue = "bg-blue-500 text-white hover:bg-blue-600 dark:bg-blue-500 dark:hover:bg-blue-400";
   return <Popover open={open} onOpenChange={setOpen}>
-    <TooltipHint content="Update">
+    <TooltipHint content={t("update.label")}>
       <PopoverTrigger asChild>
-        <Button variant="default" size="icon-xs" aria-label={`Update to ${notice.latest}`} data-update="" className={`size-6 ${blue}`}>
+        <Button variant="default" size="icon-xs" aria-label={t("update.toAria", { version: notice.latest })} data-update="" className={`size-6 ${blue}`}>
           <Download className="size-3.5" aria-hidden="true" />
         </Button>
       </PopoverTrigger>
