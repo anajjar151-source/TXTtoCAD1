@@ -29,8 +29,9 @@ export default {
   "menu.feedback": "フィードバックを送信",
   "menu.madeBy": "制作: @{handle}",
 
-  "consent.shareUsage": "匿名の利用データを共有",
-  "consent.shareUsageEnvironment": "匿名の利用データを共有（環境で設定済み）",
+  "consent.shareUsage": "テレメトリ",
+  "consent.shareUsageEnvironment": "テレメトリ（環境で設定済み）",
+  "consent.telemetryInfo": "text-to-cad の改善に役立つ匿名の利用データとクラッシュレポートです。プロンプト、モデル、ファイルが送信されることはありません。",
 
   "appearance.label": "外観",
   "appearance.current": "外観: {scheme}",

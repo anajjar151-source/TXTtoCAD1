@@ -38,8 +38,9 @@ export default {
   "menu.madeBy": "Made by @{handle}",
 
   // The menu's on/off settings (the host's app settings).
-  "consent.shareUsage": "Share anonymous usage data",
-  "consent.shareUsageEnvironment": "Share anonymous usage data (set by your environment)",
+  "consent.shareUsage": "Telemetry",
+  "consent.shareUsageEnvironment": "Telemetry (set by your environment)",
+  "consent.telemetryInfo": "Anonymous usage data and crash reports that help improve text-to-cad. Your prompts, models and files are never sent.",
 
   // The colour schemes (the app menu's Theme, the web home's appearance button).
   "appearance.label": "Appearance",

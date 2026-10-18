@@ -42,7 +42,7 @@ export function useAnalyticsConsent(consent: (share?: boolean) => Promise<Analyt
     read(share);
   }, [read]);
   const appSettings = useMemo<AppSetting[] | undefined>(() => state ? [{
-    id: "analytics", checked: state.sharing, onCheckedChange: (checked: boolean) => answer(checked),
+    id: "analytics", checked: state.sharing, onCheckedChange: (checked: boolean) => answer(checked), info: t("consent.telemetryInfo"),
     ...(state.reason === "environment"
       ? { label: t("consent.shareUsageEnvironment"), disabled: true }
       : { label: t("consent.shareUsage") }),

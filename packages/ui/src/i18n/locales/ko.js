@@ -29,8 +29,9 @@ export default {
   "menu.feedback": "피드백 보내기",
   "menu.madeBy": "만든 사람 @{handle}",
 
-  "consent.shareUsage": "익명 사용 데이터 공유",
-  "consent.shareUsageEnvironment": "익명 사용 데이터 공유(환경에서 설정됨)",
+  "consent.shareUsage": "원격 분석",
+  "consent.shareUsageEnvironment": "원격 분석(환경에서 설정됨)",
+  "consent.telemetryInfo": "text-to-cad 개선에 도움이 되는 익명 사용 데이터와 오류 보고서입니다. 프롬프트, 모델, 파일은 절대 전송되지 않습니다.",
 
   "appearance.label": "모양",
   "appearance.current": "모양: {scheme}",

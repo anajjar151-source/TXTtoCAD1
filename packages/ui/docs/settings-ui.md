@@ -573,21 +573,14 @@ icon is unambiguous, and always keep the accessible name.
 ## Settings
 
 Settings are the person's, never a file's, and live in the app menu: one dropdown
-(`file-viewer/navigation/AppMenu.jsx`) on the floating surface, 15rem wide, from the
+(`file-viewer/navigation/AppMenu.jsx`) on the floating surface, 12rem wide, from the
 navbar's logo over every file and over the home (FileViewer builds it from the host's `links`, the
 `appSettings` `CadViewer` hands it and `environment.platform`, while a model loads and after
 it failed to as well). Its rows, a rule between each group, are only
-what the host supplies:
+what the host supplies, the person's settings in the order Language, Telemetry, Theme:
 
 - **Back to files**, where the host has a home
   (`navigation.home`): it shows the home in this view. The home's own menu has none.
-- **Theme**, where the host hands the person's colour scheme (`colorScheme`, both apps): one
-  row, its name and then **System**, **Light** and **Dark** as a segmented control of their
-  glyphs (each a radio item, named), the one in force lit; a press changes it without closing
-  the menu. The web's System follows the OS and is
-  the tab's; the CAD app's follows its host's theme, Light or Dark overriding it for as long as
-  the view is open. Neither app has a light/dark button of its own: Theme is the one
-  control, the same on the home.
 - **Language**, where the host hands the person's language (`language`, both apps): one row,
   its name and then the language in force, whose submenu offers **Automatic (<the inferred
   language>)** and then each language under its own name — English, 简体中文, 繁體中文, 日本語,
@@ -605,14 +598,23 @@ what the host supplies:
   it down as `environment.locale` (`@text-to-cad/ui/i18n`'s `useLanguage`); the shared UI holds
   no locale of its own.
 - The host's own on/off settings (`appSettings`), a checkbox item each, in the order they
-  come, checked at the right; a press turns one without closing the menu. **Share
-  usage stats**, in both apps.
+  come, checked at the right; a press turns one without closing the menu. An info icon after
+  a setting's name, where the host gives its meaning (`info`), shows it as a hint to the
+  menu's right. **Telemetry**, in both apps: anonymous usage data and crash reports, never
+  prompts, models or files.
+- **Theme**, where the host hands the person's colour scheme (`colorScheme`, both apps): one
+  row, its name and then **System**, **Light** and **Dark** as a segmented control of their
+  glyphs (each a radio item, named), the one in force lit; a press changes it without closing
+  the menu. The web's System follows the OS and is
+  the tab's; the CAD app's follows its host's theme, Light or Dark overriding it for as long as
+  the view is open. Neither app has a light/dark button of its own: Theme is the one
+  control, the same on the home.
 - **Send feedback**, where the host has a tracker (`links.issues`): a link to a new issue
   titled "Feedback: " for the person to finish, naming the version and the platform, with
   no label (what is said may be a bug, a request or a question). Then **GitHub** and
   **Discord**.
-- Last, in gray, a footer: "v<version> · Made by @<handle>" — the version a link to its
-  release notes, the handle one to the host's X account. A build that is not the release's
+- Last, in gray, a footer of two rows: "v<version>", a link to its release notes, and under
+  it "Made by @<handle>", the handle a link to the host's X account. A build that is not the release's
   own adds its id to the version: `v0.7.15-dev.b80844940`, the commit it was built from.
 
 Nothing of a file is in it: a file's view is

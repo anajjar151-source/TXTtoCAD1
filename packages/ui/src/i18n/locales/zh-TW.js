@@ -30,8 +30,9 @@ export default {
   "menu.feedback": "提供意見回饋",
   "menu.madeBy": "由 @{handle} 製作",
 
-  "consent.shareUsage": "分享匿名使用資料",
-  "consent.shareUsageEnvironment": "分享匿名使用資料（由你的環境設定）",
+  "consent.shareUsage": "遙測",
+  "consent.shareUsageEnvironment": "遙測（由你的環境設定）",
+  "consent.telemetryInfo": "匿名使用資料與當機報告，用於改善 text-to-cad。你的提示詞、模型與檔案絕不會被傳送。",
 
   "appearance.label": "外觀",
   "appearance.current": "外觀：{scheme}",

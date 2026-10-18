@@ -70,6 +70,8 @@ export interface AppSetting {
   id: string;
   label: string;
   checked: boolean;
+  /** What the setting means, in a hint beside its name (an info icon). */
+  info?: string;
   /** Shown, not changeable: something outside the app decided it (the label says what). */
   disabled?: boolean;
   onCheckedChange: (checked: boolean) => void;

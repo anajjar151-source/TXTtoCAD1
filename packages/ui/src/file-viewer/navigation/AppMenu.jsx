@@ -1,4 +1,4 @@
-import { ArrowLeft, Check, ChevronRight, MessageCircle, Monitor, Moon, Sun } from "lucide-react";
+import { ArrowLeft, Check, ChevronRight, Info, MessageCircle, Monitor, Moon, Sun } from "lucide-react";
 import { Fragment, useState } from "react";
 
 import { DropdownMenu as MenuPrimitive } from "radix-ui";
@@ -8,6 +8,7 @@ import {
 } from "@text-to-cad/ui/primitives/dropdown-menu";
 import { LOCALES, useI18n } from "@text-to-cad/ui/i18n";
 import { cn } from "@text-to-cad/ui/utils";
+import { TooltipHint } from "../../primitives/tooltip.jsx";
 
 import { FLOATING_SURFACE_CLASS } from "../../lib/floatingSurface.js";
 
@@ -34,14 +35,14 @@ const languageOptions = (language, t, className = undefined) => [
 
 /**
  * The app's menu, from the navbar's logo over every file and over the host's home: what is the
- * person's rather than a file's. First, where the host has a home, Back to files (`onHome`). Then the colour scheme (`colorScheme`):
- * Theme, one row, its System, Light and Dark a segmented control, the one in force lit, a press keeping the
- * menu open; then Language (`language`), one row naming the language in force, whose submenu offers
- * Automatic (the language the context infers, named) and each language under its own name. Then the host's on/off settings (`appSettings`:
- * sharing anonymous usage data), checked at the right, which a press turns without closing
- * the menu; then Send feedback (a new issue on the host's tracker, naming the version and the
+ * person's rather than a file's. First, where the host has a home, Back to files (`onHome`). Then the
+ * person's settings, a press keeping the menu open: Language (`language`), one row naming the language in
+ * force, whose submenu offers Automatic (the language the context infers, named) and each language under
+ * its own name; the host's on/off settings (`appSettings`: Telemetry), a checkbox at the right, filled while on, and
+ * an info icon whose hint says what the setting means; then Theme (`colorScheme`), its System, Light and
+ * Dark a segmented control, the one in force lit; then Send feedback (a new issue on the host's tracker, naming the version and the
  * `platform`), GitHub and Discord; and last, in gray, the version this host runs (a link to its
- * release notes) and who made it, on one line. The menu is 15rem wide and never wider: a long
+ * release notes) and, under it, who made it. The menu is 12rem wide and never wider: a long
  * setting's name wraps, and a custom build's long version truncates, whole in its hint. Every link
  * opens the host's way (`links.open`).
  *
@@ -63,21 +64,10 @@ export function AppMenu({ trigger, onHome, links, appSettings = NONE, colorSchem
   ].filter(Boolean);
   const groups = [
     onHome ? [<DropdownMenuItem key="home" onSelect={onHome} data-menu-home=""><ArrowLeft aria-hidden="true" />{t("menu.backToFiles")}</DropdownMenuItem>] : [],
-    // The person's settings, one group of like rows: a name on the left in the menu's own text, and
-    // its control on the right — Theme's System, Light and Dark as a segmented control, the one in
-    // force lit; an on/off setting's checkbox, always drawn, filled while on. A press keeps the menu open.
+    // The person's settings, one group of like rows — Language, the host's on/off settings, Theme: a name
+    // on the left in the menu's own text and its control on the right — the language in force, a checkbox
+    // filled while on, Theme's segmented System, Light and Dark. A press keeps the menu open.
     [
-      ...(colorScheme ? [<div key="theme" className={SETTING_ROW_CLASS} data-menu-theme="">
-        <span className="min-w-0">{t("menu.theme")}</span>
-        <MenuPrimitive.RadioGroup value={colorScheme.preference} onValueChange={colorScheme.onPreferenceChange} aria-label={t("menu.theme")}
-          className="-mr-0.5 flex shrink-0 items-center gap-0.5 rounded-md bg-muted p-0.5">
-          {COLOR_SCHEMES.map(([id, Icon]) => <MenuPrimitive.RadioItem key={id} value={id} aria-label={t(`appearance.${id}`)} onSelect={event => event.preventDefault()}
-            className="grid size-6 cursor-default place-items-center rounded-sm text-muted-foreground outline-none transition-colors hover:text-foreground focus:bg-accent focus:text-foreground data-[state=checked]:bg-background data-[state=checked]:text-foreground data-[state=checked]:shadow-xs"
-            data-theme-option={id}>
-            <Icon className="size-3.5" aria-hidden="true" />
-          </MenuPrimitive.RadioItem>)}
-        </MenuPrimitive.RadioGroup>
-      </div>] : []),
       // Language: the language in force at the row's end; its submenu, Automatic (what the context infers,
       // named) then each language under its own name, whatever the menu is reading in. A phone has no
       // room beside the menu for a submenu: there the same row opens its choices under it, in the menu
@@ -109,13 +99,31 @@ export function AppMenu({ trigger, onHome, links, appSettings = NONE, colorSchem
         onCheckedChange={checked => setting.onCheckedChange(checked === true)} onSelect={event => event.preventDefault()}
         className={cn(SETTING_ROW_CLASS, "group/setting cursor-default rounded-sm outline-none focus:bg-accent data-[disabled]:pointer-events-none data-[disabled]:opacity-50")}
         data-slot="dropdown-menu-checkbox-item" data-app-setting={setting.id}>
-        <span className="min-w-0">{setting.label}</span>
+        <span className="flex min-w-0 flex-1 items-center gap-1">
+          <span className="min-w-0">{setting.label}</span>
+          {setting.info ? <TooltipHint content={setting.info} side="right">
+            <span className="pointer-events-auto grid size-4 shrink-0 place-items-center text-muted-foreground" aria-label={setting.info} role="img" data-app-setting-info="">
+              <Info className="size-3" aria-hidden="true" />
+            </span>
+          </TooltipHint> : null}
+        </span>
         <span className="grid size-6 shrink-0 place-items-center" aria-hidden="true">
           <span className="grid size-3.5 place-items-center rounded-[4px] border border-input text-primary-foreground group-data-[state=checked]/setting:border-primary group-data-[state=checked]/setting:bg-primary">
             <Check className="hidden size-3 group-data-[state=checked]/setting:block" strokeWidth={3} />
           </span>
         </span>
       </MenuPrimitive.CheckboxItem>),
+      ...(colorScheme ? [<div key="theme" className={SETTING_ROW_CLASS} data-menu-theme="">
+        <span className="min-w-0">{t("menu.theme")}</span>
+        <MenuPrimitive.RadioGroup value={colorScheme.preference} onValueChange={colorScheme.onPreferenceChange} aria-label={t("menu.theme")}
+          className="-mr-0.5 flex shrink-0 items-center gap-0.5 rounded-md bg-muted p-0.5">
+          {COLOR_SCHEMES.map(([id, Icon]) => <MenuPrimitive.RadioItem key={id} value={id} aria-label={t(`appearance.${id}`)} onSelect={event => event.preventDefault()}
+            className="grid size-6 cursor-default place-items-center rounded-sm text-muted-foreground outline-none transition-colors hover:text-foreground focus:bg-accent focus:text-foreground data-[state=checked]:bg-background data-[state=checked]:text-foreground data-[state=checked]:shadow-xs"
+            data-theme-option={id}>
+            <Icon className="size-3.5" aria-hidden="true" />
+          </MenuPrimitive.RadioItem>)}
+        </MenuPrimitive.RadioGroup>
+      </div>] : []),
     ],
     outward.map(({ id, label, href, icon: Icon }) => <DropdownMenuItem key={id} asChild>
       <a href={href} target="_blank" rel="noreferrer" onClick={follow} data-link={id}><Icon className="size-3.5" aria-hidden="true" />{label}</a>
@@ -130,12 +138,13 @@ export function AppMenu({ trigger, onHome, links, appSettings = NONE, colorSchem
   return <DropdownMenu modal={false} onOpenChange={() => setLanguageOpen(false)}>
     <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
     <DropdownMenuContent align="start" sideOffset={6} collisionPadding={8} aria-label={t("navbar.menu")} data-app-menu=""
-      className={cn(FLOATING_SURFACE_CLASS, "w-60 max-w-(--radix-dropdown-menu-content-available-width) data-[state=closed]:animate-none!")}>
+      className={cn(FLOATING_SURFACE_CLASS, "w-48 max-w-(--radix-dropdown-menu-content-available-width) data-[state=closed]:animate-none!")}>
       {groups.map((group, index) => <Fragment key={index}>{index ? <DropdownMenuSeparator /> : null}{group}</Fragment>)}
       {version || madeBy ? <>
         {groups.length ? <DropdownMenuSeparator /> : null}
-        <div className="flex min-w-0 items-center gap-x-1 whitespace-nowrap px-2 py-1.5 text-tiny text-muted-foreground tabular-nums" data-menu-footer="">
-          {version}{version && madeBy ? <span className="shrink-0" aria-hidden="true">·</span> : null}{madeBy}
+        <div className="flex min-w-0 flex-col gap-0.5 whitespace-nowrap px-2 py-1.5 text-tiny text-muted-foreground tabular-nums" data-menu-footer="">
+          {version ? <div className="flex min-w-0">{version}</div> : null}
+          {madeBy ? <div className="flex min-w-0">{madeBy}</div> : null}
         </div>
       </> : null}
     </DropdownMenuContent>
