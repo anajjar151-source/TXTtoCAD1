@@ -63,26 +63,21 @@ export default function ModelView({ launch, sequence, alone = false, bridge, cli
     const { list, search, ...alone } = createCadFileSource(client);
     return homed ? { ...alone, list, search } : alone;
   }, [client, homed]);
-  // The view's own history, as a browser keeps a tab's: the files it showed, by absolute path, the
-  // agent's shows and the person's own moves alike. Back and Forward walk them; a move after a Back
-  // drops what was ahead, and showing what is already on screen adds nothing. The home ('') is no
-  // step: it is a bigger way to pick a recent file, so going there leaves the history where it
-  // stands, and a file picked there follows the one the view left.
+  // The view's own history, as a browser keeps a tab's: what it showed — files, by absolute path,
+  // and the home ('') — the agent's shows and the person's own moves alike. Back and Forward walk
+  // them; a move after a Back drops what was ahead, and showing what is already on screen adds
+  // nothing.
   const launched = () => normalizePath(launch.model || '');
-  const [history, setHistory] = useState(() => {
-    const first = launched();
-    return { entries: first ? [first] : [], index: first ? 0 : -1, home: !first };
-  });
-  const file = history.home ? '' : history.entries[history.index] ?? '';
+  const [history, setHistory] = useState(() => ({ entries: [launched()], index: 0 }));
+  const file = history.entries[history.index] ?? '';
   const navigate = useCallback((next: string) => setHistory(current => {
-    if (!next) return current.home ? current : { ...current, home: true };
-    if (current.entries[current.index] === next) return current.home ? { ...current, home: false } : current;
+    if (current.entries[current.index] === next) return current;
     const entries = [...current.entries.slice(0, current.index + 1), next].slice(-HISTORY_LIMIT);
-    return { entries, index: entries.length - 1, home: false };
+    return { entries, index: entries.length - 1 };
   }), []);
-  const back = useCallback(() => setHistory(current => current.index > 0 ? { ...current, index: current.index - 1, home: false } : current), []);
+  const back = useCallback(() => setHistory(current => current.index > 0 ? { ...current, index: current.index - 1 } : current), []);
   const forward = useCallback(() => setHistory(current =>
-    current.index < current.entries.length - 1 ? { ...current, index: current.index + 1, home: false } : current), []);
+    current.index < current.entries.length - 1 ? { ...current, index: current.index + 1 } : current), []);
   const showing = useRef(file);
   showing.current = file;
   // A Quick Edit's views, annotation and pictures are made by the server, which is on this machine.

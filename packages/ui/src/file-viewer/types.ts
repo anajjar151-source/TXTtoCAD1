@@ -159,13 +159,13 @@ export interface FileViewerProps {
    * last at the navbar's right end.
    */
   fullSize?: ReactNode;
-  /** The view's own history, where the host keeps one: Back and Forward, between the navbar's logo and the file's name. */
+  /** The view's own history, where the host keeps one: Back and Forward after the navbar's logo, over a file and on the home. */
   history?: ViewerHistory;
   /** The host's notice, shown at the viewport's top-right once the file is on screen (`RendererViewProps.notice`). */
   notice?: ReactNode;
   onError?: (error: Error) => void;
   presentation?: {
-    /** The host's home, shown with no file: a page of its own, with no navbar over it (it holds the host's links itself). */
+    /** The host's home, shown with no file: a page of its own under the navbar, which has only its logo's menu, Back and Forward, update and Full size there. */
     home?: ReactNode;
     loading?: ReactNode;
     /** A file that will not open: `missing` when it does not exist. */

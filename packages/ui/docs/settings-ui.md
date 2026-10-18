@@ -27,7 +27,7 @@ inspects a format's parts, joints or topology. No pick or tool opens or closes t
 | The host (web, desktop) supplies | The shared UI decides |
 | --- | --- |
 | Where the tab record lives (`TabRecordStorage`: the web's sessionStorage, the CAD app's memory) | The record: its settings (the file sidebar's and tool stack's layout, the appearance, the home's layout) and the view of the file on screen (its camera, Display settings, its playback settings, and renderer slices), what is written when, and what is never stored (`@text-to-cad/ui/tab-store`, `kit/shell/fileView.js`) |
-| `navigation.home`, `links` (its version, GitHub, Discord, where a new issue opens, how a link opens), `appSettings` (the person's own settings), `colorScheme` (the person's theme and how it changes) and `colorSchemeControl` (the home's light/dark button, where it has one) | The navbar's order and look, the app menu (one menu in the viewer and on the home) and what a new issue says |
+| `navigation.home`, `links` (its version, GitHub, Discord, where a new issue opens, how a link opens), `appSettings` (the person's own settings), `colorScheme` (the person's theme and how it changes) | The navbar's order and look, over a file and over the home, the app menu (one menu in the viewer and on the home) and what a new issue says |
 | `host.files`, `fileActions`, `navigation`, `clipboard`, `promptContext`, `promptFiles` | When a copy, capture or open happens and what it carries |
 | `host.environment`: color scheme, keyboard `platform`, `reducedMotion` | How the chrome honours them |
 | `onError`, for errors the viewer hands up | Preview, tooltips, keyboard scope, the tool strip and sidebar, the camera |
@@ -35,12 +35,12 @@ inspects a format's parts, joints or topology. No pick or tool opens or closes t
 Hosts pass no Preview, chrome-visibility or notification props; there are
 none.
 
-- **Navbar.** One row, the same in every app, over every file. Left: the text-to-cad "C"
+- **Navbar.** One row, the same in every app, over every file and over the home. Left: the text-to-cad "C"
   logo, named Menu, the size of the row's icon buttons, with no chevron, which opens the
   **app menu** (see [Settings](#settings)) — a host with no home has it too — then, where the
   host keeps the view's own history (`history`: the CAD app's views, which no browser holds),
-  **Back** and **Forward**, two arrows walking it as a browser's do, from file to file (the home
-  is no step: it is a way to pick a recent file), each there always and disabled where it has
+  **Back** and **Forward**, two arrows walking it as a browser's do, from file to file and to
+  and from the home (a step like a file), each there always and disabled where it has
   nowhere to go; then the open file's name and its ⋯. Each of these that
   is a control (`NAV_ITEM_CLASS`) is transparent at rest, takes the same accent background
   while the pointer is on it and while its menu is open, has a pointer cursor and no tooltip:
@@ -71,12 +71,15 @@ none.
   Preview's pair in the view's top-right corner. A new per-file button that is no tool goes
   with them.
 
-  A host's home has no navbar: under its TEXTTOCAD wordmark and byline, its update, when there is
-  one, is a row of its own (the blue button, labeled **Update**, its card centred under it), then
-  GitHub (its mark, a link to the project: it is open source), Discord and X, as icon links, and,
-  where the host shows the view small, **Full size**, then the host's colour scheme control,
-  where it has one, last in that row, above its Recent Files: the models opened before,
-  pinned first, as cards or rows, with Open where the host has a file chooser.
+  A host's home has the same navbar, with only the logo and its app menu (without Back to
+  files) and, where the host keeps the view's history, **Back** and **Forward** at the left
+  and, at the right end, the host's update, when there is one, and **Full size**, where the
+  host shows the view small — the same buttons, sizes and places as over a file. Under it,
+  the page: the TEXTTOCAD wordmark and byline, then GitHub (its mark, a link to the project:
+  it is open source), Discord and X, as icon links (GitHub and Discord are the app menu's
+  too, X its footer's "Made by"; no light/dark button: Theme is the menu's), then Recent Files with its search, grid/list switch
+  and Open where the host has a file chooser: the models opened before, pinned first, as cards
+  or rows.
   The update shows only for a release
   later than the version the page names, whatever the host says. A file that will not open
   shows a page under the navbar: "File does not exist" and the file's path, or "Could not
@@ -557,9 +560,9 @@ icon is unambiguous, and always keep the accessible name.
 
 Settings are the person's, never a file's, and live in the app menu: one dropdown
 (`file-viewer/navigation/AppMenu.jsx`) on the floating surface, 15rem wide, from the
-navbar's logo over every file (FileViewer builds it from the host's `links`, the
+navbar's logo over every file and over the home (FileViewer builds it from the host's `links`, the
 `appSettings` `CadViewer` hands it and `environment.platform`, while a model loads and after
-it failed to as well); the home has no menu. Its rows, a rule between each group, are only
+it failed to as well). Its rows, a rule between each group, are only
 what the host supplies:
 
 - **Back to files**, where the host has a home
@@ -569,8 +572,8 @@ what the host supplies:
   glyphs (each a radio item, named), the one in force lit; a press changes it without closing
   the menu. The web's System follows the OS and is
   the tab's; the CAD app's follows its host's theme, Light or Dark overriding it for as long as
-  the view is open. The web's home, which has no menu, keeps its light/dark button
-  (`colorSchemeControl`) last in its row.
+  the view is open. Neither app has a light/dark button of its own: Theme is the one
+  control, the same on the home.
 - The host's own on/off settings (`appSettings`), a checkbox item each, in the order they
   come, checked at the right; a press turns one without closing the menu. **Share
   usage stats**, in both apps.

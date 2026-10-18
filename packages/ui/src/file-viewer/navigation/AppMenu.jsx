@@ -16,8 +16,8 @@ const SETTING_ROW_CLASS = "flex min-h-8 items-center justify-between gap-2 py-0.
 const COLOR_SCHEMES = Object.freeze([["system", "System", Monitor], ["light", "Light", Sun], ["dark", "Dark", Moon]]);
 
 /**
- * The app's menu, from the navbar's logo over every file: what is the person's rather than a
- * file's. First, where the host has a home, Back to files (`onHome`). Then the colour scheme (`colorScheme`):
+ * The app's menu, from the navbar's logo over every file and over the host's home: what is the
+ * person's rather than a file's. First, where the host has a home, Back to files (`onHome`). Then the colour scheme (`colorScheme`):
  * Theme, one row, its System, Light and Dark a segmented control, the one in force lit, a press keeping the
  * menu open. Then the host's on/off settings (`appSettings`:
  * sharing anonymous usage data), checked at the right, which a press turns without closing

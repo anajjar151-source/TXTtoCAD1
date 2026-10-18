@@ -11,7 +11,6 @@ import { UpdateButton, useUpdateNotice, type UpdateNotice } from '@text-to-cad/u
 import { browserClipboard, browserClipboardSupportsImages } from './host/clipboard';
 import { createWebPromptContext } from './host/promptContext';
 import { useViewerLinks } from './host/viewerLinks.js';
-import ViewerAppearance from './client/components/workbench/ViewerAppearance.jsx';
 import { readDefaultFileParam, readFileParam, resolveFileParam, writeFileParam } from './client/workbench/fileParam.js';
 import { applyColorSchemeToDocument, resolveColorSchemeMode } from './client/ui/colorScheme.js';
 
@@ -88,7 +87,7 @@ export default function App({ client, server, tabStore, notice = null }: { clien
   }), [client, server.pick, show]);
   const appearance = useTabAppearance(tabStore);
   const changeColorScheme = useCallback((value: string) => tabStore.settings.update({ appearance: value as Appearance }), [tabStore]);
-  // The app menu's Theme rows over every file; the home keeps its own button (`ViewerAppearance`).
+  // The app menu's Theme row, over every file and on the home.
   const colorScheme = useMemo(() => ({ preference: appearance.preference, onPreferenceChange: changeColorScheme }), [appearance.preference, changeColorScheme]);
   useEffect(() => { applyColorSchemeToDocument(appearance.colorScheme, document.documentElement); }, [appearance.colorScheme]);
   // The usage stats cadgen sends (its telemetry), the same as the CAD app's: nothing asks here (a
@@ -123,7 +122,6 @@ export default function App({ client, server, tabStore, notice = null }: { clien
     <CadViewer client={client} host={host} tabStore={tabStore} live={live} file={file} onShow={show} onShown={shown}
       library={library} onThumbnail={client.keepThumbnail} appSettings={appSettings}
       update={updateNotice ? <UpdateButton notice={updateNotice} copy={prompt => browserClipboard.writeText(prompt)} onLink={openTab} /> : null}
-      colorScheme={colorScheme}
-      colorSchemeControl={<ViewerAppearance colorSchemePreference={appearance.preference} resolvedColorSchemeMode={appearance.colorScheme} onColorSchemePreferenceChange={changeColorScheme} />} />
+      colorScheme={colorScheme} />
   </div></div>;
 }

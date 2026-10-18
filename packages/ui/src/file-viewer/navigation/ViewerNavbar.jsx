@@ -15,8 +15,9 @@ import { entryMenu } from "./entry-menu.js";
 import { FolderExplorer } from "./FolderExplorer.jsx";
 
 /**
- * The row above a file: ONE navbar, the same in every app, so a person finds each control in the
- * same place whatever is open. A host's home has none; it holds its menu itself.
+ * The row above a file and above the host's home: ONE navbar, the same in every app, so a person
+ * finds each control in the same place whatever is open. Over the home it has only the logo (its
+ * menu without Back to files), Back and Forward, the host's update and Full size.
  *
  * Left, in this order: the text-to-cad logo, which opens the app's menu (`AppMenu`: Back to files
  * where the host has a home, then the person's settings, feedback and links); Back and Forward,
