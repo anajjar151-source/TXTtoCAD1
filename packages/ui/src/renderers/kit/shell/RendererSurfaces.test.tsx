@@ -151,9 +151,8 @@ it("an annotation opens Quick Edit, which sends the note with the files made of 
   const destination = { kind: 'composer', available: true } as const;
   const send = vi.fn(async (_context: unknown) => ({ status: 'sent' as const, partIds: [] }));
   const promptFiles = {
-    create: vi.fn(async (request: any) => ({ job: '/tmp/p/one-1.job.json', annotation: '/tmp/p/one-1.annotation.json',
-      images: request.views.map((entry: any) => ({ label: entry.label, path: `/tmp/p/one-1-${entry.label}.png` })) })),
-    read: vi.fn(async () => new Blob(['png'], { type: 'image/png' })),
+    create: vi.fn(async (_request: any) => ({ snapshot: '/tmp/p/one-1.snapshot.json' })),
+    read: vi.fn(async () => new Blob(['{}'], { type: 'application/json' })),
   };
   const host = testHost({ promptContext: { getSnapshot: () => destination, subscribe: () => () => {}, deliver: async () => ({ status: 'added', partIds: [] }), send } as any, promptFiles });
   mount(host);
@@ -165,17 +164,21 @@ it("an annotation opens Quick Edit, which sends the note with the files made of 
   expect(document.activeElement).toBe(note);
   note.textContent = 'Add a boss here.';
   fireEvent.input(note);
+  expect(promptFiles.create).not.toHaveBeenCalled();
   fireEvent.keyDown(note, { key: 'Enter' });
   await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
-  // The view on screen, as a snapshot job says it, and the annotation as an annotation file.
+  // The view on screen, as a snapshot job says it (its mode and Grid switch with it, so the snapshot
+  // replays it), with the annotation in the same snapshot file.
   const [request] = promptFiles.create.mock.calls[0] as any[];
   expect(request).toMatchObject({ name: 'one.harness', input: '/models/one.harness', annotation: { units: 'mm', marks: [{ id: 'a', kind: 'stroke' }] } });
-  expect(request.views).toEqual([{ label: 'current', camera: { position: [0, -100, 0], target: [0, 0, 0], up: [0, 0, 1], orthographicHalfHeight: 40 }, width: 1600, height: 1200 }]);
+  expect(request.views).toEqual([{ label: 'current view', camera: { position: [0, -100, 0], target: [0, 0, 0], up: [0, 0, 1], orthographicHalfHeight: 40 },
+    display: { mode: 'solid', grid: false }, width: 1600, height: 1200 }]);
   const context = send.mock.calls[0][0] as any;
   expect(context.parts.map((part: any) => [part.kind, part.label ?? part.id])).toEqual([['text', 'text'], ['reference', 'file'],
-    ['attachment', 'Current view'], ['attachment', 'Views (cadgen snapshot --job)'], ['attachment', 'Annotation']]);
-  expect(await context.parts[2].path).toBe('/tmp/p/one-1-current.png');
-  expect((await context.parts[2].content).type).toBe('image/png');
+    ['attachment', 'Snapshot (cadgen snapshot --job)']]);
+  expect(await context.parts[2].path).toBe('/tmp/p/one-1.snapshot.json');
+  expect(context.parts.filter((part: any) => part.kind === 'attachment').map((part: any) => part.mimeType)).toEqual(['application/json']);
+  expect(promptFiles.read).not.toHaveBeenCalled();
   // Sent, the note goes with its annotation.
   await waitFor(() => expect(screen.queryByRole('region', { name: 'Quick Edit' })).toBeNull());
   expect(viewport.props.annotation.hasAnnotation).toBe(false);
@@ -408,4 +411,24 @@ it.each([['a GPU', false, 1], ['a software renderer', true, 0]])('on %s, Preview
     vi.useRealTimers();
     viewport.gpu = null;
   }
+});
+
+
+it('text-only Quick Edit captures the current view at Copy without any annotations', async () => {
+  const promptFiles = { create: vi.fn(async (_request: any) => ({ inline: '{"jobs":[]}' })), read: vi.fn() };
+  let copied = '';
+  const { canvas } = mount(testHost({ promptFiles, clipboard: {
+    writeText: async text => { copied = await text; }, readText: async () => '', writeImage: async () => {} } }));
+  pick(canvas);
+  const note = screen.getByRole('textbox', { name: 'Describe your changes' });
+  note.textContent = 'Keep this view.';
+  fireEvent.input(note);
+  // The harness's synthetic press reference is not a CAD selector. Clear it while the note stays.
+  secondaryTap(canvas, 300, 200);
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Clear the note' }));
+  expect(promptFiles.create).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Copy Prompt' }));
+  await waitFor(() => expect(copied).toContain('Snapshot JSON (cadgen snapshot --job):'));
+  expect(promptFiles.create.mock.calls[0][0]).toMatchObject({ annotation: null,
+    views: [{ label: 'current view', camera: { position: [0, -100, 0] } }] });
 });

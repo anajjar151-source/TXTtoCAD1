@@ -444,11 +444,12 @@ export function renderJobContext(meshData, job = {}) {
     appearance: "light",
     camera: job.camera || null,
     display: job.display ?? {},
-    // Render is the job's own request (`render: true`), over the same display settings.
-    render: job.render === true,
-    // The viewer's rule for this file: only a CAD model has edges to draw; a GLB of several parts
-    // explodes; every 3D file is cut by Clip (`viewFeaturesForKind`).
-    features: viewFeaturesForKind(sourceKind, { parts: meshData.explodeParts || 0 })
+    // Preview's look is the job's own request (`preview: true`), over the same display, at
+    // Preview's defaults: a snapshot has no Preview settings of its own.
+    preview: job.preview === true,
+    // The viewer's rule for this file: only a CAD model has edges to draw; Parts colours a file of
+    // several parts; a GLB of several parts explodes; every 3D file is cut by Clip (`viewFeaturesForKind`).
+    features: viewFeaturesForKind(sourceKind, { parts: meshData.partCount || 0, explodeParts: meshData.explodeParts || 0 })
   });
   // Neutral CAD lights remain available when only the background/floor is on.
   const theme = sceneSettings.theme;
@@ -626,7 +627,6 @@ export function renderModel(_THREE, model, viewportOptions = {}) {
       // The viewer sizes the studio floor from the REST placement (`groundBounds`), so a posed
       // still must too, or the CLI and the viewer disagree about how big the ground is.
       groundBounds: viewportOptions.floorBounds ? null : restGroundBounds,
-      sceneScale: context.sceneScale,
       shadowMapSize: context.quality.shadowMapSize,
       // Each kept pixel averages renderScale² drawn ones: the floor's dither is drawn that much wider.
       ditherScale: renderer.getPixelRatio(),
@@ -1015,7 +1015,6 @@ export async function captureModel(viewport, captureOptions = {}) {
         // viewer's are (and as `renderModel` placed them), so an exploded view or a pose never
         // rescales or slides them; a video's locked frame keeps its union box for both.
         groundBounds: captureOptions.frameBounds ? null : restBounds,
-        sceneScale,
         shadowMapSize: context.quality.shadowMapSize,
         ditherScale: viewport.renderer.getPixelRatio?.() ?? 1,
         frame: SNAPSHOT_STUDIO_FRAME

@@ -60,11 +60,11 @@ describe('live CAD viewer binding', () => {
   it('waits for a grouped edit to commit without resetting the selected mode', async () => {
     let frames = 0;
     const view = harness(async () => {
-      if (++frames === 3) view.update({ ...state(), display: { mode: 'xray', modes: { render: { lighting: { exposure: 1 } } } } });
+      if (++frames === 3) view.update({ ...state(), display: { mode: 'xray', grid: true } });
     });
     view.update({ ...state(), display: { mode: 'xray' } });
-    expect((await view.controller.setDisplaySettings({ modes: { render: { lighting: { exposure: 1 } } } })).display.mode).toBe('xray');
-    expect(view.commands.setDisplaySettings).toHaveBeenCalledExactlyOnceWith({ modes: { render: { lighting: { exposure: 1 } } } });
+    expect((await view.controller.setDisplaySettings({ grid: true })).display).toEqual({ mode: 'xray', grid: true });
+    expect(view.commands.setDisplaySettings).toHaveBeenCalledExactlyOnceWith({ grid: true });
     expect(frames).toBe(3);
   });
   it('waits for the normalized clip, where a new axis drops the old coordinate', async () => {

@@ -1,5 +1,6 @@
 import { useId } from 'react';
-import { Pencil, Ruler, Spline } from 'lucide-react';
+import { Pencil, Ruler } from 'lucide-react';
+import { PositionIcon } from '../../../kit/tools/ChangedDot.jsx';
 import { CONNECTED_SELECTION, SELECT_GEOMETRY, connectedSelectionApplies } from '../../workbench/selectionFilter.js';
 import { DropdownMenuCheckboxItem } from '@text-to-cad/ui/primitives/dropdown-menu';
 import SelectFilterMenu from "../../../kit/tools/select/SelectFilterMenu.jsx";
@@ -72,7 +73,7 @@ const lucideIcon = Icon => <Icon className="size-3.5" strokeWidth={2} aria-hidde
 // What else Select picks, beside the model's geometry: Position's knobs (where the file has joints
 // to move), the annotations and measurements.
 const SELECT_OVERLAYS = Object.freeze([
-  { id: 'position', label: 'Position', icon: lucideIcon(Spline) },
+  { id: 'position', label: 'Position', icon: lucideIcon(PositionIcon) },
   { id: 'annotation', label: 'Annotations', icon: lucideIcon(Pencil) },
   { id: 'measurement', label: 'Measurement', icon: lucideIcon(Ruler) },
 ]);

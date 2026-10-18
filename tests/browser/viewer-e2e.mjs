@@ -33,14 +33,13 @@ const root = path.resolve(args.dir || ".");
 // One fixture per LOAD PATH: an exact-surface STEP package, a mesh, a 2D drawing,
 // a robot description.
 const fixtures = [
-  // `tools` is the file's own tool strip (an STL has no Select or Measure, a drawing no tools at
-  // all: a tool that does not apply is hidden, not disabled); `threeD` has Display and Preview at
-  // the navbar's right end; `sections`
+  // `tools` is the file's own tool strip; unavailable tools are hidden. `threeD` has
+  // Projection, Display and Preview at the strip's end; `sections`
   // are file sidebar tiles it must have (what there is to read of the file, whatever the tool).
   { format: "stl", file: "smoke.stl", parts: false, tools: ["Annotate", "Clip"], sections: [], threeD: true },
   { format: "step", file: "assembly.step", parts: true, tools: ["Select", "Annotate", "Measure"], sections: ["Model tree"], threeD: true },
   // A drawing is line work, not shaded surfaces: its outline covers a fraction of what a solid does.
-  { format: "dxf", file: "smoke.dxf", parts: false, tools: [], sections: [], threeD: false, minCoverage: 0.003 },
+  { format: "dxf", file: "smoke.dxf", parts: false, tools: ["Select", "Annotate", "Measure"], sections: [], threeD: false, minCoverage: 0.003 },
   { format: "urdf", file: "smoke.urdf", parts: false, tools: ["Select", "Annotate", "Measure", "Clip"], sections: ["Links"], threeD: true },
 ];
 // Small enough that software WebGL and the PNG encode stay cheap on CI, large enough for the
@@ -294,14 +293,12 @@ async function formatGate() {
         buttons.map((button) => button.getAttribute("aria-label")));
       for (const label of fixture.sections) if (!tiles.includes(label)) failures.push(`${fixture.format}: missing the ${label} tile (sidebar: ${tiles.join(", ")})`);
       if (!fixture.sections.length && tiles.length) failures.push(`${fixture.format}: a file sidebar on a file with nothing to read (${tiles.join(", ")})`);
-      // The view's own controls, last in the navbar: Display (its mode) then Preview on a 3D view,
-      // none on a drawing; the strip keeps to the tools. The navbar's left is the logo (the app
-      // menu, the person's settings in it), the file's name and its ⋯, on every file, drawing included.
-      const controls = await page.locator("[data-viewer-navbar] [data-view-controls] button").evaluateAll((buttons) =>
+      // Projection, Display and Preview end the tool strip on 3D views; drawings have none.
+      const controls = await page.locator("[data-cad-toolbar] [data-view-controls] button").evaluateAll((buttons) =>
         buttons.map((button) => button.getAttribute("aria-label")));
-      const expected = fixture.threeD ? ["Display mode: Solid", "Preview"] : [];
+      const expected = fixture.threeD ? ["Projection: Orthographic", "Display mode: Solid", "Preview"] : [];
       if (JSON.stringify(controls) !== JSON.stringify(expected)) failures.push(`${fixture.format}: the view's controls are ${JSON.stringify(controls)}`);
-      if (await page.locator("[data-cad-toolbar] [data-view-controls]").count()) failures.push(`${fixture.format}: view controls on the strip`);
+      if (await page.locator("[data-viewer-navbar] [data-view-controls] button").count()) failures.push(`${fixture.format}: editor view controls in the navbar`);
       const menus = await page.getByRole("button", { name: "Menu", exact: true }).count();
       if (menus !== 1) failures.push(`${fixture.format}: ${menus} app menus (one on every file)`);
       const menu = await canvasMenuItems(page, canvas);

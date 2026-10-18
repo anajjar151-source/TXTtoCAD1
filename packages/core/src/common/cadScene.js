@@ -618,23 +618,26 @@ function buildEdgeGeometryFromIndices(THREE, vertices, edgeIndices) {
   return geometry;
 }
 
-function buildEdgeGeometry(THREE, meshData, part, sourceGeometry, displayMode, edgeSettings = {}) {
-  void edgeSettings;
+// A record's edge lines when its component carries no CAD edge segments (a baked GLB-era
+// mesh): its explicit B-rep edge indices, else the mesh's feature edges. Every mode draws the
+// same lines, Wireframe included ("All CAD edges through the model"), so the key names no mode
+// and one build serves them all while the component is cached. Wireframe once drew every
+// TRIANGLE here (three's WireframeGeometry, a string-keyed set over all of a mesh's edges):
+// ~10 s of main thread and a gigabyte on a large model, for a picture that read as a solid blob.
+function buildEdgeGeometry(THREE, meshData, part, sourceGeometry) {
   const cache = cacheForOwner(cacheOwnerForPart(meshData, part));
   const partId = part ? String(part?.id || part?.occurrenceId || "").trim() : MODEL_PART_ID;
   const sourceMeshKey = part?.sourceMesh
     ? String(part?.sourceMeshKey || part?.meshUrl || part?.partFileRef || "").trim()
     : "";
-  const edgeKey = `${displayMode}:${sourceMeshKey ? `source:${sourceMeshKey}` : (partId || MODEL_PART_ID)}`;
+  const edgeKey = `edges:${sourceMeshKey ? `source:${sourceMeshKey}` : (partId || MODEL_PART_ID)}`;
   const cached = cache.edge.get(edgeKey);
   if (cached) {
     return cached;
   }
 
   let geometry = null;
-  if (displayModeIsWireframe(displayMode)) {
-    geometry = new THREE.WireframeGeometry(sourceGeometry);
-  } else if (part) {
+  if (part) {
     const edgeIndexOffset = toNumber(part?.edgeIndexOffset, 0);
     const edgeIndexCount = toNumber(part?.edgeIndexCount, 0);
     const hasExplicitPartEdges = edgeIndexCount >= 2 && isNumericArray(meshData?.edge_indices, 2);
@@ -1822,7 +1825,11 @@ function createDisplayRecord(THREE, runtime, meshData, settings, {
   const wireframeMode = displayModeIsWireframe(displayMode);
   const forceFill = materialSettings.overrideSourceColors === true || wireframeMode;
   const sourceVertexColors = !!geometryEntry.geometry.getAttribute("color");
-  const cadEdges = !wireframeMode && edgeSettings.enabled ? cadEdgeLinesForPart(meshData, part) : null;
+  // Wireframe's edges are the CAD edges every other mode draws: the component's cached
+  // segment texture, not a new build.
+  const drawsEdges = settings.selection?.showEdges !== false &&
+    (edgeSettings.enabled || (wireframeMode && !settings.surfaceSettings));
+  const cadEdges = drawsEdges ? cadEdgeLinesForPart(meshData, part) : null;
   const sourceColor = sourceColorForPart(THREE, part, meshData);
   const sourceOpacity = sourceOpacityForPart(part);
   const hasSourceColor = sourceVertexColors || !!sourceColor;
@@ -1916,7 +1923,7 @@ function createDisplayRecord(THREE, runtime, meshData, settings, {
     }
   }
 
-  if (settings.selection?.showEdges !== false && (edgeSettings.enabled || (wireframeMode && !settings.surfaceSettings))) {
+  if (drawsEdges) {
     if (cadEdges) {
       attachCadEdgeInstance(THREE, runtime, record, cadEdges);
     } else {
@@ -1924,7 +1931,7 @@ function createDisplayRecord(THREE, runtime, meshData, settings, {
         THREE,
         runtime,
         record,
-        buildEdgeGeometry(THREE, meshData, part, geometryEntry.geometry, displayMode, edgeSettings),
+        buildEdgeGeometry(THREE, meshData, part, geometryEntry.geometry),
         settings
       );
     }

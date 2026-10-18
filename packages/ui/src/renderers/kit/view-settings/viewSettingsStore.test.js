@@ -3,48 +3,56 @@ import test from "node:test";
 import { createViewSettingsStore } from "./viewSettingsStore.js";
 import { createViewerRenderStateResolver } from "./renderState.js";
 
-test("per-mode edits compose, survive mode switches and reset without changing shared state", () => {
+test("a mode and the grid compose, survive mode switches, and leave shared state alone", () => {
   const store = createViewSettingsStore({ camera: { focalLength: 80 }, clip: { enabled: true, at: 4 }, exploded: { enabled: true, amount: 0.4 } });
-  store.patchMode("solid", { grid: { enabled: true, color: "#abcdef" } });
-  store.patchMode("solid", { grid: { opacity: 0.8 } });
-  store.patchMode("render", { lighting: { exposure: 1 } });
+  store.setGrid(true);
+  store.patchPreview({ lighting: { exposure: 1 } });
   const before = store.getSnapshot();
-  assert.equal(before.display.mode, "solid");
+  assert.deepEqual([before.display.mode, before.display.grid, before.scene.view.grid.enabled], ["solid", true, true]);
   assert.equal(before.scene.view.lighting.exposure, 0);
   assert.equal(store.renderScene().view.lighting.exposure, 1);
   store.selectMode("xray");
+  assert.equal(store.getSnapshot().scene.view.grid.enabled, true, "the grid is every mode's");
   store.selectMode("solid");
   assert.deepEqual(store.getSnapshot(), before);
-  store.resetMode("render");
-  assert.deepEqual(store.getSnapshot().display.modes, { solid: { grid: { enabled: true, color: "#abcdef", opacity: 0.8 } } });
-  for (const key of ["camera", "clip", "exploded"]) assert.deepEqual(store.getSnapshot().display[key], before.display[key]);
-  assert.deepEqual(createViewSettingsStore(before.display).getSnapshot(), before);
+  store.resetPreview();
+  assert.deepEqual(store.getSnapshot().preview, {});
+  for (const key of ["mode", "grid", "camera", "clip", "exploded"]) assert.deepEqual(store.getSnapshot().display[key], before.display[key]);
+  assert.deepEqual(createViewSettingsStore(before.display, {}, before.preview).getSnapshot(), before);
+  // A mode has nothing of its own to set.
+  assert.throws(() => store.patch({ modes: { solid: { flat: true } } }), /Unsupported display fields: modes/);
 });
 
-test("Render is no display mode: a file is never in it, and Preview resolves Render from the same settings", () => {
-  assert.throws(() => createViewSettingsStore({ mode: "render" }), /display\.mode must be one of: solid, xray, hidden-line, wireframe/);
+test("Preview is no display mode: a file is never in it, and Preview resolves Render from the same display with its own settings", () => {
+  assert.throws(() => createViewSettingsStore({ mode: "render" }), /display\.mode must be one of: solid, shaded, parts, xray, hidden-line, wireframe/);
   const store = createViewSettingsStore({ mode: "xray" });
   assert.throws(() => store.selectMode("render"), /display\.mode must be one of/);
   assert.throws(() => store.patch({ mode: "render" }), /display\.mode must be one of/);
-  store.patchMode("render", { lighting: { exposure: 1 } });
+  store.patchPreview({ lighting: { exposure: 1 } });
   const { display, scene } = store.getSnapshot();
   assert.deepEqual([display.mode, scene.view.mode, scene.render.enabled], ["xray", "xray", false]);
   const drawn = store.renderScene();
   assert.deepEqual([drawn.view.mode, drawn.view.lighting.exposure, drawn.render.enabled], ["render", 1, true]);
-  assert.equal(store.getSnapshot().display, display, "asking for Render commits nothing");
+  assert.equal(store.getSnapshot().display, display, "asking for Preview's scene commits nothing");
+  assert.throws(() => store.patchPreview({ grid: {} }), /Unsupported preview fields: grid/);
 });
 
-test("inactive mode edits preserve the scene and no-op mode/reset actions publish nothing", () => {
+test("Preview edits preserve the scene and no-op mode, grid and reset actions publish nothing", () => {
   const store = createViewSettingsStore();
   const scene = store.getSnapshot().scene;
-  store.patchMode("xray", { opacity: 0.5 });
+  store.patchPreview({ floor: { finish: "glossy" } });
   assert.equal(store.getSnapshot().scene, scene);
+  store.resetPreview();
   let updates = 0;
   store.subscribe(() => updates++);
   store.selectMode("solid");
-  store.resetMode("render");
-  store.patchMode("xray", { opacity: 0.5 });
+  store.setGrid(false);
+  store.resetPreview();
+  store.patch({ mode: "solid" });
   assert.equal(updates, 0);
+  store.setGrid(true);
+  store.setGrid(false);
+  assert.deepEqual(store.getSnapshot().display, { mode: "solid" }, "a grid switched off is left unsaid");
 });
 
 test("Clip edits preserve all unrelated renderer inputs through both resolution stages", () => {
@@ -64,16 +72,16 @@ test("Clip edits preserve all unrelated renderer inputs through both resolution 
   }
 });
 
-test("Render's lighting and floor edits leave the file's scene as it is, and no-op edits publish nothing", () => {
+test("Preview's lighting and floor edits leave the file's scene as it is, and no-op edits publish nothing", () => {
   const store = createViewSettingsStore();
   const before = store.getSnapshot();
-  store.patchMode("render", { lighting: { exposure: 0.7 }, floor: { opacity: 0.8 } });
+  store.patchPreview({ lighting: { exposure: 0.7 }, floor: { opacity: 0.8 } });
   const after = store.getSnapshot();
   assert.equal(after.scene, before.scene);
   assert.deepEqual([store.renderScene().view.lighting.exposure, store.renderScene().view.floor.opacity], [0.7, 0.8]);
   let updates = 0;
   store.subscribe(() => updates++);
-  store.patchMode("render", { lighting: { exposure: 0.7 } });
+  store.patchPreview({ lighting: { exposure: 0.7 } });
   store.configure({ appearance: "light" });
   assert.equal(updates, 0);
   assert.equal(store.getSnapshot(), after);

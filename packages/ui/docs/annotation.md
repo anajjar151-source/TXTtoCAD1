@@ -102,12 +102,11 @@ drawn on changes.
 ⌘C / Ctrl+C while Annotate is up copies the view as it is on screen, ink
 included, to the clipboard as a PNG.
 
-A Quick Edit carries the annotation as files the viewer server makes at the press
-(`host.promptFiles`): the annotation as an annotation file, the views it was drawn in (with
-the view on screen as it goes) as a snapshot job file, and a picture of each view
-rendered by the snapshot's own code, ink included. `cadgen snapshot --job <file>`
-renders the same pictures again, over the model or an edit of it. Quick Edit's
-Annotation chip saves an `.annotation.json` file and copies its absolute path;
-without the save capability it copies the JSON. The copied prompt names the
-annotation, job and pictures by absolute path. Queue and Send clear the annotation
-with the note; Copy Prompt keeps it.
+Quick Edit captures the current view and distinct views with remaining ink when
+Copy Prompt, Queue or Send is pressed (`host.promptFiles`). The snapshot packet
+includes shared annotation and measurements: up to 1 KiB of compact UTF-8 JSON
+travels inline, and larger packets are saved to a temporary `.snapshot.json`.
+No images are rendered at handoff. Save inline JSON to a file before running
+`cadgen snapshot --job <file>` to render those views over the model or an edit of it.
+Annotation and measurement chips do not copy references or save individual files.
+Queue and Send clear the annotation with the note; Copy Prompt keeps it.

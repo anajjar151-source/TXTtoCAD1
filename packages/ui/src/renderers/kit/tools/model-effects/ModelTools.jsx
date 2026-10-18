@@ -51,7 +51,7 @@ export function useModelTools({ view, features, store, mesh, disabled, selectedT
   const tool = definitions.find(value => value.id === selectedTool);
   return {
     tools: definitions.map(({ id, label, Icon }) => ({
-      id, label, active: selectedTool === id, disabled,
+      id, label, active: selectedTool === id, disabled, changed: applied.includes(id),
       icon: <Icon className="size-3" strokeWidth={2} aria-hidden="true" />,
       onSelect: () => {
         if (selectedTool === id) return;

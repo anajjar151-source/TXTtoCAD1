@@ -1,76 +1,75 @@
-# Per-mode display settings
+# Display modes
 
 The Viewer and snapshots share one strict sparse contract. Core's `common/viewSettings.js`
-validates it and resolves the active mode, or Render, into renderer groups. `common/sceneSettings.js`
-translates those groups into the scene recipe; renderer code never reads saved mode settings.
-The binding controls are in [settings-ui.md](settings-ui.md#display-settings-and-section-primitives).
+validates it and resolves the mode, or Preview's Render, into renderer groups.
+`common/sceneSettings.js` translates those groups into the scene recipe. The binding
+controls are in [settings-ui.md](settings-ui.md#display-settings-and-section-primitives).
 
-A file's display mode is Solid, X-ray, Hidden line or Wireframe. Render is no display mode: it
-is the photographic look Preview and a snapshot's `--render` ask for on their own, over the
-same settings, with settings of its own beside the modes'.
+A file's display is a mode and the Grid switch. A mode is a look at its own defaults, with
+nothing to set. Render is no display mode: it is the photographic look Preview and a
+snapshot's `--preview` ask for on their own, over the same display, with Preview's own
+settings (the viewer's alone, kept beside the display).
 
-| Mode | Settings | Surface / edge recipe |
-| --- | --- | --- |
-| Solid | parts, flat, edges, grid, axes | Shaded (or flat), visible edges enabled by default |
-| X-ray | parts, opacity, edges, grid, axes | 22% opacity, all edges |
-| Hidden line | edges, grid, axes | Depth-only surfaces, visible edges |
-| Wireframe | edges, grid, axes | No fill, all edges |
-| Render (asked for on its own) | parts, lighting, background, floor | Shaded, no edges, photographic studio |
+| Mode | Surface / edge recipe |
+| --- | --- |
+| Solid (default) | Shaded, the model's visible CAD edges |
+| Shaded | Shaded, no edges |
+| Parts | Solid, each part its own palette colour |
+| X-ray | 22% opacity, all edges |
+| Hidden line | Depth-only surfaces, visible edges (light on a dark backdrop) |
+| Wireframe | No fill, all edges (light on a dark backdrop) |
+| Render (Preview's, asked for on its own) | Shaded, no edges, no grid, photographic studio |
 
-Grid and axes start off and are independent. Solid alone can disable its edges; other edge
-modes always draw them. Render's floor starts enabled at the lowest point. Appearance,
-camera, Clip and Explode are shared. Camera defaults to orthographic with a 50mm lens;
-Render resolves to perspective without overwriting that shared camera choice.
+A file without CAD edges (STL, 3MF, GLB, a robot) offers Solid, drawn without edges, and
+Parts where it has several parts, objects or links; Shaded would be Solid again there. The
+grid is off by default and the same measuring grid in every mode. Appearance, camera, Clip
+and Explode are shared. Camera defaults to orthographic with a 50mm lens; Render resolves to
+perspective without overwriting that shared camera choice.
 
 ## Sparse public contract
 
 ```json
-{
-  "mode": "solid",
-  "appearance": "light",
-  "camera": { "projection": "orthographic" },
-  "modes": {
-    "solid": { "grid": { "enabled": true } },
-    "render": { "lighting": { "exposure": 0.5 }, "floor": { "finish": "glossy" } },
-    "xray": { "opacity": 0.3 }
-  }
-}
+{ "mode": "parts", "grid": true, "appearance": "light", "camera": { "projection": "orthographic" } }
 ```
 
-Omitted mode is Solid, and `mode` is one of the four. Each mode object, and Render's, overrides only supplied values. `parts` contains
-`colorMode` (`original`, `single`, `by-part`), `color` and `colors`. `edges` contains `color`
-and, for Solid only, `enabled`. `grid` contains `enabled`, `color`, `opacity`, `density`;
-`axes` omits density. Render's `lighting` contains `quality`, `exposure`, `rotation`, `size`,
-`fill`; `background` contains `color`, `opacity`; `floor` contains `enabled`, `placement`,
-`color`, `opacity`, `finish`. Only settings in that mode's list are accepted.
+Omitted mode is Solid, and `mode` is one of the six; `grid` is a boolean, off unless said.
+The display also takes `clip` and `exploded`. Anything else is refused: there are no
+per-mode settings, style groups or axes. Preview's own settings (`parts`, `lighting`,
+`background`, `floor`) are a separate sparse object (`normalizePreviewSettings`): `parts`
+contains `colorMode` (`original`, `single`, `by-part`), `color` and `colors`; `lighting`
+contains `quality`, `exposure`, `rotation`, `size`, `fill`; `background` contains `color`,
+`opacity`; `floor` contains `enabled`, `placement`, `color`, `opacity`, `finish`.
 
 Viewer appearance inherits the host; snapshots default to light. Lighting quality inherits
-Preview in a viewer and Final in a snapshot. Disabled guides, edges and floor retain their
-chosen appearance for re-enabling. There is no Custom state, Grid mode, legacy alias or
-migration. Old-shaped saved display state is discarded at the file-session read boundary.
-The same shape powers live `setDisplaySettings` and snapshot `--display`; either refuses
-`mode: "render"` as it refuses any mode it does not know. A snapshot asks for Render with
-`--render` (a job's `"render": true`, the page's own flag); Render's own settings stay
-`display.modes.render`. `--camera` holds pose/framing only.
+Preview in a viewer and Final in a snapshot. There is no Custom state, legacy alias or
+migration. A stored display or Preview settings record is read setting by setting at the
+file-session read boundary (`readViewSettings`, `readPreviewSettings`): what this build
+cannot read (an older per-mode tree, a mode it no longer has) is left out, the rest kept.
+The same display shape powers live `setDisplaySettings` and snapshot `--display`; either
+refuses `mode: "render"` as it refuses any mode it does not know. A snapshot turns the grid
+on with `--grid` (`display.grid`) and asks for Preview's look with `--preview` (a job's
+`"preview": true`, the page's own flag), at Preview's defaults. `--camera` holds
+pose/framing only. A Quick Edit's views carry the mode and the grid (`display.mode`,
+`display.grid`) with Clip and Explode, so a snapshot of them replays the view.
 
 ## State and updates
 
-`kit/view-settings/viewSettingsStore.js` owns one sparse state per mounted file.
-`selectMode(mode)` selects without erasing overrides. `patchMode(mode, patch)` merges that
-mode's settings without selecting it. `resetMode(mode)` removes only its overrides.
-`patch(patch)` merges the shared fields and any supplied `modes` branches. `restore` replaces
-state once on mount; persistence reads the latest `getSnapshot().display`.
+`kit/view-settings/viewSettingsStore.js` owns one sparse display, and Preview's settings,
+per mounted file. `selectMode(mode)` selects a mode; `setGrid(on)` switches the grid (off
+is left unsaid); `patch(patch)` merges the display's shared fields. `patchPreview(patch)`
+merges Preview's settings and `resetPreview()` removes them. `restore(display, preview)`
+replaces state once on mount; persistence reads the latest `getSnapshot().display` and
+`.preview`. `renderScene()` resolves Preview's scene without committing anything.
 
-Reset preserves the selected mode, every other mode, camera, appearance, Clip and Explode.
-No action reframes the camera, changes model pose, selection or visibility. The store preserves
-equal JSON branches; editing an inactive mode leaves the scene identity unchanged. Clip
-edits do not invalidate materials, lighting, geometry or camera. No-op actions publish nothing.
-Do not merge captured props, persist resolved defaults or keep a second display state.
+No action reframes the camera, changes model pose, selection or visibility. The store
+preserves equal JSON branches; a Preview edit leaves the display's scene identity unchanged.
+Clip edits do not invalidate materials, lighting, geometry or camera. No-op actions publish
+nothing. Do not merge captured props, persist resolved defaults or keep a second display
+state.
 
-The view injects offered `modes` and `settings`. Mesh views offer Solid and no edges, Clip or
-Explode; Preview draws Render over any of them. Unsupported saved modes resolve to Solid
-without rewriting storage, and a saved file view that cannot be read (one left in Render, say)
-is read as the defaults (`fileView.js`); unoffered settings do not affect the scene. The shared UI discovers no host APIs.
+The view injects its offered `modes` and `settings` (`edges`, `clip`, `exploded`). Unsupported
+saved modes resolve to Solid without rewriting storage; unoffered settings do not affect the
+scene. The shared UI discovers no host APIs.
 
 ## Rendering costs and camera behavior
 
@@ -104,8 +103,17 @@ depth throughout, fitting near/far planes to the current model, closeup records
 and floor/grid planes on every frame; a perspective near plane stays at or beyond
 1/256 of the orbit pivot's depth, so a closeup never trades depth resolution for
 a near plane at the eye. The grid's bounds also fit the far plane;
-it is independent of the studio floor used by Render. Grid spacing is five cells across the
-default model framing. The grid, the stage and the Render studio's floor are
+it is independent of the studio floor used by Render. The grid
+(`lib/viewer/stageGrid.js`, one shader quad the viewer and the snapshot both draw) is graph
+paper on the floor, after Tinkercad's workplane: thin minor lines at a round step (1, 2 or
+5 x 10^n) near twenty across the default framing at density 1, a heavier major line every 5 or
+10 of them, in one cool cyan-blue ink (`GRID_LINE_DEFAULTS`: `#4ea8cc` at 0.45 on a light
+backdrop, `#5d9ac0` at 0.35 on a dark one; minors are the same ink at 0.6 of its strength), with
+a red X and a green Y axis through the origin, anti-aliased in the fragment shader. Each family
+of lines fades only once its cells crowd under about 3.5 pixels, so there is no moire zoomed
+out or at a grazing angle; the sheet is at full strength to 1.5 framings from the origin, past
+the default view's corners, and dissolves gently by 6, and fades a little as the plane turns
+edge-on, so it reaches the edges of the view yet has no edge of its own. Display has no separate Axes setting. The grid, the stage and the Render studio's floor are
 SIZED from the model's rest placement for every renderer, STEP included: a pose, a
 playing routine, or a pose set in Preview never rescales or
 slides the ground; its height, the lighting and the shadow reach follow the model. Enabling photographic effects updates that live scene;
@@ -118,8 +126,8 @@ enabled cut stays live. Explicit neutral boundaries
 still avoid unnecessary caps. See [responsive View updates](view-updates.md)
 for scheduling, resource caching, loading presentation and capture readiness.
 
-Render's floor stands at the model's lowest point, at 60% opacity; Model origin (the
-document's Z=0 plane) is a choice away and is remembered in Render, as Glossy is. A snapshot's Render floor stands
+Render's floor stands at the document's Z=0 plane (Model origin), at 60% opacity, its opacity
+letting geometry below that plane show; Lowest point is a choice away and is remembered in Render, as Glossy is. A snapshot's Render floor stands
 where the viewer's does: both resolve it from the same mode default (`RENDER_FLOOR_PLACEMENT`).
 Render's floor carries a studio's soft grounding shadow, as deep
 as the floor is opaque: darkest where the model touches it, the key light's cast
@@ -143,8 +151,15 @@ software, a glossy floor reflects nothing.
 Its double-sided surface uses its actual elevation during
 camera depth fitting, avoiding the origin-placement near-plane gap. Its color
 and opacity are independent of Background.
+The floor has no edge, as a product shot's seamless sweep has none: it is at its
+opacity around the model and fades to nothing a few model radii out, its shadow and
+reflection with it, so a low camera or a wide view shows no horizon line or corner.
+Behind it, Background is a studio backdrop rather than a flat fill: its color lifted
+toward white behind the middle of the frame, shaded toward the corners (more for a dark
+color) and above the horizon. Its opacity carries the gradient; at zero it draws nothing.
 Light Render defaults to a pure white background and retains the slightly gray
-floor (`#e7e7e5`); explicit background colors still override the mode default.
+floor (`#e7e7e5`); dark Render's background and floor are one charcoal (`#202226`), never
+black. Explicit background colors still override the mode default.
 External STEP pose and animation passes publish current placed bounds before
 drawing, and so does the exploded view wherever it comes to rest (a slider move,
 the end of its ease) and at most every 100 ms while it eases in or out. Depth and
@@ -161,18 +176,19 @@ unchanged after a runtime replacement does not.
 
 ## Where the controls live
 
-Display settings are a dropdown from the Display button at the navbar's right end
-(the current mode's sphere, before Preview: `kit/shell/DisplayPopover.jsx`), which opens down from it, present for every 3D file. Its
-modes are the offered modes (`DisplayModeOptions.js`). Preview, a view of its own over the
-editor's, draws the model in Render whatever the file's mode (the store's `renderScene()`, as
-`kit/viewport/previewViewScene.js` draws it), and the tools view never does. Render's settings page is
-Preview's settings panel (`kit/shell/PreviewSettings.jsx`, under Orbit), its edits the file's
-Render settings. A file's model tree and Position are
+Display is a dropdown from the Display tile at the strip's end (the current mode's sphere,
+between Projection and Preview: `kit/shell/DisplayPopover.jsx`), present for every 3D file:
+the offered modes (`DisplayModeOptions.js`), then the Grid switch. On a phone it is the
+More menu's Display submenu, the same list. Preview, a view of its own over the editor's,
+draws the model in Render whatever the file's mode (the store's `renderScene()`, as
+`kit/viewport/previewViewScene.js` draws it), and the tools view never does. Preview's own
+settings are its settings panel (`kit/shell/PreviewSettings.jsx`: Orbit, then
+`PreviewRenderSettings.jsx`), its edits the file's Preview settings. A file's model tree and Position are
 sections of the file sidebar (see
 [settings-ui.md](./settings-ui.md#the-file-sidebar-and-the-tool-stack)); nothing in them is
 a display setting.
 
-Display and Preview, the view's controls at the navbar's right end, are offered by a 3D view
+Display and Preview, the view's controls at the strip's end, are offered by a 3D view
 alone, as its renderer declares to the shell (`useRendererShell`'s `previewable`):
 
 | Renderer | Files | Display and Preview |

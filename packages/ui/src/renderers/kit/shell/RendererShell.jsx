@@ -12,13 +12,17 @@ import { useViewerMobile } from "../../../file-viewer/responsive.js";
 import ViewerAlertCard, { alertDismissible, useAlertDismissal } from "../status/ViewerAlertCard.jsx";
 import { modelUpdateStatus, ViewUpdateStatus } from "../status/ViewUpdateStatus.jsx";
 import ViewerLoadingOverlay from "../status/ViewerLoadingOverlay.js";
-import DisplayPopover from "./DisplayPopover.jsx";
+import DisplayPopover, { DisplayMenuItems } from "./DisplayPopover.jsx";
+import ProjectionPopover from "./ProjectionPopover.jsx";
+import { DropdownMenuRadioGroup, DropdownMenuRadioItem } from "@text-to-cad/ui/primitives/dropdown-menu";
+import { OrthographicProjectionIcon, PerspectiveProjectionIcon } from "../camera/ProjectionModeIcons.js";
 import PreviewSettings from "./PreviewSettings.jsx";
 import { withGroups } from "../../../annotation/geometry.js";
 import FloatingToolBar, { StripTouchProvider, useStripButtonClass } from "../tools/FloatingToolBar.js";
 import { AnnotationMenu, AnnotationToolbar } from "../../../annotation/toolbar.jsx";
 import ToolStack from "../tools/ToolStack.jsx";
 import AnimationSection from "../tools/playbar/AnimationSection.jsx";
+import PreviewPlaybar from "../tools/playbar/PreviewPlaybar.jsx";
 import FileSidebar from "../tools/FileSidebar.jsx";
 import { animationControlsHaveContent } from "../tools/playbar/AnimationTimeControl.js";
 import QuickEdit from "../tools/quick-edit/QuickEdit.jsx";
@@ -37,29 +41,28 @@ const INSET = `${VIEWPORT_INSET_PX}px`;
 // (`left: 50%`) it would shrink to the half right of it, and the strip would wrap at half the view.
 const TOOLBAR_POSITION = Object.freeze({ top: INSET, left: INSET, right: INSET, bottom: VIEWPORT_STACK_BOTTOM });
 // On a phone with a file sidebar its one tile stands at the left of the strip's line (46px: a 36px
-// tile in its toolbar's padding and border), so the strip keeps clear of it on both sides, centred.
+// tile in its toolbar's padding and border): the strip starts 8px right of it, left-aligned, and
+// fits what it can in the room to the view's right inset. With no sidebar it is centred.
 const PHONE_SIDEBAR_TILE_ROOM = `${VIEWPORT_INSET_PX + 46 + 8}px`;
-const TOOLBAR_POSITION_PHONE_SIDEBAR = Object.freeze({ ...TOOLBAR_POSITION, left: PHONE_SIDEBAR_TILE_ROOM, right: PHONE_SIDEBAR_TILE_ROOM });
+const TOOLBAR_POSITION_PHONE_SIDEBAR = Object.freeze({ ...TOOLBAR_POSITION, left: PHONE_SIDEBAR_TILE_ROOM });
 // The file sidebar runs down the left edge, the viewer's full height within its inset: the cube is
 // in the bottom-right corner.
-// It keeps the view's top-left corner, unless it would reach under the strip, when it starts below
-// it (`--cad-sidebar-top`).
+// It keeps the view's top-left corner, never wider than the room left of the strip
+// (`--cad-file-sidebar-max-width`).
 // What stands in the top-right corner: the host's notice and Quick Edit's box (not its column).
 const CORNER_BOXES = "[data-viewport-top-right] :is([data-viewport-notice], [data-quick-edit-box])";
 // The sidebar sections Preview offers: posing the model and playing its routines.
-const PREVIEW_SECTIONS = Object.freeze(["position", "animation"]);
 // Preview's cover: at least this long, then until detail has been quiet this long, and never longer than the last.
 // Once quiet, the picture is checked this often until it has converged.
 // The cover waits at least MIN; at MAX it stops waiting for finer detail, and lets the picture on
 // screen finish converging for at most FINISH more.
 const PREVIEW_COVER_MIN_MS = 700, PREVIEW_COVER_QUIET_MS = 400, PREVIEW_COVER_MAX_MS = 5000, PREVIEW_COVER_FINISH_MS = 1000,
   PREVIEW_COVER_CONVERGE_MS = 50;
-const SIDEBAR_POSITION = Object.freeze({ top: `var(--cad-sidebar-top, ${INSET})`, left: INSET, bottom: INSET });
+const SIDEBAR_POSITION = Object.freeze({ top: INSET, left: INSET, bottom: INSET });
 // On a phone the sidebar is one tile at the top-left, on the strip's line, and its panel (the open
 // section, under tabs) runs down from under it to the view's bottom inset, clear of Quick Edit's
 // peek (`--cad-quick-edit-peek`, which the sheet publishes while it peeks).
 const SIDEBAR_POSITION_PHONE = Object.freeze({ top: INSET, left: INSET, bottom: `calc(var(--cad-quick-edit-peek, 0px) + ${INSET})` });
-const SIDEBAR_POSITION_PHONE_PREVIEW = Object.freeze({ top: INSET, left: INSET });
 
 /** One of the view's controls: a tile of the strip, or of Preview's corner, named on hover. */
 /** One of the view's controls in the navbar: its icon button, named on hover, below it. */
@@ -69,8 +72,11 @@ function NavbarControl({ label, active = undefined, disabled = false, onClick, c
       className={NAVBAR_CONTROL_CLASS} {...props}>{children}</Button>
   </TooltipHint>;
 }
-// Display's tile in the navbar: the navbar's own icon button.
-const NAVBAR_DISPLAY_TRIGGER_CLASS = `${NAVBAR_CONTROL_CLASS} [&>svg]:size-3.5!`;
+// The projection on screen, as an icon (a More menu's row on a phone's strip).
+function ProjectionIcon({ value }) {
+  const Icon = value === "perspective" ? PerspectiveProjectionIcon : OrthographicProjectionIcon;
+  return <Icon />;
+}
 
 function ViewControl({ label, disabled = false, tooltipSide = "top", onClick, children }) {
   return <ToolbarButton label={label} tooltipSide={tooltipSide} disabled={disabled} onClick={onClick} className={useStripButtonClass()}>
@@ -334,14 +340,15 @@ export default function RendererShell({ shell, tools, toolPanels = null, subTool
   // alone, not the tools, Quick Edit, the view actions or the cube; shown full size, all return.
   const compact = Boolean(view.appearance?.compact);
   const toolsHidden = chromeHidden || compact;
+  // A phone's strip starts beside the sidebar's tile where there is one, else it is centred.
+  const besideSidebarTile = mobile && !previewing && Boolean(sidebar || hasAnimation);
   // On a phone Annotate's controls are its chevron's menu on the strip.
   const stripTools = mobile ? tools.map(tool => tool.id === "annotate" ? { ...tool, menu: <AnnotationMenu annotation={frame.annotation} history={frame.history}
     colorScheme={colorScheme} onTakeUp={() => { if (!tool.active) tool.onSelect(); }} /> } : tool) : tools;
   // The controls at the top — the strip, a wrapped one, and the tool's row under it — are measured
   // into variables, so a tool change or a resize moves what hangs below them without redrawing the
-  // model or touching a saved size: on a desktop, whether the sidebar and Quick Edit would reach under
-  // them, in which case each starts below them instead of in its corner (`--cad-sidebar-top`,
-  // `--cad-top-right-top`).
+  // model or touching a saved size: on a desktop, the column's sides, which the sidebar's panel and the
+  // top-right corner (Quick Edit) keep clear of (`--cad-file-sidebar-max-width`, `--cad-top-right-left`).
   const topControls = useRef(null);
   useLayoutEffect(() => {
     const controls = topControls.current;
@@ -355,17 +362,17 @@ export default function RendererShell({ shell, tools, toolPanels = null, subTool
       const below = `${Math.round(VIEWPORT_INSET_PX * 2 + Math.max(top, ...rows.map(box => box.bottom)) - top)}px`;
       viewport.style.setProperty("--cad-tools-bottom", below);
       if (mobile || !rows.length) {
-        viewport.style.removeProperty("--cad-sidebar-top");
-        viewport.style.removeProperty("--cad-top-right-top");
+        viewport.style.removeProperty("--cad-file-sidebar-max-width");
+        viewport.style.removeProperty("--cad-top-right-left");
         return;
       }
-      const left = Math.min(...rows.map(box => box.left)), right = Math.max(...rows.map(box => box.right));
-      // The sidebar's toolbar, and its panel while a section is open.
-      const sidebarRight = Math.max(-Infinity, ...[...viewport.querySelectorAll("[data-file-sidebar-tools], aside[data-cad-file-sidebar][data-open]")]
-        .map(item => item.getBoundingClientRect().right));
-      viewport.style.setProperty("--cad-sidebar-top", sidebarRight > left ? below : INSET);
-      const corner = [...viewport.querySelectorAll(CORNER_BOXES)].map(item => item.getBoundingClientRect()).filter(box => box.width > 0);
-      viewport.style.setProperty("--cad-top-right-top", corner.length && Math.min(...corner.map(box => box.left)) < right ? below : INSET);
+      // The column's sides, the widest of its rows: the sidebar's panel stops short of the left one,
+      // and the top-right corner (Quick Edit) starts past the right one, an inset away, so neither
+      // ever reaches under the strip.
+      const box = viewport.getBoundingClientRect();
+      const left = Math.min(...rows.map(row => row.left)) - box.left, right = Math.max(...rows.map(row => row.right)) - box.left;
+      viewport.style.setProperty("--cad-file-sidebar-max-width", `${Math.max(0, Math.round(left - 2 * VIEWPORT_INSET_PX))}px`);
+      viewport.style.setProperty("--cad-top-right-left", `${Math.round(right + VIEWPORT_INSET_PX)}px`);
     };
     measure();
     if (typeof ResizeObserver === "undefined") return undefined;
@@ -384,7 +391,7 @@ export default function RendererShell({ shell, tools, toolPanels = null, subTool
     }
     return () => {
       resized.disconnect(); changed?.disconnect();
-      for (const name of ["--cad-tools-bottom", "--cad-sidebar-top", "--cad-top-right-top"]) viewport.style.removeProperty(name);
+      for (const name of ["--cad-tools-bottom", "--cad-file-sidebar-max-width", "--cad-top-right-left"]) viewport.style.removeProperty(name);
     };
   }, [toolsHidden, mobile, Boolean(sidebar), Boolean(references)]);
   // Display's tile is its mode's sphere; on a phone with no room for it, its More row shows the same.
@@ -519,23 +526,16 @@ export default function RendererShell({ shell, tools, toolPanels = null, subTool
 
               {/* Preview: the tools put away and the navbar kept (the way to other files), the model in
                   Render — the tools view never is — and still until Orbit is turned on. Its controls
-                  stand in the corners, always there, tiles with no surface under them: the top-right
-                  pair, its settings and the way out (an X), the settings a panel docked under them
-                  (Orbit, Render's own), closed as it opens; the top-left, the sidebar's Position and
-                  Animation (below). Nothing sits under the model. */}
-              {/* The view's controls at the navbar's right end (`view.navbarSlot`), the strip keeping to the
-                  tools: Display and Preview, for a 3D view (`useRendererShell`'s `previewable`), or
-                  in Preview its settings (a toggle, the panel docked at the view's top-right) and the
-                  way out. A host with no navbar has them over the view instead: Display and Preview
-                  ending the strip, Preview's pair in its top-right corner. */}
-              {inNavbar && shell.previewable && (previewing || !toolsHidden) ? createPortal(previewing ? <>
+                  are the navbar's (below): its settings, a panel docked at the view's top-right (Orbit,
+                  Render's own), closed as it opens, and the way out. A file with routines has its
+                  playbar under the model; there is no sidebar. */}
+              {/* Preview's own controls at the navbar's right end (`view.navbarSlot`): its settings (a toggle,
+                  the panel docked at the view's top-right) and the way out. The strip is hidden in Preview,
+                  so they stand there; a host with no navbar has them in Preview's top-right corner. */}
+              {inNavbar && shell.previewable && previewing ? createPortal(<>
                 <NavbarControl label="Preview settings" active={previewPanelOpen} disabled={shell.idle}
                   onClick={() => setPreviewPanelOpen(open => !open)} data-preview-settings=""><SlidersHorizontal className="size-3.5" aria-hidden="true" /></NavbarControl>
                 <NavbarControl label="Exit preview" onClick={leavePreview}><X className="size-3.5" aria-hidden="true" /></NavbarControl>
-              </> : <>
-                <DisplayPopover disabled={shell.idle} boundary={frame.hostElement} mode={frame.displayMode} projection={frame.projection}
-                  triggerClassName={NAVBAR_DISPLAY_TRIGGER_CLASS} tooltipSide="bottom" align="end">{frame.display}</DisplayPopover>
-                <NavbarControl label="Preview" disabled={shell.idle} onClick={enterPreview}><Play className="size-3.5" aria-hidden="true" /></NavbarControl>
               </>, view.navbarSlot) : null}
               <PreviewChrome active={previewing}
                 end={inNavbar ? null : <>
@@ -547,18 +547,26 @@ export default function RendererShell({ shell, tools, toolPanels = null, subTool
                 </>}
                 panel={previewPanelOpen ? <PreviewSettings orbit={orbitPlaying} onOrbitChange={shell.setOrbiting}
                   speed={frame.previewOrbitSpeed || 1} onSpeedChange={frame.setPreviewOrbitSpeed}
-                  onClose={() => setPreviewPanelOpen(false)} render={frame.display("render")} /> : null}>
+                  onClose={() => setPreviewPanelOpen(false)} render={frame.previewSettings} /> : null}>
 
               {/* The file explorer floats over the top-left corner, above the sidebar, which stays drawn under it. */}
-              {toolsHidden ? null : <div className="group/tool-stack pointer-events-none absolute z-20 flex flex-col items-center gap-2" style={mobile && !previewing && (sidebar || hasAnimation) ? TOOLBAR_POSITION_PHONE_SIDEBAR : TOOLBAR_POSITION}
+              {toolsHidden ? null : <div className={cn("group/tool-stack pointer-events-none absolute z-20 flex flex-col gap-2", besideSidebarTile ? "items-start" : "items-center")} style={besideSidebarTile ? TOOLBAR_POSITION_PHONE_SIDEBAR : TOOLBAR_POSITION}
                 data-mobile={mobile ? "" : undefined} data-cad-tool-groups=""><StripTouchProvider value={mobile}>
-                {/* Where there is no navbar, the view's controls end the strip: Display, then Preview. */}
-                <div ref={topControls} className="flex max-w-full shrink-0 flex-col items-center gap-2" data-cad-top-controls="">
-                  <FloatingToolBar tools={stripTools} touch={mobile} views={shell.previewable && !previewing && !inNavbar ? [
+                {/* The view's controls end the strip, after a rule: Projection, Display, then Preview (on a
+                    phone, always in its More menu). */}
+                <div ref={topControls} className={cn("flex max-w-full shrink-0 flex-col gap-2", besideSidebarTile ? "items-start" : "items-center")} data-cad-top-controls="">
+                  <FloatingToolBar tools={stripTools} touch={mobile} views={shell.previewable && !previewing ? [
+                    { id: "projection", label: "Projection", icon: <ProjectionIcon value={frame.projection.value} />, disabled: shell.idle,
+                      tile: <ProjectionPopover disabled={shell.idle} boundary={frame.hostElement} projection={frame.projection} />,
+                      // In a phone's More, a standard nested submenu of the two choices.
+                      submenu: () => <DropdownMenuRadioGroup value={frame.projection.value} onValueChange={frame.projection.onChange}>
+                        <DropdownMenuRadioItem value="orthographic"><OrthographicProjectionIcon className="size-4" />Orthographic</DropdownMenuRadioItem>
+                        <DropdownMenuRadioItem value="perspective"><PerspectiveProjectionIcon className="size-4" />Perspective</DropdownMenuRadioItem>
+                      </DropdownMenuRadioGroup> },
                     { id: "display", label: "Display", icon: DisplayIcon ? <DisplayIcon /> : null, disabled: shell.idle,
-                      tile: <DisplayPopover disabled={shell.idle} boundary={frame.hostElement} mode={frame.displayMode} projection={frame.projection}>{frame.display}</DisplayPopover>,
-                      popover: ({ anchor, open, onOpenChange }) => <DisplayPopover anchor={anchor} open={open} onOpenChange={onOpenChange}
-                        boundary={frame.hostElement} mode={frame.displayMode} projection={frame.projection}>{frame.display}</DisplayPopover> },
+                      tile: <DisplayPopover disabled={shell.idle} boundary={frame.hostElement} mode={frame.displayMode} grid={frame.grid} />,
+                      // In a phone's More, a standard nested submenu of the same list: the modes, then Grid.
+                      submenu: () => <DisplayMenuItems mode={frame.displayMode} grid={frame.grid} /> },
                     { id: "preview", label: "Preview", icon: <Play aria-hidden="true" />, disabled: shell.idle, onSelect: enterPreview,
                       tile: <ViewControl label="Preview" disabled={shell.idle} onClick={enterPreview}><Play aria-hidden="true" /></ViewControl> }
                   ] : []} />
@@ -578,16 +586,20 @@ export default function RendererShell({ shell, tools, toolPanels = null, subTool
               </ViewportTopRight>
 
               </PreviewChrome>
-              {/* The file's sections, and for a file with routines the shell's own Animation section after them.
-                  One sidebar for both views: in Preview its tiles are bare, Preview's top-left,
-                  and it offers Position and Animation alone (Preview's own pose and routine). */}
-              {toolsHidden || !(sidebar || hasAnimation) ? null : <FileSidebar style={mobile ? previewing ? SIDEBAR_POSITION_PHONE_PREVIEW : SIDEBAR_POSITION_PHONE : SIDEBAR_POSITION}
-                sections={previewing ? PREVIEW_SECTIONS : null} bare={previewing} phone={mobile && !previewing}
+              {/* The file's sections, and for a file with routines the shell's own Animation section after them:
+                  the tools view's alone. Preview has no sidebar (hidden, so a tree keeps its state); its
+                  routine is its playbar's, under the model. */}
+              {toolsHidden || !(sidebar || hasAnimation) ? null : <FileSidebar style={mobile ? SIDEBAR_POSITION_PHONE : SIDEBAR_POSITION}
+                hidden={previewing} phone={mobile}
                 layout={frame.toolStack} onLayoutChange={frame.changeToolStack}>
                 {sidebar}
                 {hasAnimation ? <AnimationSection key={frame.modelKey} runtime={playbackRuntime} disabled={viewerLoading || !scene}
                   autoplay={shell.autoplay} onAutoplayChange={shell.setAutoplay} /> : null}
               </FileSidebar>}
+
+              {/* Preview's playbar, for a file with routines: its own routine, under the model. */}
+              {previewing && hasAnimation ? <PreviewPlaybar key={frame.modelKey} runtime={playbackRuntime} disabled={viewerLoading || !scene}
+                autoplay={shell.autoplay} onAutoplayChange={shell.setAutoplay} /> : null}
 
               {/* Preview coming together underneath: the view as it was, held, until the picture is ready. */}
               <div aria-hidden={!previewCovered} data-preview-cover={previewCovered ? "" : undefined}

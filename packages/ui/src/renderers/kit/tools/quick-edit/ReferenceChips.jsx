@@ -20,7 +20,7 @@ import { PickGlyph, compactSuffix, hasPickGlyph } from "../../inspector/pickGlyp
  *   its part, then its kind's glyph and its number or count ("base ◧3", "base ◧×6").
  * @property {string} [id]  Its id in its file, as its card shows it: "o1.2.f3", "upper_arm".
  * @property {string | (() => string)} [copy]  What a click on it copies: its reference, the file's path and its
- *   id; or what it makes at the click (Quick Edit's Annotation: the annotation file's JSON).
+ *   id; or a reference resolved at the click. Annotation and measurement chips omit this.
  * @property {import("react").ReactNode} [card]  What it is, for its card: its key measurements.
  * @property {import("react").ReactNode} [icon]  Before its words: a measurement's ruler in its colour, the annotation's pen.
  * @property {string} [glyph]  Else, the glyph of what it names (`pickGlyph.jsx`: "solid" for a part, "face", "edge",

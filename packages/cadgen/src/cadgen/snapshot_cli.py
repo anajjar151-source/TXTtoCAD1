@@ -75,6 +75,7 @@ from cadgen.snapshot_core import (
     SELECTION_KEYS,
     SUPPORTED_JOB_KEYS,
     SnapshotError,
+    ValidatedDisplay,
     asset_url_for_path,
     check_mesh_render_job,
     clear_render_output_targets,
@@ -129,7 +130,8 @@ class SnapshotOptions:
     mode_specified: bool = False
     display: object = ""
     display_specified: bool = False
-    render: bool = False
+    grid: bool = False
+    preview: bool = False
     camera: object = None
     camera_specified: bool = False
     width: int | None = None
@@ -400,7 +402,8 @@ def apply_option_overrides_to_job(job: object, options: SnapshotOptions, *, cwd:
             options.video_specified,
             options.joint_values_specified,
             options.display_specified,
-            options.render,
+            options.grid,
+            options.preview,
             options.camera_specified,
             option_focus_hide_specified(options),
         ]
@@ -424,8 +427,12 @@ def apply_option_overrides_to_job(job: object, options: SnapshotOptions, *, cwd:
         next_job["jointValues"] = parse_joint_values_option(options.joint_values)
     if options.display_specified:
         next_job["display"] = load_display_option(options.display, cwd=cwd)
-    if options.render:
-        next_job["render"] = True
+    if options.grid:
+        # The grid joins whatever display the job asks for.
+        shown = load_display_option(next_job["display"] if next_job.get("display") is not None else {}, cwd=cwd)
+        next_job["display"] = ValidatedDisplay({**shown, "grid": True})
+    if options.preview:
+        next_job["preview"] = True
     if options.camera_specified:
         next_job["camera"] = parse_camera_option(options.camera)
     if options.animation_specified:
@@ -523,8 +530,10 @@ def load_job_from_options(options: SnapshotOptions, *, cwd: Path | None = None) 
         job["display"] = load_display_option(
             options.display, cwd=resolved_cwd, modes=option_display_modes(options)
         )
-    if options.render:
-        job["render"] = True
+    if options.grid:
+        job["display"] = ValidatedDisplay({**job.get("display", {}), "grid": True})
+    if options.preview:
+        job["preview"] = True
     if options.kinematics_specified:
         job["kinematics"] = parse_kinematics_option(options.kinematics)
     if options.animation_specified:
@@ -1121,10 +1130,10 @@ def prepare_render_job(
     validate_display_for_kind(display, kind=kind, input_label=input_path.name)
     job["display"] = display
     mode = normalize_render_mode(job.get("mode"))
-    if "render" in job and not isinstance(job["render"], bool):
-        raise SnapshotError("render must be a boolean")
-    if job.get("render") is True and mode != "view":
-        raise SnapshotError("render draws one view: it supports only view mode")
+    if "preview" in job and not isinstance(job["preview"], bool):
+        raise SnapshotError("preview must be a boolean")
+    if job.get("preview") is True and mode != "view":
+        raise SnapshotError("preview draws one view: it supports only view mode")
 
     validate_selection_keys(job)
     selection = job.get("selection") if is_plain_object(job.get("selection")) else {}
@@ -1465,6 +1474,42 @@ def _drawing_output_labels(job: Mapping[str, object]) -> list[str]:
     })
 
 
+def _plan_vector(value: object) -> list[float] | None:
+    if not isinstance(value, (list, tuple)) or len(value) != 3:
+        return None
+    if any(isinstance(item, bool) or not isinstance(item, (int, float)) or not math.isfinite(float(item)) for item in value):
+        return None
+    return [float(item) for item in value]
+
+
+# How far off straight down (or off +Y up) a plan view may be: rounding, never a tilt.
+_PLAN_TOLERANCE = 1e-6
+
+
+def drawing_plan_view(camera: object, label: str) -> dict[str, object]:
+    """A drawing's camera, checked: its plan view (``DRAWING_PLAN_VIEW``), or the refusal.
+
+    The window the Viewer's DXF pane shows, in the camera shape every job speaks: what a
+    Quick Edit's views carry, so ``cadgen snapshot --job`` frames each picture as the person
+    framed it. Anything else -- a preset, a tilt, a perspective -- describes a model in space.
+    """
+    if not is_plain_object(camera) or not set(camera) <= {"position", "target", "up", "orthographicHalfHeight"}:
+        raise SnapshotError(drawing_camera_refusal(label))
+    position, target = _plan_vector(camera.get("position")), _plan_vector(camera.get("target"))
+    up = _plan_vector(camera.get("up", [0, 1, 0]))
+    half = camera.get("orthographicHalfHeight")
+    if position is None or target is None or up is None or isinstance(half, bool) \
+            or not isinstance(half, (int, float)) or not math.isfinite(float(half)) or half <= 0:
+        raise SnapshotError(drawing_camera_refusal(label))
+    look = [position[axis] - target[axis] for axis in range(3)]
+    length = math.sqrt(sum(value * value for value in look))
+    up_length = math.sqrt(sum(value * value for value in up))
+    if length <= 0 or up_length <= 0 or abs(look[0]) > _PLAN_TOLERANCE * length or abs(look[1]) > _PLAN_TOLERANCE * length \
+            or look[2] <= 0 or abs(up[0]) > _PLAN_TOLERANCE * up_length or abs(up[2]) > _PLAN_TOLERANCE * up_length or up[1] <= 0:
+        raise SnapshotError(drawing_camera_refusal(label))
+    return {"position": position, "target": target, "up": [0.0, 1.0, 0.0], "orthographicHalfHeight": float(half)}
+
+
 def check_drawing_render_job(
     job: Mapping[str, object], *, input_path: Path, mode: str, **_context: object
 ) -> None:
@@ -1477,26 +1522,29 @@ def check_drawing_render_job(
     and quietly ignored. This is also the path `cadgen snapshot` routes a `.dxf`
     through, so the two cannot disagree.
 
+    What a drawing DOES take beyond its appearance is what the Viewer's DXF pane
+    can show and a Quick Edit's views carry: a plan view to frame
+    (``drawing_plan_view``), the annotation drawn over it (its marks on the sheet,
+    in drawing coordinates) and Measure's results.
+
     The flag half of the same cutover (`cadgen dxf snapshot --camera`) is
     refused while parsing, from the same sentences
     (`cadgen._internal.snapshot_door.DRAWING_RETIRED_OPTIONS`): one request, one
     answer, whichever surface it arrives on.
     """
     label = input_path.name
-    if job.get("annotation") is not None:
-        raise SnapshotError(f"an annotation is ink drawn on a model's parts in 3D; {DRAWING_IS}, so {label} has no parts or space to draw it in.")
-    if job.get("measurements") is not None:
-        raise SnapshotError(f"measurements are dimensions between points in 3D; {DRAWING_IS}, so {label} has no space to draw them in.")
     display = job.get("display") if is_plain_object(job.get("display")) else {}
     scene = sorted(f"display.{key}" for key in set(display) - DRAWING_DISPLAY_KEYS)
-    if job.get("render") is not None:
-        scene.insert(0, "render")
+    if job.get("preview") is not None:
+        scene.insert(0, "preview")
     if scene:
         raise SnapshotError(
             drawing_scene_refusal(", ".join(scene), label, plural=len(scene) != 1)
         )
-    if job.get("camera") is not None or _drawing_output_cameras(job):
+    if _drawing_output_cameras(job):
         raise SnapshotError(drawing_camera_refusal(label))
+    if job.get("camera") is not None:
+        job["camera"] = drawing_plan_view(job["camera"], label)
     if mode != "view":
         raise SnapshotError(drawing_mode_refusal(label))
     if job.get("scale") is not None:
@@ -1781,9 +1829,8 @@ async def run_snapshot_async(
     what comes back, and the public ``<format>.snapshot()`` verbs build the same
     options object. Nothing here prints, so the two cannot report differently.
 
-    ``renderer`` is a browser session the caller keeps open across runs (the CAD
-    Viewer's prompt renders, ``cadgen.viewer.prompt_files``): this run uses it and
-    leaves it open. ``report=False`` paints no progress and narrates nothing, for
+    ``renderer`` is an optional browser session the caller keeps open across runs:
+    this run uses it and leaves it open. ``report=False`` paints no progress and narrates nothing, for
     a caller that is not a terminal command.
     """
     enabled = enabled_kinds(kinds)

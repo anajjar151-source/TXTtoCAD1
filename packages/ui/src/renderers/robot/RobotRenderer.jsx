@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import * as THREE from "three";
-import { Box, MousePointer2, Spline } from "lucide-react";
-import { viewFeaturesForKind } from "@text-to-cad/core/common/viewSettings.js";
+import { Box, MousePointer2 } from "lucide-react";
+import { PositionIcon } from "../kit/tools/ChangedDot.jsx";
+import { scenePartCount, viewFeaturesForKind } from "@text-to-cad/core/common/viewSettings.js";
 import { URDF_JOINT_VALUE_EPSILON } from "@text-to-cad/core/lib/urdf/jointValues.js";
 import { resolveLocalAssetFileRef } from "@text-to-cad/core/lib/urdf/meshAssetUrl.js";
 import { createRobotScene } from "@text-to-cad/core/lib/urdf/robotScene.js";
@@ -20,6 +21,7 @@ import SelectFilterMenu from "../kit/tools/select/SelectFilterMenu.jsx";
 import { selects } from "../kit/tools/select/selectFilter.js";
 import { useDeclinedSelectReference, useWorkspaceDocument, workspaceLoadAlert } from "../workspace/useWorkspaceDocument.js";
 import PositionControls from "./PositionControls.jsx";
+import { positionValuesAreDefault } from "../kit/inspector/kinematicsControls.jsx";
 import { useRobotReferences } from "./robotReferences.jsx";
 import LinksSection from "./LinksSection.jsx";
 import SdfSection from "./SdfSection.jsx";
@@ -36,14 +38,25 @@ const SELECT_ICON = <MousePointer2 className="size-3" strokeWidth={2} aria-hidde
 const menuIcon = Icon => <Icon className="size-3.5" strokeWidth={2} aria-hidden="true" />;
 // What a robot's Select picks (`kit/tools/select/selectFilter.js`): its links, and its joints'
 // knobs, each on its own; it opens with both.
-const ROBOT_SELECT_KINDS = Object.freeze([{ id: "links", label: "Links", icon: menuIcon(Box) }, { id: "position", label: "Position", icon: menuIcon(Spline) }]);
+const ROBOT_SELECT_KINDS = Object.freeze([{ id: "links", label: "Links", icon: menuIcon(Box) }, { id: "position", label: "Position", icon: menuIcon(PositionIcon) }]);
 const ROBOT_SELECT_DEFAULT = Object.freeze(ROBOT_SELECT_KINDS.map(kind => kind.id));
 // Solid, cut by Clip: a robot is posed, never exploded.
-const FEATURES = viewFeaturesForKind("urdf");
 const CLIP_OFF = Object.freeze({ clip: { enabled: false, axis: "x", invert: false } });
 // Whether a pose has a joint off its opening pose: Position is set.
 const poseIsSet = pose => Boolean(pose) && Object.entries(pose.getSnapshot().values)
   .some(([name, value]) => Math.abs(value - (pose.defaults[name] ?? value)) > URDF_JOINT_VALUE_EPSILON);
+
+// The file sidebar's Position section, its tile's dot the tools view's joints off their defaults. It
+// reads the pose itself, and only whether it is off its defaults: a pose step renders it only when
+// that flips, and never the surface (a pose step renders no component of the renderer).
+function PositionSection({ pose, previewPose, revision }) {
+  const changed = useSyncExternalStore(pose.subscribe, () => !positionValuesAreDefault(pose.getSnapshot().values, pose.defaults));
+  return <ToolPanel id="position" title="Position" label="Position controls" fit="details" changed={changed}>
+    {/* Preview poses its own robot (`previewPose`). */}
+    <PositionControls key={`${revision}:${previewPose ? "preview" : "tools"}`} pose={previewPose || pose} />
+  </ToolPanel>;
+}
+
 function RobotSurface({ view, data }) {
   const document = useWorkspaceDocument({ view, data });
   const loaded = useRobotDocument({ entry: document.entry, resources: document.client.resources });
@@ -143,9 +156,11 @@ function RobotSurface({ view, data }) {
     read: () => ({ pose: { jointValues: pose.getSnapshot().values }, visibility: { hiddenPartIds } })
   } : null), [robot, pose, hiddenPartIds]);
 
+  // Parts where the robot draws several link meshes to colour.
+  const features = useMemo(() => viewFeaturesForKind("urdf", { parts: scenePartCount(scene) }), [scene]);
   const shell = useRendererShell({
     view, services: document.services, resource: document.resource, modelKey: document.modelKey, revisionKey: robot?.revision || "",
-    features: FEATURES, toolModes: ROBOT_TOOL_MODES, tool: tools.tool, previewable: true, preview, scene, sceneEffects: true,
+    features, toolModes: ROBOT_TOOL_MODES, tool: tools.tool, previewable: true, preview, scene, sceneEffects: true,
     sceneScaleMode: VIEWER_SCENE_SCALE.URDF, measurements: tools.measurements, deleteSelection: measure.removeSelected,
     load: { busy: (loaded.busy && !scene) || (Boolean(robot) && !scene), updating: loaded.busy && Boolean(scene), progress: loaded.progress, alert: loadAlert },
     live, escape, rendererState,
@@ -277,7 +292,7 @@ function RobotSurface({ view, data }) {
 
   // Select, its filter the chevron's menu: Position offered where a control can be driven (until
   // the robot has loaded that is not known, and it is offered meanwhile); then Annotate, Measure and Clip.
-  const sceneTools = useSceneTools({ shell, scene, features: FEATURES, state: tools, measurable: true, clearParts: clearSelection });
+  const sceneTools = useSceneTools({ shell, scene, features, state: tools, measurable: true, clearParts: clearSelection });
   const strip = [
     shell.tools.own({ id: ROBOT_TOOL.SELECT, label: "Select", icon: SELECT_ICON,
       menu: <SelectFilterMenu value={selectFilter} kinds={!robot || posable ? ROBOT_SELECT_KINDS : ROBOT_SELECT_KINDS.slice(0, 1)}
@@ -293,10 +308,7 @@ function RobotSurface({ view, data }) {
       <SdfSection info={robot?.description?.sdf || null} />
     </ToolPanel> : null}
     {/* Headed "Position"; its Pose row's Default puts the joints back. */}
-    {posable && pose ? <ToolPanel id="position" title="Position" label="Position controls" fit="details">
-      {/* Preview poses its own robot (`previewPose`). */}
-      <PositionControls key={`${robot.revision}:${previewPose ? "preview" : "tools"}`} pose={previewPose || pose} />
-    </ToolPanel> : null}
+    {posable && pose ? <PositionSection pose={pose} previewPose={previewPose} revision={robot.revision} /> : null}
   </>;
 
   // What is selected, for Quick Edit: each link (an object by its link) as a reference into the

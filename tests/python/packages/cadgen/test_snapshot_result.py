@@ -367,7 +367,8 @@ class PublicVerbs(unittest.TestCase):
         for door in ("stl", "threemf", "glb"):
             with self.subTest(door=door):
                 mesh = parameters(f"cadgen.{door}")
-                self.assertLessEqual({"camera", "display", "render"}, mesh)
+                self.assertLessEqual({"camera", "display", "grid", "preview"}, mesh)
+                self.assertNotIn("render", mesh, "Preview's look is --preview")
                 for absent in ("kinematics", "focus", "hide", "joint_values"):
                     self.assertNotIn(absent, mesh, f"{absent} has nothing to act on here")
 
@@ -375,7 +376,7 @@ class PublicVerbs(unittest.TestCase):
         # flat, so there is no scene to stage and nothing to pose or frame.
         drawing = parameters("cadgen.dxf")
         self.assertIn("appearance", drawing)
-        for absent in ("camera", "display", "mode", "view_labels",
+        for absent in ("camera", "display", "grid", "preview", "mode", "view_labels",
                        "kinematics", "focus", "hide", "joint_values", "section"):
             self.assertNotIn(absent, drawing, f"{absent} describes a scene a drawing does not have")
 
@@ -383,7 +384,7 @@ class PublicVerbs(unittest.TestCase):
             with self.subTest(door=door):
                 robot = parameters(f"cadgen.{door}")
                 self.assertIn("joint_values", robot)
-                self.assertLessEqual({"camera", "display", "render"}, robot)
+                self.assertLessEqual({"camera", "display", "grid", "preview"}, robot)
                 for absent in ("kinematics", "focus", "hide"):
                     self.assertNotIn(absent, robot, f"{absent} requires STEP topology")
 

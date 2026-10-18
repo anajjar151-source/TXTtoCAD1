@@ -58,8 +58,8 @@ export function useStepSelectionChips({ stepTreeRoot, selectedMeshData = null, g
  * (`kit/shell/RendererShell.jsx`).
  *
  * `selectActive`: Features is on screen, which is when a pick is scrolled to. `selectMode` is the
- * Select tool's geometry, which the tree's disclosure follows. Reaching for a Position control
- * (`onReachPosition`) puts any other motion at rest.
+ * Select tool's geometry, which the tree's disclosure follows. Setting a Position control puts any
+ * other motion at rest (the motion hook's `claimPosition`); pressing one sets nothing.
  */
 export function useStepPanels({
   selectActive, selectedEntry, viewerLoading,
@@ -73,7 +73,7 @@ export function useStepPanels({
   // The menu a tree row carries: a node's part menu descriptor, and the actions behind it.
   menuForNode = null, partMenuActions = null,
   treeSelectionDisabled = false, selectMode = 'all', loadingGeometry = false,
-  positionRuntime = null, onReachPosition = null,
+  positionRuntime = null, positionChanged = false,
   // The viewport's hover (`workbench/hoverStore.js`): a large tree under Faces or Edges asks for the
   // topology of the part the pointer rests on.
   hoverStore = null,
@@ -96,12 +96,10 @@ export function useStepPanels({
     exitAllIsolate, togglePartVisibility, showAll, hoverTreeNode, nodeMenu, menuActions]);
   const loadTopology = useLatestCallback(geometryInspection?.onLoadTopology);
   const clearSelection = useLatestCallback(onClearSelection);
-  const reachPosition = useLatestCallback(onReachPosition);
   if (!selectedEntry) return null;
   const position = buildPositionSection({ poseRuntime: positionRuntime });
   if (!isAssemblyView && !position) return null;
   const disabled = treeSelectionDisabled || viewerLoading;
-  const reach = () => reachPosition?.();
   return <>
     {isAssemblyView ? <ModelingTree key={`${selectedEntry.file}:${geometryInspection?.revision}`}
       stepRoot={stepTreeRoot} active={selectActive} mode={selectMode} loading={loadingGeometry} disabled={disabled}
@@ -111,8 +109,8 @@ export function useStepPanels({
     /> : null}
     {/* Headed "Position"; its Pose row's Default puts the joints back. Another tool puts Position
         down, and the values stay. */}
-    {position ? <ToolPanel id="position" title={position.title} label="Position controls" fit="details">
-      <div onPointerDownCapture={reach} onFocusCapture={reach}>{position.content}</div>
+    {position ? <ToolPanel id="position" title={position.title} label="Position controls" fit="details" changed={positionChanged}>
+      {position.content}
     </ToolPanel> : null}
   </>;
 }

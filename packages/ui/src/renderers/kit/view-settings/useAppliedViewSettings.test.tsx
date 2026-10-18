@@ -21,17 +21,17 @@ it('keeps controls authoritative while preparation is pending, including StrictM
     settled = applied;
     useEffect(() => { if (applied.revision) applied.binding.complete(applied.revision); }, [applied.revision]);
     return <><button onClick={() => store.selectMode('xray')}>X-ray</button>
-      <button onClick={() => store.patchMode("xray", { opacity: 0.5 })}>Opacity</button>
+      <button onClick={() => store.selectMode('parts')}>Parts</button>
       <button onClick={() => store.selectMode('solid')}>Solid</button>
-      <output>{desired.view.mode}:{desired.view.surfaces.opacity}</output></>;
+      <output>{desired.view.mode}:{desired.view.surfaces.colorMode}</output></>;
   }
   render(<StrictMode><Harness /></StrictMode>);
   fireEvent.click(screen.getByText('X-ray'));
-  fireEvent.click(screen.getByText('Opacity'));
-  expect(requested.view.surfaces.opacity).toBe(0.5);
+  fireEvent.click(screen.getByText('Parts'));
+  expect(requested.view.surfaces.colorMode).toBe('by-part');
   expect(settled.scene.view.mode).toBe('solid');
   await act(async () => { finish(); });
-  await waitFor(() => expect(settled.scene.view.surfaces.opacity).toBe(0.5));
+  await waitFor(() => expect(settled.scene.view.mode).toBe('parts'));
   await waitFor(() => expect(settled.status.pending).toBe(false));
   fireEvent.click(screen.getByText('Solid'));
   await waitFor(() => expect(settled.scene.view.mode).toBe('solid'));

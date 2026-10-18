@@ -167,8 +167,8 @@ none.
 | URDF / SRDF / SDF | Select, Annotate, Measure, Clip; then Display and Preview |
 | GLB | Select, Annotate, Measure, Explode (several rigid nodes that draw), Clip; then Display and Preview |
 | 3MF | Select, Annotate, Measure, Clip; then Display and Preview |
-| STL | Annotate, Clip, nothing in hand as it opens; then Display and Preview |
-| DXF | none: a 2D canvas, with no strip |
+| STL | Select (in hand, the view's navigation: an STL picks nothing), Annotate, Clip; then Display and Preview |
+| DXF | Select (in hand, and the view's hand: a drag pans, a tap picks an entity), Annotate, Measure; no view controls: a drawing is 2D |
 
 There is no activity dot. A thin rule parts the tools from the view's controls, which
 are no tools (see [Ownership and layout](#ownership-and-layout)). Position is no tool:
@@ -195,7 +195,7 @@ Explode or Clip with its effect set takes it up again, as it is; unset, it start
 | --- | --- | --- | --- |
 | Select | The default tool of every 3D file but an STL; picks what its filter ticks, or a GLB's nodes, a 3MF's objects (Shift adds; Delete deletes annotations and measurements); what is picked is Quick Edit's chips | None: its filter is the chevron after its button | The selection stays, lit and in Quick Edit, under any tool |
 | Annotate | Draws on the view | Its tools, what is drawn next, Undo, Redo and Clear annotations (on a phone, the menu of a chevron after its tile instead) | The annotations stay in the model, their chip in Quick Edit; the tool in hand stays, the strip's Annotate showing its icon |
-| Measure | Arms picking between points on the model (a STEP's exact vertices, edges and faces; a mesh's triangles, approximately, in its file's unit); each result a chip in Quick Edit, in its colour | None on a STEP; on a mesh, the model's size and Measure the size | Unfinished picks are cancelled; completed measurements stay, Quick Edit's chips |
+| Measure | Arms picking between points on the model (a STEP's exact vertices, edges and faces; a mesh's triangles, approximately, in its file's unit; a drawing's ends, centres and lines, in the unit it declares, else "units"); each result a chip in Quick Edit, in its colour | None | Unfinished picks are cancelled; completed measurements stay, Quick Edit's chips |
 | Explode / Clip | The effect as it is set, or neutral; an edit applies it (Explode's, as a motion: see below) | The slider, its amount beside it, Reset (Clip's: its axis first, and Flip clip before Reset) | The effect stays on the model |
 
 **One motion at a time.** Every tool's state stands beside every other's — the selection,
@@ -333,7 +333,9 @@ Model tree (`STEP_PART_VIEW_FEATURES`).
 whatever tool is in hand — the strip is for using tools, the sidebar for reading the file: a STEP
 assembly's **Model tree** (a part file, whose tree would be its one row, has none), then
 **Position**, where the file has joints to move; a robot's **Links**, an `.sdf`'s **SDF**, then
-**Position**, where a joint can be driven; and, after them, the shell's own **Animation** for a
+**Position**, where a joint can be driven; a drawing's **Layers**, where it has four or more
+layers or any block reference (a flat pattern's CUT and BEND has none): each layer's pen, name,
+entity count and eye, its block references under it; and, after them, the shell's own **Animation** for a
 file with routines (`kit/tools/playbar/AnimationSection.jsx`). A file with none of them has no
 sidebar. It is a toolbar of its own at the view's top-left, 8px in, on the strip's line and of
 its surface, padding and 24px tiles (`data-file-sidebar-tools`, "File sidebar"): one tile per
@@ -481,60 +483,52 @@ pick.
 
 ## Display settings and section primitives
 
-Display is not a tool. Its button at the navbar's right end shows the current mode's sphere icon and
-opens a compact popover. The order is Display, then Preview. Its root has **Display Mode**
-and **Projection** section labels, with no title or close-button row. Both sections use
-right-aligned checkmarks for the selected choice. Clicking outside or pressing Escape closes
-the popover. Opening it leaves the active tool and its controls in place. A 2D view has no
-Display or Preview button.
+Display is not a tool. Its tile ends the strip after the strip's rule, between Projection and
+Preview, and shows the current mode's sphere icon. It opens a stock shadcn dropdown menu
+(`DisplayPopover.jsx`): a muted **Display** label, the modes as a `DropdownMenuRadioGroup`,
+a separator, then **Grid**, a `DropdownMenuCheckboxItem`. On a phone the strip's **More**
+menu has a Display row whose nested submenu is the same list (`DisplayMenuItems`), with no
+label. Checks sit at the row's right end. Choosing a mode closes the menu; ticking Grid
+toggles it and leaves the menu open (`onSelect` prevents the close). Clicking outside or
+pressing Escape closes it. Opening it leaves the active tool and its controls in place. A
+2D view has no Display or Preview control.
 
-The modes are Solid, X-ray, Hidden line and Wireframe, filtered by the view's injected
-capabilities (`DisplayModeOptions.js`). Render is no display mode: Preview draws the model in
-Render whatever the file's mode, and Render's settings page is Preview's
-settings (see [Preview](#camera-animation-and-preview)). Each row has a choice with the mode's sphere and name. A single settings
-button (`Settings2`) sits at the top right, inline with the Display Mode label, and edits
-the currently selected mode. It has an accessible name and no tooltip. Clicking a mode
-selects its remembered settings and closes the popover. The settings button is 20px with a
-12px icon, as a panel heading's buttons are. It opens the selected mode's form in the same
-surface, headed by a back button and **Settings**. The form follows the
-selected mode if it changes while open. The root and every settings page share one compact
-width (13rem, capped to the viewer); navigation never changes that width. Back returns
-focus to the heading's settings button. There is no Custom state and Grid is a setting,
-not a mode.
+Display is a choice of mode and the Grid switch, and nothing else: a mode has no settings
+of its own, and there is no settings page. The modes, in order, are **Solid** (shaded with
+the model's CAD edges, the default), **Shaded** (no edges), **Parts** (Solid with each part
+its own colour), **X-ray**, **Hidden line** and **Wireframe**, filtered by the view's
+injected capabilities (`viewFeaturesForKind`, `DisplayModeOptions.js`): a STEP assembly
+offers all six, a STEP part file all but Parts, and a file without CAD edges (STL, 3MF, GLB,
+a robot) Solid, with Parts when it has several parts, objects or links. **Grid** draws the
+measuring grid in every mode, off by default. Each row has its icon, the sphere drawn as the
+mode draws a model (and a tile of floor grid for Grid). Render is no display mode: Preview
+draws the model in Render whatever the file's mode, with its own settings (see
+[Preview](#camera-animation-and-preview)). Per-file storage keeps the mode and the grid;
+old-shaped stored display settings are dropped setting by setting, never migrated.
+Projection is a menu of its own, shared, orthographic by default; Preview's Render resolves
+to perspective while preserving the shared choice.
 
-| Mode | Settings |
-| --- | --- |
-| Solid | Part colours, Flat shading, Edges and edge colour, Grid, Axes |
-| Render (Preview's settings) | Part colours, Lighting, Background, Floor |
-| X-ray | Part colours, Surface opacity, edge colour, Grid, Axes |
-| Hidden line / Wireframe | Edge colour, Grid, Axes |
+Preview's settings panel (`PreviewSettings.jsx`, its body `PreviewRenderSettings.jsx`) is
+the one settings form: Orbit, then Render's Part colours, Lighting, Background and Floor.
+It shows all groups under static section headings and dividers, with no collapsible
+sections or cascading settings menus. A heading is 24px of regular `text-tiny` in the
+foreground colour, a rule above every one but the first. A feature that switches on and off
+(Orbit, Floor) is the checkbox at its heading's right end, the title naming it; there is no
+separate row for it. While the feature is off its section is that heading alone. Every
+setting is one 24px row: its label in a 4rem muted column, its control filling the rest, so
+a form's controls start on one line. A label is short under its heading ("Colour",
+"Opacity" under Floor); the control's accessible name stays whole ("Floor opacity"). A
+dropdown or colour is as wide as its value, at the row's right end. Sliders are shadcn's,
+as everywhere, with a committed value field after them. By part's palette is a row of
+swatches, then add and remove. Choices use Select controls. Continuous values use compact
+slider and committed-number fields; their keyboard input stays with the field. Colours
+retain swatches and a custom colour picker. Floor is on by default, at the model's Z=0
+plane. A long form scrolls within the available viewer height. A nested Select or colour
+picker owns Escape and outside interaction before its parent surface. The last item is
+**Reset to default**, disabled at Preview's defaults; it removes only Preview's overrides,
+never the display.
 
-Settings forms show all groups under static section headings and dividers, with no
-collapsible sections or cascading settings menus. A heading is 24px of regular `text-tiny`
-in the foreground colour, a rule above every one but the first. A feature that switches on
-and off (Edges, Floor, Grid, Axes) is the checkbox at its heading's right end, the title
-naming it; there is no separate row for it. While the feature is off its section is that
-heading alone, so a form of mostly-off features stays short. Every setting is one 24px row: its label in a 4rem
-muted column, its control filling the rest, so a form's controls start on one line. A label
-is short under its heading ("Colour", "Opacity" under Grid); the control's accessible name
-stays whole ("Grid opacity"). A dropdown or colour is as wide as its value, at the row's
-right end. Sliders are shadcn's, as everywhere, with a
-committed value field after them. By part's palette is a row of swatches, then add and remove.
-On/off controls keep the popover open. Choices use
-Select controls. Continuous values use compact slider and committed-number fields; their
-keyboard input stays with the field. Colours retain swatches and a custom colour picker;
-By part keeps its editable palette. Grid and Axes are independent, off by default. Floor is
-on by default in Render, at the model's lowest point. Settings the view does not offer are
-absent. A long form scrolls within the available viewer height. A nested Select or colour
-picker owns Escape and outside interaction before its parent popover.
-
-The last item is **Reset to default**, disabled at that mode's defaults. It removes only that
-mode's overrides, preserving every other mode, the shared camera and appearance, Clip and
-Explode. Per-file storage remembers each mode independently. Old-shaped stored display
-settings are dropped, never migrated. Projection is shared, orthographic by default; the
-Preview's Render resolves to perspective while preserving the shared choice.
-
-Display uses shared settings field primitives under its static headings; other inspector
+Preview's settings use shared settings field primitives under their static headings; other inspector
 sections retain their own disclosure rules. Hover, focus and rendering never write
 settings. Light and dark are the app menu's Theme.
 
@@ -697,11 +691,10 @@ they came, whatever their kind. A chip's copy pasted into the note is a pill the
 drawn as the chip is, 20px like the note's lines so it sits in its rows without spacing
 them out. A click on a pill selects it whole, highlighted in the selection's colour, so
 Backspace, Delete or typing replaces it as it would selected text. Its chips are
-**Annotation** (a click copies the path of its `.annotation.json` file, what `cadgen snapshot
---annotation` takes), each measurement (the ruler in its colour and its reading; a click copies the path
-of a file holding it as a snapshot job's `measurements` entry, what `cadgen snapshot
---measurements` takes; the views the note carries draw every one, and its job file lists
-them), then the selection. A host that keeps no prompt files copies the JSON itself. A written note keeps it open whatever
+**Annotation** (its X clears the ink), each measurement (the ruler in its colour and its
+reading, with a details card and an X to remove it), then the selection. Annotation and
+measurement chips do not copy references or write files. Copy Prompt, Queue and Send
+include their data in the snapshot packet; only selection chips copy individual references. A written note keeps it open whatever
 is picked, even with nothing picked or annotated, until the X. The X clears everything:
 the note, the selection (as a press on the model's background does), the annotations and the
 measurements, so the box goes. A note that has gone (Copy Prompt, Queue, Send) clears the same way.
@@ -729,20 +722,26 @@ first. While there is no note they are disabled, dimmed but still drawn:
 - **Send** (up arrow), where the host can post a message: the note goes now, as the
   person's message.
 
-Every way the note goes carries the same files, made at the press: a picture of each
-view it carries — the view on screen as it goes, and each its annotations were drawn in,
-one such view the same as the one on screen standing for it — rendered as a snapshot
-renders (solid, light, orthographic, the ink in its own colours) whatever the view
-showed; those views as a snapshot job file; and the annotations as an annotation file
-(`.annotation.json`).
+Every prompt captures the current view and the recorded views with remaining ink.
+If the current view matches a recorded view, its exact current framing replaces
+that entry for this export; otherwise a `current view` job is appended. Text and
+selection alone also capture the current view. The packet stores shared input,
+annotation and measurements once, with a `jobs` list of view states.
+At Copy, Queue or Send, packets up to 1024 bytes of compact UTF-8 JSON are included
+in the prompt as JSON. Larger packets are written to system temporary storage as
+one `.snapshot.json` and named by path. Drawing, selecting and typing write nothing.
+Captured 3D views preserve projection and lens. No PNG is rendered or attached.
+To render inline JSON, the receiving agent saves it to a temporary file first,
+then runs `cadgen snapshot --job <file>`.
+
 
 Queue and Send clear the note and what it carries, and so close the box, once the
 note has gone. Copy Prompt keeps it all, since nothing has gone yet: its button
 shows a tick for a moment. A failure keeps the note and says why in the box. The message is
 one format, sent, queued or copied: what the person wrote; then `File: <path>`; then
 `References:` and one reference per line; then each file that travels as a file by its
-label and path — `Current view:`, `View 1:`, `Views (cadgen snapshot --job):`,
-`Annotation:` (a picture sent beside the text is not named).
+label and path — `Snapshot (cadgen snapshot --job):` — or the compact object under
+`Snapshot JSON (cadgen snapshot --job):`.
 
 ## Camera, animation and Preview
 

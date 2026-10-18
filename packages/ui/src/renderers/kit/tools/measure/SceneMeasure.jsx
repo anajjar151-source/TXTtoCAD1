@@ -1,11 +1,7 @@
 import { useEffect, useRef } from "react";
-import * as THREE from "three";
-import { Ruler, RulerDimensionLine } from "lucide-react";
-import { ToolbarButton } from "@text-to-cad/ui/primitives/toolbar-button";
+import { Ruler } from "lucide-react";
 import { projectWorldPointToClient } from "@text-to-cad/core/lib/viewer/measureRuler.js";
-import { boundsMeasurePicks, meshMeasurePick } from "@text-to-cad/core/lib/viewer/meshMeasure.js";
-import { boundsInUnits } from "@text-to-cad/core/lib/viewer/sceneUnits.js";
-import SubToolbar, { SubToolbarValue } from "../SubToolbar.jsx";
+import { meshMeasurePick } from "@text-to-cad/core/lib/viewer/meshMeasure.js";
 import { usePointerPick } from "../select/usePointerPick.js";
 import { useMeasureOverlay } from "./useMeasureOverlay.js";
 
@@ -68,43 +64,4 @@ export function SceneMeasureOverlay({ viewport, scene, measure, picking, preview
     viewerReadyTick: viewport.viewerReadyTick
   });
   return <canvas ref={canvasRef} className="absolute inset-0 z-10 h-full w-full touch-none" style={{ pointerEvents: "none" }} aria-hidden="true" data-scene-measure="" />;
-}
-
-/** What `scene` draws now, as one box in its own coordinates; null for nothing drawn. */
-function drawnBounds(scene) {
-  const box = new THREE.Box3();
-  scene?.object3D?.updateMatrixWorld(true);
-  scene?.object3D?.traverse((object) => {
-    // A cut's stencil and a highlight's ghost are hung under the mesh they decorate.
-    if (object.isMesh && object.visible && !object.parent?.isMesh) box.expandByObject(object, false);
-  });
-  return box.isEmpty() ? null : { min: box.min.toArray(), max: box.max.toArray() };
-}
-
-const SIZE_DECIMALS = Object.freeze({ m: 3, cm: 1, mm: 1, "µm": 0, in: 2, ft: 3 });
-
-/**
- * Measure's row under the strip: the model's overall size as drawn now (its box, in the file's
- * unit, approximate), and a button that adds that size to the measurements — the box's three
- * edges, X, Y and Z — so a note can carry it.
- *
- * @param {{ scene: object | null, measure: ReturnType<typeof import("./useMeasureSession.js").useMeasureSession>, disabled?: boolean }} props
- */
-export function MeasureSizeBar({ scene, measure, disabled = false }) {
-  const units = scene?.units;
-  const bounds = units ? drawnBounds(scene) : null;
-  const size = bounds ? boundsInUnits(bounds, units) : null;
-  const digits = SIZE_DECIMALS[units?.unit] ?? 2;
-  const text = size ? `≈ ${[0, 1, 2].map(axis => (size.max[axis] - size.min[axis]).toFixed(digits)).join(" × ")}${units.unit ? ` ${units.unit}` : ""}` : "";
-  const addSize = () => {
-    measure.cancelDraft();
-    for (const [start, end] of boundsMeasurePicks(bounds, units)) { measure.onPick(start); measure.onPick(end); }
-  };
-  return <SubToolbar label="Measure controls" data-model-tool="measure">
-    <span className="shrink-0 pl-1.5 pr-1 text-tiny text-foreground">Size</span>
-    <SubToolbarValue data-measure-size="">{text}</SubToolbarValue>
-    <ToolbarButton label="Measure the size" disabled={disabled || !bounds} onClick={addSize}>
-      <RulerDimensionLine className="size-3" strokeWidth={2} aria-hidden="true" />
-    </ToolbarButton>
-  </SubToolbar>;
 }

@@ -59,8 +59,14 @@
 [data-viewer-layout="mobile"] [data-cad-file-sidebar] :is([data-pose-menu], [data-animation-routine] button, input[type="text"]) { height: 32px; }
 [data-viewer-layout="mobile"] [data-cad-file-sidebar] :is([data-pose-row], [data-animation-routine]) { height: 44px; }
 [data-viewer-layout="mobile"] [data-cad-file-sidebar] [data-animation-transport] { height: 44px; }
-/* A joint's value field level with its slider, not centred on the label and slider together. */
-[data-viewer-layout="mobile"] [data-cad-file-sidebar] [data-position-control] { align-items: end; }
+/* A joint's row as on a desktop: its label tight over its slider (5px to the track), the value field
+ * centred on the two, the rows 12px apart — a label reads as its slider's, not the one above's. The
+ * slider draws a 16px band; its 36px touch band reaches over the label's foot and the gap, invisibly. */
+[data-viewer-layout="mobile"] [data-cad-file-sidebar] [data-position-control] { padding-block: 3px; }
+[data-viewer-layout="mobile"] [data-cad-file-sidebar] [data-position-control] :has(> [data-slot="slider"]) { margin-top: 0; }
+[data-viewer-layout="mobile"] [data-cad-file-sidebar] [data-position-control] [data-slot="slider"] { height: 16px; }
+[data-viewer-layout="mobile"] [data-cad-file-sidebar] [data-position-control] [data-slot="slider"]::before { content: ""; position: absolute; inset: -10px 0; }
+[data-viewer-layout="mobile"] [data-cad-file-sidebar] [data-position-control] [data-file-sheet-field-label] { line-height: 16px; }
 [data-viewer-layout="mobile"] [data-cad-file-sidebar] [data-animation-transport] button { width: 32px; height: 32px; }
 
 @layer base {

@@ -91,14 +91,17 @@ async function open(t, file, { record = null } = {}) {
 const ready = pane => pane.locator('[aria-busy="false"] > div > canvas').first().waitFor();
 
 // A GLB of two nodes that draw has a GLB's every tool on its strip, Select in hand; its view's
-// controls end the navbar: Display, then Preview.
+// controls end the strip after its rule: Projection, Display, then Preview.
 const GLB_TOOLS = ['Select:true', 'Annotate:false', 'Measure:false', 'Explode:false', 'Clip:false'];
 const glbTools = async (pane) => {
   assert.deepEqual(await pane.getByRole('group', { name: 'Interaction tools' }).getByRole('button')
-    .evaluateAll(buttons => buttons.filter(button => button.hasAttribute('aria-pressed')).map(button => `${button.getAttribute('aria-label')}:${button.getAttribute('aria-pressed')}`)),
+    .evaluateAll(buttons => buttons.filter(button => button.hasAttribute('aria-pressed') && !button.closest('[data-view-controls]')).map(button => `${button.getAttribute('aria-label')}:${button.getAttribute('aria-pressed')}`)),
   GLB_TOOLS, 'Select, Annotate, Measure, Explode and Clip');
-  assert.deepEqual(await pane.locator('[data-viewer-navbar] [data-view-controls]').getByRole('button').evaluateAll(buttons => buttons.map(button => button.getAttribute('aria-label'))),
-    ['Display mode: Solid', 'Preview'], 'its view\'s controls end the navbar');
+  const strip = pane.getByRole('group', { name: 'Interaction tools' });
+  assert.deepEqual(await strip.locator('[data-view-controls]').getByRole('button').evaluateAll(buttons => buttons.map(button => button.getAttribute('aria-label'))),
+    ['Projection: Orthographic', 'Display mode: Solid', 'Preview'], 'its view\'s controls end the strip');
+  assert.equal(await strip.locator('[data-strip-rule] + [data-view-controls]').count(), 1, 'after the strip\'s rule');
+  assert.equal(await pane.locator('[data-viewer-navbar] [data-view-controls] button').count(), 0, 'nothing of the view in the navbar');
   for (const name of ['Orbit', 'Draw', 'Position']) assert.equal(await pane.getByRole('button', { name, exact: true }).count(), 0, name);
 };
 /** World point -> page coordinates, from the camera the viewport publishes. */
@@ -124,24 +127,26 @@ async function openSection(pane, name) {
   await pane.locator(`[data-tool-panel][aria-label="${name}"]`).waitFor();
 }
 const animationSection = pane => pane.locator('[data-tool-panel][aria-label="Animation"]');
-const displayButton = pane => pane.locator('[data-viewer-navbar] [data-view-controls]').getByRole('button', { name: /^Display mode: / });
-// Display's settings: its per-mode settings page.
+const displayButton = pane => pane.locator('[data-cad-toolbar] [data-view-controls]').getByRole('button', { name: /^Display mode: / });
+// Preview's playbar, under the model, for a file with routines (Preview has no file sidebar).
+const playbar = pane => pane.getByRole('toolbar', { name: 'Animation playback', exact: true });
+// Display's menu: the modes, then the Grid switch.
 async function openDisplay(pane) {
   await displayButton(pane).click();
-  await pane.page().getByRole('button', { name: 'Solid settings', exact: true }).click();
-  await pane.page().locator('[data-display-settings="solid"]').waitFor();
+  await displayPanel(pane).waitFor();
 }
 // The display modes Display's menu offers, by id.
 async function displayModes(pane) {
   await displayButton(pane).click();
-  const menu = pane.page().locator('[role=dialog][aria-label="Display mode"]');
+  const menu = displayPanel(pane);
   const modes = await menu.locator('[data-display-mode-option]').evaluateAll(items => items.map(item => item.getAttribute('data-display-mode-option')));
   await pane.page().keyboard.press('Escape');
   await menu.waitFor({ state: 'detached' });
   return modes;
 }
-// Display's settings: a dropdown, portaled out of the viewer.
-const displayPanel = pane => pane.page().locator('[data-display-settings="solid"]');
+// Display's menu: a dropdown, portaled out of the viewer.
+// Its accessible name is its tile's ("Display mode: Solid"); its own label is Display.
+const displayPanel = pane => pane.page().locator('[role=menu][aria-label="Display"]');
 // The viewport's own pixels, without any chrome over them: what a host capture returns.
 async function capture(page) {
   const encoded = await page.evaluate(async () => {
@@ -180,7 +185,7 @@ const differingPixels = (left, right) => {
   return count;
 };
 const settle = page => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-// Render is Preview's: in by Preview and out by Exit preview, both in the navbar, each once the view has
+// Render is Preview's: in by Preview at the strip's end and out by Exit preview in the navbar, each once the view has
 // come together under its cover.
 async function togglePreview(page, pane, enter) {
   await pane.getByRole('button', { name: enter ? 'Preview' : 'Exit preview', exact: true }).click();
@@ -221,20 +226,18 @@ test('a static GLB opens on its native scene in Select: display settings, orbit,
   await glbTools(pane);
   assert.equal(await pane.locator('[data-quick-edit-box]').count(), 0, 'Quick Edit opens on a pick or a mark, never by itself');
   assert.equal(await pane.locator('[data-view-controls]').getByRole('button', { name: 'Preview', exact: true }).count(), 1,
-    'a GLB is 3D: Preview ends the navbar after Display');
+    'a GLB is 3D: Preview ends the strip after Display');
   assert.equal(await pane.locator('[data-file-sidebar-tools]').count(), 0, 'a static GLB has nothing for the file sidebar');
 
   // A GLB has no panel of its own: its only settings are Display's, and Display is never
   // where a file opens, so the model has the room.
   assert.equal(await pane.locator('[data-tool-panel]').count(), 0, 'nothing in the tool stack');
-  assert.deepEqual(await displayModes(pane), ['solid'], 'a GLB has no edges to draw: no mode made of them');
+  assert.deepEqual(await displayModes(pane), ['solid', 'parts'], 'a GLB has no edges to draw: no mode made of them; its two parts, Parts to colour');
   await openDisplay(pane);
   const displayMenu = displayPanel(pane);
-  assert.equal(await displayMenu.getByRole('tab').count(), 0, 'Display has no tabs inside it');
-  assert.equal(await displayMenu.getByRole('combobox', { name: 'Mode', exact: true }).count(), 0, 'its menu chooses the mode');
-  assert.equal(await displayMenu.getByRole('checkbox', { name: 'Flat shading', exact: true }).count(), 1);
-  for (const section of ['Edges', 'Cross-section', 'Explode']) assert.equal(await displayMenu.getByRole('heading', { name: section, exact: true }).count(), 0, section);
-  await displayButton(pane).click();
+  assert.equal(await displayMenu.getByRole('menuitemcheckbox', { name: 'Grid', exact: true }).count(), 1);
+  assert.equal(await displayMenu.getByRole('menuitem').count(), 0, 'and no settings: a mode has nothing to set');
+  await page.keyboard.press('Escape');
   await displayPanel(pane).waitFor({ state: 'detached' });
   // The column closing reaches the scene as a resize; let that frame land before comparing pictures.
   await page.waitForFunction(() => document.querySelector('[data-testid="one"] [aria-busy] > div > canvas').width >= 790);
@@ -246,24 +249,23 @@ test('a static GLB opens on its native scene in Select: display settings, orbit,
   await togglePreview(page, pane, false);
   await page.waitForFunction(() => !window.__cadStage()?.studioGround);
 
-  // Surfaces, on the native scene. Flat is unlit: each part is one colour, its own.
+  // Surfaces, on the native scene: Solid, each part its own authored colour, shaded.
+  const red = ([r, g, b]) => r > 150 && g < 90 && b < 90;
+  const blue = ([r, g, b]) => b > 150 && r < 90 && g < 130;
   const shaded = await capture(page);
-  assert.ok(dominantColors(shaded).length >= 4, 'shaded faces differ');
-  await display(page, { modes: { solid: { flat: true } } });
-  const original = dominantColors(await capture(page));
-  assert.equal(original.length, 2, `two parts, two flat colours: ${JSON.stringify(original)}`);
-  assert.ok(original.some(([r, g, b]) => r > 150 && g < 90 && b < 90), `the authored red: ${JSON.stringify(original)}`);
-  assert.ok(original.some(([r, g, b]) => b > 150 && r < 90 && g < 130), `the authored blue: ${JSON.stringify(original)}`);
-  await display(page, { modes: { solid: { flat: true, parts: { colorMode: 'single', color: '#00c040' } } } });
-  const single = dominantColors(await capture(page));
-  assert.equal(single.length, 1, `one colour for every part: ${JSON.stringify(single)}`);
-  assert.ok(single[0][1] > single[0][0] + 60 && single[0][1] > single[0][2] + 60, 'and it is the chosen green');
-  await display(page, { modes: { solid: { flat: true, parts: { colorMode: 'by-part' } } } });
+  const original = dominantColors(shaded);
+  assert.ok(original.length >= 4, 'shaded faces differ');
+  assert.ok(original.some(red) && original.some(blue), `the authored red and blue: ${JSON.stringify(original)}`);
+  // Parts deals a palette colour per part, in place of the authored ones.
+  await display(page, { mode: 'parts' });
   const palette = dominantColors(await capture(page));
-  assert.equal(palette.length, 2, `a palette colour per part: ${JSON.stringify(palette)}`);
-  assert.notDeepEqual(palette.sort(), original.sort());
-  // Original colours and shaded surfaces restore the initial look.
-  await display(page, { modes: { solid: { flat: false, parts: { colorMode: 'original' } } } });
+  assert.ok(!palette.some(red) && !palette.some(blue), `a palette colour per part: ${JSON.stringify(palette)}`);
+  // The grid draws in any mode.
+  const parts = await capture(page);
+  await display(page, { grid: true });
+  assert.ok(differingPixels(parts, await capture(page)) > 0, 'the grid draws under Parts');
+  // Solid with the grid off restores the initial look.
+  await display(page, { mode: 'solid', grid: false });
   assert.equal(differingPixels(shaded, await capture(page)), 0, 'the look is fully reversible');
 
   // Dragging orbits.
@@ -321,8 +323,8 @@ test('a static GLB opens on its native scene in Select: display settings, orbit,
   assert.deepEqual(captured.references[0].target, { kind: 'whole-resource' });
 
   // Camera and Display settings belong to this file under this renderer's id, and survive a remount.
-  await display(page, { modes: { solid: { parts: { colorMode: 'single', color: '#00c040' }, grid: { enabled: false } } } });
-  await page.waitForFunction(() => window.cadHarness.state.renderers?.[JSON.stringify(['/models/static.glb', 'glb'])]?.display?.modes?.solid?.parts?.colorMode === 'single');
+  await display(page, { mode: 'parts', grid: true });
+  await page.waitForFunction(() => window.cadHarness.state.renderers?.[JSON.stringify(['/models/static.glb', 'glb'])]?.display?.mode === 'parts');
   const stored = await page.evaluate(() => window.cadHarness.state.renderers);
   assert.deepEqual(Object.keys(stored), [JSON.stringify(['/models/static.glb', 'glb'])], 'keyed by [absolute path, renderer id]');
   const left = await page.evaluate(() => window.cadHarness.a.controller.readState());
@@ -336,12 +338,12 @@ test('a static GLB opens on its native scene in Select: display settings, orbit,
   assert.ok(reopened.camera.position.every((value, axis) => Math.abs(value - left.camera.position[axis]) <= 1e-3 * Math.max(1, Math.abs(left.camera.position[axis]))),
     `reopening restores the camera the file was left at: ${JSON.stringify([reopened.camera.position, left.camera.position])}`);
   assert.ok(Math.abs(reopened.camera.zoom - left.camera.zoom) < 1e-6);
-  assert.deepEqual([reopened.display.modes.solid.parts.colorMode, reopened.display.modes.solid.parts.color, reopened.display.modes.solid.grid.enabled], ['single', '#00c040', false]);
+  assert.deepEqual([reopened.display.mode, reopened.display.grid], ['parts', true]);
 
   assert.deepEqual(errors, []);
 });
 
-test('an animated GLB opens at rest, its clips the file sidebar\'s Animation section; in Preview they play in Render without moving the camera or the floor, Orbit turns the camera, and leaving puts the model back at rest', async (t) => {
+test('an animated GLB opens at rest, its clips the file sidebar\'s Animation section; in Preview, from its playbar, they play in Render without moving the camera or the floor, Orbit turns the camera, and leaving puts the model back at rest', async (t) => {
   const { page, pane, errors } = await open(t, 'animated.glb');
   await ready(pane);
   await glbTools(pane);
@@ -352,10 +354,9 @@ test('an animated GLB opens at rest, its clips the file sidebar\'s Animation sec
   const toolsRest = await stillCapture(page);
 
   await togglePreview(page, pane, true);
-  // Preview's top-left: the sidebar's Animation alone; the model in Render, on its floor.
-  assert.deepEqual(await tileNames(pane), ['Animation']);
-  await openSection(pane, 'Animation');
-  const section = animationSection(pane);
+  // Preview has no sidebar: its routine is the playbar's, under the model; the model in Render, on its floor.
+  assert.equal(await pane.locator('[data-file-sidebar-room]').isHidden(), true, 'no file sidebar in Preview');
+  const section = playbar(pane);
   await section.getByRole('button', { name: 'Play animation', exact: true }).waitFor();
   await page.waitForFunction(() => window.__cadStage()?.studioGround);
   const rest = await stillCapture(page);
@@ -372,7 +373,7 @@ test('an animated GLB opens at rest, its clips the file sidebar\'s Animation sec
   // Playing moves the model, never the floor; pausing leaves it where it stopped.
   const floor = await page.evaluate(() => window.__cadStage().studioGround);
   await section.getByRole('button', { name: 'Play animation', exact: true }).click();
-  await page.waitForFunction(() => Number(document.querySelector('[data-testid="one"] [data-cad-file-sidebar] [role="slider"][aria-label="Animation time"]')?.getAttribute('aria-valuenow')) > 0.25);
+  await page.waitForFunction(() => Number(document.querySelector('[data-testid="one"] [data-preview-playbar] [role="slider"][aria-label="Animation time"]')?.getAttribute('aria-valuenow')) > 0.25);
   await section.getByRole('button', { name: 'Pause animation', exact: true }).click();
   assert.ok(differingPixels(rest, await capture(page)) > 200, 'the rider moved');
   assert.deepEqual(await page.evaluate(() => window.__cadStage().studioGround), floor);
@@ -396,7 +397,8 @@ test('an animated GLB opens at rest, its clips the file sidebar\'s Animation sec
 test("an animated GLB's Speed and Loop are the file's: chosen in its Animation section, Preview's routine plays with them, and every visit to Preview opens still", async (t) => {
   const { page, pane, errors } = await open(t, 'animated.glb');
   await ready(pane);
-  const settingsButton = animationSection(pane).getByRole('button', { name: 'Playback settings' });
+  // Playback settings: the Animation section's in the tools view, Preview's playbar's in Preview.
+  let settingsButton = animationSection(pane).getByRole('button', { name: 'Playback settings' });
   const menu = page.getByRole('menu', { name: 'Playback settings', exact: true });
   const settings = async () => {
     await settingsButton.click();
@@ -423,7 +425,7 @@ test("an animated GLB's Speed and Loop are the file's: chosen in its Animation s
   await choose(0.5);
   assert.deepEqual(await settings(), ['Animation speed: 0.5×', 'false']);
   await togglePreview(page, pane, true);
-  await openSection(pane, 'Animation');
+  settingsButton = playbar(pane).getByRole('button', { name: 'Playback settings' });
   assert.deepEqual(await settings(), ['Animation speed: 0.5×', 'false'], 'the file\'s, in Preview too');
   await pane.getByRole('button', { name: 'Preview settings', exact: true }).click();
   await orbit.click();
@@ -432,7 +434,6 @@ test("an animated GLB's Speed and Loop are the file's: chosen in its Animation s
   await togglePreview(page, pane, true);
   await pane.getByRole('button', { name: 'Preview settings', exact: true }).click();
   assert.equal(await orbit.getAttribute('aria-checked'), 'false', 'still again');
-  await openSection(pane, 'Animation');
   assert.deepEqual(await settings(), ['Animation speed: 0.5×', 'false'], 'the file\'s, kept');
   await togglePreview(page, pane, false);
   assert.deepEqual(errors, []);
@@ -442,7 +443,7 @@ test('a GLB\'s tools: Select picks a node into Quick Edit, Measure reads metres 
   const { page, pane, errors } = await open(t, 'static.glb');
   await ready(pane);
   await page.waitForFunction(() => window.cadHarness.a.controller?.readState().loading === false);
-  await display(page, { modes: { solid: { grid: { enabled: false }, axes: { enabled: false } } } });
+  await display(page, { grid: false });
   await settle(page);
   const box = await pane.locator('[data-cad-surface] canvas').first().boundingBox();
   const at = projector(await page.evaluate(() => window.__cadCamera()), box);
@@ -455,7 +456,7 @@ test('a GLB\'s tools: Select picks a node into Quick Edit, Measure reads metres 
 
   // Measure: the base's top edge, corner to corner, snapped to its triangles' vertices.
   await pane.getByRole('button', { name: 'Measure', exact: true }).click();
-  assert.match(await pane.locator('[data-measure-size]').innerText(), /^≈ 0\.040 × 0\.020 × 0\.020 m$/, 'the model\'s size, in glTF\'s metres');
+  assert.equal(await pane.locator('[data-measure-size], [data-model-tool="measure"]').count(), 0, 'Measure has no row under the strip');
   for (const corner of [[0.2, -0.2, 20], [19.8, -0.2, 20]]) { await page.mouse.click(...at(corner)); await settle(page); }
   await page.waitForFunction(() => document.querySelectorAll('[data-quick-edit-box] [data-quick-edit-ref]').length === 2);
   assert.ok((await chips()).includes('Measurement 1: ≈ 0.0200 m (approximate)'), JSON.stringify(await chips()));

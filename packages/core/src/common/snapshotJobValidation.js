@@ -10,8 +10,8 @@ export function validateSnapshotRenderJob(job = {}) {
   for (const field of ["theme", "section"]) {
     if (Object.hasOwn(job, field)) throw new Error(`Unsupported snapshot field: ${field}`);
   }
-  // Render is its own request beside the display, never a display mode: `render: true`.
-  if (Object.hasOwn(job, "render") && typeof job.render !== "boolean") throw new Error("render must be a boolean");
+  // Preview is its own request beside the display, never a display mode: `preview: true`.
+  if (Object.hasOwn(job, "preview") && typeof job.preview !== "boolean") throw new Error("preview must be a boolean");
   normalizeViewSettings(Object.hasOwn(job, "display") ? job.display : {});
   // The ink drawn over the model (`annotation.js`): refused before anything loads, by what is wrong.
   if (job.annotation != null) normalizeAnnotation(job.annotation);
@@ -23,7 +23,7 @@ export function validateSnapshotRenderJob(job = {}) {
       if (moved.length) throw new Error(`Camera ${moved.join(", ")} moved to display.camera`);
     }
   }
-  if (job.render === true && String(job.mode || "view").trim().toLowerCase() !== "view") {
-    throw new Error("Render supports only view mode");
+  if (job.preview === true && String(job.mode || "view").trim().toLowerCase() !== "view") {
+    throw new Error("Preview supports only view mode");
   }
 }

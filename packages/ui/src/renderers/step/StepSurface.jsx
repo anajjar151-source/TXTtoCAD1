@@ -452,15 +452,20 @@ function StepSurfaceBody({ view, data }) {
 
   // ---- motion: the kinematics module and Position, the routines and playback -------------------
   // One motion at a time: Explode, Position and a routine's frame replace each other. Taking
-  // Explode's tool up puts the other two back at rest at once (the default pose, the routine
-  // rewound), and each one used does too; a frame left by the Animation section stays on the model,
-  // as a pose does. Position and the routine are the motion hook's; Explode is the view settings',
-  // so the hook says which of its two was used and Explode goes off here, and Explode used puts both
-  // at rest (below). Preview's pose and routine are its own (`useStepPreviewMotion`), on its own scene.
+  // One of four at a time: Explode, the routine, Position and Clip each move the model's parts or
+  // cut its box, and whichever is SET off its default — its value changed, never merely its tool
+  // taken up or its panel pressed — puts the other three back at theirs. A frame left by the
+  // Animation section stays on the model, as a pose does. Position and the routine are the motion
+  // hook's (a joint moved rewinds the routine; the routine played puts the pose back); Explode and
+  // Clip are the view settings', so the hook says when one of its two was used and they go off
+  // here, and Explode or Clip set puts the hook's two at rest and the other off (below). Preview's
+  // pose and routine are its own (`useStepPreviewMotion`), on its own scene.
   const explodeAppliedRef = useRef(false);
+  const clipAppliedRef = useRef(false);
   const motionHost = useMemo(() => ({
     onUse: () => {
       if (explodeAppliedRef.current) viewSettingsStore.patch({ exploded: { enabled: false, amount: 0 } });
+      if (clipAppliedRef.current) viewSettingsStore.patch({ clip: { enabled: false, axis: "x", invert: false } });
     }
   }), [viewSettingsStore]);
   const motion = useStepMotion({
@@ -1535,7 +1540,7 @@ function StepSurfaceBody({ view, data }) {
   // and what this renderer's load IS depends on the resolved view above it. Nothing about
   // hook order says otherwise — there is one function, and no early return in it.
   // Measure's results, as Quick Edit's chips and the marks a note's views are drawn with.
-  const quickEditMeasurements = useQuickEditMeasurements(measure, promptResource);
+  const quickEditMeasurements = useQuickEditMeasurements(measure);
   const shell = useRendererShell({
     previewable: true, preview,
     view, services, resource: promptResource, modelKey: selectedKey, revisionKey: presentationRevisionKey,
@@ -1589,43 +1594,26 @@ function StepSurfaceBody({ view, data }) {
   shellRef.current = shell;
   const reportActionError = shell.reportActionError;
 
-  // Explode used — its amount taken off zero, not merely its tool taken up — puts the pose back at
-  // its default and the routine at rest. Only a change on this file is a use: another file opening
-  // exploded is that file's view.
+  // Explode or Clip set — Explode's amount taken off zero, Clip turned on, never merely its tool
+  // taken up — puts the pose back at its default, the routine at rest and the other one off. Only a
+  // change on this file is setting it: another file opening exploded or cut is that file's view.
   const exploded = desiredScene.view.exploded;
   const explodeApplied = Boolean(exploded?.enabled && exploded.amount > 0);
   explodeAppliedRef.current = explodeApplied;
-  const explodeSeen = useRef({ file: selectedKey, applied: explodeApplied });
+  const clipApplied = Boolean(desiredScene.view.clip?.enabled);
+  clipAppliedRef.current = clipApplied;
+  const viewMotionSeen = useRef({ file: selectedKey, explode: explodeApplied, clip: clipApplied });
   const resetMotion = motion.resetMotion;
   useEffect(() => {
-    const seen = explodeSeen.current;
-    explodeSeen.current = { file: selectedKey, applied: explodeApplied };
-    if (explodeApplied && !seen.applied && seen.file === selectedKey) resetMotion();
-  }, [explodeApplied, selectedKey, resetMotion]);
-  // A motion taken up — Explode's tool, or Position reached for (a knob dragged, a control of its
-  // section pressed: `reachPosition`) — puts the others back at rest at once: the model is only ever
-  // one motion's.
-  const motionToolSeen = useRef(tabToolMode);
-  const motionResets = useRef(null);
-  motionResets.current = {
-    explode: () => { if (explodeAppliedRef.current) viewSettingsStore.patch({ exploded: { enabled: false, amount: 0 } }); },
-    position: motion.resetPosition,
-    animation: () => { if (animationOwnsPose) motion.releaseAnimation(); },
-  };
-  useEffect(() => {
-    const was = motionToolSeen.current;
-    motionToolSeen.current = tabToolMode;
-    if (was === tabToolMode) return;
-    const reset = motionResets.current;
-    if (tabToolMode === TAB_TOOL_MODE.EXPLODE) { reset.position(); reset.animation(); }
-  }, [tabToolMode]);
-  // Preview's Position moves Preview's own pose: reaching for it there puts nothing of the
-  // tools view's down.
-  const reachPosition = useCallback(() => {
-    if (preview.now()) return;
-    motionResets.current.explode();
-    motionResets.current.animation();
-  }, [preview.now]);
+    const seen = viewMotionSeen.current;
+    viewMotionSeen.current = { file: selectedKey, explode: explodeApplied, clip: clipApplied };
+    if (seen.file !== selectedKey) return;
+    const explodeSet = explodeApplied && !seen.explode, clipSet = clipApplied && !seen.clip;
+    if (!explodeSet && !clipSet) return;
+    resetMotion();
+    if (explodeSet && clipApplied) viewSettingsStore.patch({ clip: { enabled: false, axis: "x", invert: false } });
+    else if (clipSet && explodeApplied) viewSettingsStore.patch({ exploded: { enabled: false, amount: 0 } });
+  }, [explodeApplied, clipApplied, selectedKey, resetMotion, viewSettingsStore]);
   const selectedWholeTopologyReferencePartIds = useMemo(() => (
     uniqueStringList(
       selectedReferenceIds.flatMap((referenceId) => renderPartIdsForWholeTopologyReference(referenceId))
@@ -3188,10 +3176,11 @@ function StepSurfaceBody({ view, data }) {
       definition: stepPoseDefinition,
       parameterValues: selectedStepParameterRuntime.parameterValues,
       features: stepPoseFeatures,
-      // A knob dragged is Position reached for.
-      onParameterChange: (...args) => { reachPosition(); return write(...args); }
+      // A knob dragged sets Position: the motion hook puts the routine at rest and the host takes
+      // Explode and Clip off.
+      onParameterChange: write
     });
-  }, [knobsShown, stepPoseDefinition, selectedStepParameterRuntime, stepPoseFeatures, motion.onParameterChange, reachPosition]);
+  }, [knobsShown, stepPoseDefinition, selectedStepParameterRuntime, stepPoseFeatures, motion.onParameterChange]);
 
   // ---- the viewport ---------------------------------------------------------------------------
   // What the viewport is ALLOWED to show and pick just now: nothing of the model under Pose
@@ -3349,9 +3338,10 @@ function StepSurfaceBody({ view, data }) {
     // reaches it; the model tree says so until the press can be picked.
     loadingGeometry: Boolean(pendingTopologyPick),
     positionRuntime: previewing ? previewMotion.positionControls : motion.positionControls,
+    // Position's tile dot: the joints off the default pose.
+    positionChanged: !positionValuesAreDefault(stepModuleParameterValues, selectedStepModuleDefinition?.defaultParameterValues),
     selectedMeshData: selectedDisplayMeshData,
     client,
-    onReachPosition: reachPosition,
     geometryInspection: { revision: artifactRevision,
       references: !viewerLoading && !stepUpdateInProgress ? isAssemblyView ? assemblyStepTreeTopologyReferences : selectedSelectorRuntime?.references || EMPTY_LIST : EMPTY_LIST,
       parts: !viewerLoading && !stepUpdateInProgress ? selectedMeshData?.parts || EMPTY_LIST : EMPTY_LIST,

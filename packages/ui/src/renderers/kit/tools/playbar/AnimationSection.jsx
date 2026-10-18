@@ -27,7 +27,8 @@ export default function AnimationSection({ runtime, autoplay, onAutoplayChange, 
   const atRest = !playing && !(Number(runtime?.elapsedSec) > 0);
   const clips = runtime?.clips || [];
   const active = clips.find(clip => clip.id === runtime?.activeClipId);
-  return <ToolPanel id="animation" title="Animation" label="Animation" fit="details">
+  // Its tile's dot: a routine's frame on the model (playing, or paused off its start).
+  return <ToolPanel id="animation" title="Animation" label="Animation" fit="details" changed={!atRest}>
     <ToolPanelHeadAction>
       <TooltipHint content="Reset animation" side="bottom">
         <button type="button" aria-label="Reset animation" data-animation-reset="" disabled={disabled || atRest}

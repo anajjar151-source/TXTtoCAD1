@@ -123,19 +123,13 @@ test("snapshot tessellation is explicit, finite and restricted to exact surfaces
 
 test("snapshot quality selects bounded shared tessellation policy", () => {
   assert.deepEqual(tessellationForSnapshotQuality({}), {});
-  assert.deepEqual(tessellationForSnapshotQuality({ render: true, display: { modes: { render: { lighting: { quality: "preview" } } } } }), {});
-  assert.deepEqual(
-    tessellationForSnapshotQuality({ render: true, display: { modes: { render: { lighting: { quality: "final" } } } } }),
-    { chordTolerance: 0.00015, angleTolerance: 0.35 }
-  );
+  // A snapshot's Preview is Preview's final quality: the finest bounded rung.
+  assert.deepEqual(tessellationForSnapshotQuality({ preview: true }), { chordTolerance: 0.00015, angleTolerance: 0.35 });
   assert.deepEqual(tessellationForSnapshotQuality({
-    render: true,
-    display: { modes: { render: { lighting: { quality: "final" } } } },
+    preview: true,
     quality: { tessellation: { chordTolerance: 0.001 } }
   }), { chordTolerance: 0.001 });
-  assert.throws(() => tessellationForSnapshotQuality({
-    render: true, display: { modes: { render: { lighting: { quality: "ultra" } } } }
-  }), /quality/i);
+  assert.throws(() => tessellationForSnapshotQuality({ preview: "yes" }), /preview must be a boolean/);
 });
 
 test("macro tessellation changes the rendered surface and uses its own cache entry", async (t) => {
@@ -585,11 +579,11 @@ test("loadSource accepts sidecar kinematics for STEP sources", async () => {
   }
 });
 
-test("render display source loading keeps kinematics and supplied CAD runtimes", async () => {
+test("Preview source loading keeps kinematics and supplied CAD runtimes", async () => {
   const source = await loadSource({
     kind: "step",
     meshData: meshData(),
-    render: true,
+    preview: true,
     cadPath: "hinge.step",
     glbUrl: "/unused-topology.glb",
     sourceSidecar: HINGE_SIDECAR,
@@ -604,7 +598,7 @@ test("render display source loading keeps kinematics and supplied CAD runtimes",
   assert.deepEqual(source.stepParameterSource.renderParameters.values, { swing: 45 });
 });
 
-test("render-only source loading leaves STEP topology lazy", async (t) => {
+test("Preview-only source loading leaves STEP topology lazy", async (t) => {
   const originalFetch = globalThis.fetch;
   let fetches = 0;
   globalThis.fetch = async () => { fetches += 1; throw new Error("unexpected topology fetch"); };
@@ -613,7 +607,7 @@ test("render-only source loading leaves STEP topology lazy", async (t) => {
   const source = await loadSource({
     kind: "step",
     meshData: meshData(),
-    render: true,
+    preview: true,
     glbUrl: "/unused-topology.glb"
   });
 
@@ -638,13 +632,13 @@ test("loadSource composes STEP documents and refuses every other file family by 
   assert.equal(fetches, 0);
 });
 
-test("a snapshot's render is a yes or a no, refused otherwise before loading a source", async (t) => {
+test("a snapshot's preview is a yes or a no, refused otherwise before loading a source", async (t) => {
   const originalFetch = globalThis.fetch;
   let fetches = 0;
   globalThis.fetch = async () => { fetches += 1; throw new Error("unexpected fetch"); };
   t.after(() => { globalThis.fetch = originalFetch; });
-  for (const render of [null, "dark", { unknown: true }]) {
-    await assert.rejects(() => loadSource({ kind: "step", url: "/never.step", render }), /render must be a boolean/);
+  for (const preview of [null, "dark", { unknown: true }]) {
+    await assert.rejects(() => loadSource({ kind: "step", url: "/never.step", preview }), /preview must be a boolean/);
   }
   assert.equal(fetches, 0);
 });

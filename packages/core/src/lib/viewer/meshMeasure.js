@@ -8,7 +8,7 @@
 // shape a STEP's Measure pick has (`measurement.js`): `{ point, snapKind, referenceId }`, plus the
 // units it is read in.
 
-import { closestPointOnSegment, distanceBetweenPoints, isFinitePoint } from "./measurement.js";
+import { closestPointOnSegment, isFinitePoint } from "./measurement.js";
 
 /** How near, in CSS pixels, the pointer must be to a corner, then to a side, to snap to it. */
 export const MESH_SNAP_VERTEX_PX = 10;
@@ -69,16 +69,4 @@ export function meshMeasurePick(hit, pointer, project, units) {
   }
   if (side) return pick(side.nearest, "edge", side.target);
   return pick(point, "surface", "s");
-}
-
-/** The scene's box, as three measurements along its edges (X, Y and Z), each a pick pair in scene coordinates. */
-export function boundsMeasurePicks(bounds, units) {
-  const { min, max } = bounds || {};
-  if (!isFinitePoint(min) || !isFinitePoint(max)) return [];
-  const corner = (x, y, z) => ({ point: [x, y, z], snapKind: "vertex", referenceId: `box:${x},${y},${z}`, units, approximate: true });
-  return [
-    [corner(min[0], min[1], min[2]), corner(max[0], min[1], min[2])],
-    [corner(max[0], min[1], min[2]), corner(max[0], max[1], min[2])],
-    [corner(max[0], max[1], min[2]), corner(max[0], max[1], max[2])]
-  ].filter(([a, b]) => (distanceBetweenPoints(a.point, b.point) || 0) > 0);
 }

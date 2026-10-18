@@ -77,53 +77,36 @@ anything else is refused with this list:
 with a whole number of pixels from 1 to 8192; a larger request is refused rather
 than clamped. With `--job` they size every output in the packet.
 
-`--display` accepts a mode name, inline JSON, or a JSON file path. The four
-modes are `solid` (the default: shaded, with edge linework), `xray` (translucent
-surfaces with occluded edges visible), `hidden-line` (linework with occluded edges
-suppressed), and `wireframe` (edges only); they use the shared projection,
-orthographic by default. `--render` draws the photographic Render instead, in
-perspective with studio lighting, with Render's own settings from
-`display.modes.render`; it is view mode only. `appearance` is `light`
-(the CLI default) or `dark`. The Viewer and CLI accept the same sparse display
-object, with settings stored separately for each mode:
+`--display` takes one of the Viewer's six Display modes, each drawn at its own
+defaults: `solid` (the default: shaded, with edge linework), `shaded` (the same
+surfaces, no edges), `parts` (Solid with each part its own colour), `xray`
+(translucent surfaces with occluded edges visible), `hidden-line` (linework with
+occluded edges suppressed), and `wireframe` (edges only); they use the shared
+projection, orthographic by default. `--grid` draws the measuring grid (red X and
+green Y axes) under the model in any mode; it is off by default. `--preview` draws
+Preview's photographic look instead, in perspective with studio lighting, at
+Preview's defaults; it draws no grid and is view mode only.
 
 ```bash
-cadgen step snapshot STEP/part.step tmp/review.png --render
-cadgen step snapshot STEP/part.step tmp/review.png --render --display '{"modes":{"render":{"floor":{"enabled":false},"background":{"opacity":0.5}}}}'
+cadgen step snapshot STEP/part.step tmp/review.png --display hidden-line --grid
+cadgen step snapshot STEP/part.step tmp/review.png --preview
 cadgen step snapshot STEP/part.step tmp/review.png --display display.json --camera front
 ```
 
-Omitted parameters inherit their mode's defaults. Supplying a group does not
-enable it; use `enabled: true` on a toggleable group. Opacity is 0 for fully
-transparent and 1 for opaque.
+`--display` (and a job's `display`) also takes the Viewer's display object, inline
+or as a JSON file: `mode`, boolean `grid`, `appearance` (`light`, the CLI default,
+or `dark`), `camera` (`projection`: `orthographic` or `perspective`; `focalLength`:
+20–200 mm), and the shared tools `clip` and `exploded`. A mode has no settings of
+its own, and anything else is refused.
 
-| Location | Parameters |
-| --- | --- |
-| `camera` | `projection`: `orthographic` or `perspective`; `focalLength`: 20–200 mm |
-| `modes.solid` | `parts`, boolean `flat`, `edges` (`enabled`, hex `color`), `grid`, `axes` |
-| `modes.render` | `parts`, `lighting`, `background`, `floor` |
-| `modes.xray` | `parts`, `opacity`: 0–1 (default 0.22), `edges` (hex `color`), `grid`, `axes` |
-| `modes.hidden-line`, `modes.wireframe` | `edges` (hex `color`), `grid`, `axes` |
-
-Within those modes, `parts` accepts `colorMode` (`original`, `single`, `by-part`),
-hex `color`, and 1–50 hex `colors`. `lighting` accepts `quality` (`preview` or
-`final`), `exposure` (-5–5), `rotation` (-180–180 degrees), `size` (0.25–3), and
-`fill` (0–1). `background` accepts hex `color` and `opacity` (0–1). `floor`
-accepts boolean `enabled`, `placement` (`lowest` or `origin`), `finish` (`matte`
-or `glossy`), hex `color`, and `opacity` (0–1). `grid` and `axes` accept boolean
-`enabled`, hex `color`, and `opacity` (0–1); `grid` also accepts `density`
-(0.25–4). Grid and axes start off in every mode that offers them.
-
-Render's floor sits at the model's lowest point; `placement: "origin"` moves it
-to Z=0. `--camera` (or a job's top-level or per-output `camera`) sets pose and
-framing (`preset`, `position`, `target`, `up`, `direction`, `zoom`,
+`--camera` (or a job's top-level or per-output `camera`) sets pose and framing
+(`preset`, `position`, `target`, `up`, `direction`, `zoom`,
 `orthographicHalfHeight`); projection and focal length belong in
-`display.camera`. `clip` and `exploded` are shared `display` tools: every 3D input
-takes `clip` (`at` in the file's own unit), and `exploded` takes a STEP or a GLB of
-several parts. `edges` and the `xray`, `hidden-line` and `wireframe` modes are
-STEP-only; meshes and robot descriptions take `solid`, or `--render`. DXF uses
-`--appearance` and has no scene display modes. Retired top-level style groups
-and the old `grid` mode are refused.
+`display.camera`. Every 3D input takes `clip` (`at` in the file's own unit), and
+`exploded` takes a STEP or a GLB of several parts. `shaded`, `xray`, `hidden-line`
+and `wireframe` are STEP-only; meshes and robot descriptions take `solid` or
+`parts`, `--grid`, or `--preview`. DXF uses `--appearance` and has no scene display
+modes.
 
 `camera` is a preset (`front`, `back`, `left`, `right`, `top`, `bottom`, `iso`),
 an `azimuth:elevation` pair, or a camera object. `output` takes `sizeProfile`,
@@ -142,8 +125,8 @@ must be at least `0.00001` and `angleTolerance` at least `0.005` — finer than
 that exhausts the renderer instead of improving the image, and the job is
 refused.
 Existing mesh documents cannot be retessellated this way. The explicit top-level
-sampling request works in every display mode. When it is omitted,
-`display.modes.render.lighting.quality` selects the photographic preview or final LOD.
+sampling request works in every display mode. When it is omitted, `--preview` draws
+at Preview's final LOD.
 
 
 ### Flags and job keys
@@ -200,17 +183,33 @@ cadgen snapshot STEP/bracket_v2.step --job views.job.json
 `--annotation FILE` (a job's `annotation`: a path or the object) draws a person's ink
 over the model as they drew it in the CAD Viewer: each mark sits on its part,
 follows it when the view explodes or poses the model, and is cut by a clip.
-A DXF and `--mode list` take none.
+A DXF annotation lies on the drawing plane; `--mode list` takes none.
 
-A Quick Edit prompt names the views the person looked at as a `.job.json` file,
-the PNGs it rendered, and their `.annotation.json` file when they drew. Every
-path in the prompt and job is absolute, so the saved job can be replayed from
-another working folder without copying the annotation into the model directory. The job's `measurements` are
-the distances they measured, each `{start, end, label, color}`, drawn over every
+A Quick Edit prompt carries a snapshot packet captured only when Copy, Queue or
+Send is pressed. Up to 1 KiB of compact UTF-8 JSON is included directly in the
+prompt; larger packets are saved to a temporary `.snapshot.json` and named by
+absolute path. Save inline JSON to a temporary `.snapshot.json` before calling
+`cadgen snapshot --job <file>`; the CLI takes a file path. Render and inspect supplied
+annotations before editing. A view without annotations is optional context: render it
+only when useful to the request; its presence alone does not require inspection.
+The `jobs` list includes the current view and every distinct drawn view with
+remaining ink. A matching drawn view uses the exact current framing in the export;
+otherwise `current view` is appended. Text, selections and measurements without
+ink still capture the current view. Shared `input`, inline `annotation` and
+`measurements` live at the top level once. An individual job can override any
+shared field (whole-value replacement, not a merge); empty `marks` or `measurements`
+suppress shared marks. Captured 3D views preserve projection and lens. No PNGs are
+rendered or attached at handoff. Input and output paths are absolute, so the packet
+can be replayed from another working folder. Annotation and measurement chips do not
+export individual references; their data travels in the snapshot packet. The job's `measurements` are
+the distances they measured, each `{start, end, label, color}`. Read these from the
+JSON when interpreting the prompt: endpoints are world coordinates in the model's
+units, and `label` is the displayed value and unit. These are reference dimensions,
+not constraints applied to the CAD model. They are drawn over every
 view as the viewer drew them; a label starting `≈` was measured on a mesh's triangles and
 is approximate. A Quick Edit from any 3D file replays: a robot's job carries its
 `jointValues` and the parts hidden in its Links panel (`selection.hide`), a GLB's or a
-3MF's its `display.clip` and `display.exploded`. `cadgen snapshot --job <job
+3MF's its `display.clip`, and a multi-part GLB's its `display.exploded`. `cadgen snapshot --job <job
 file>` renders those views again: after an edit, run it to see the change from
 where the person looked, with their annotation still on it. Add a TARGET to aim the
 same views at another document.
@@ -258,11 +257,11 @@ Add views only when the brief or a failure mode calls for them:
 - reference-image reproduction: one snapshot from the reference image's viewpoint for side-by-side comparison
 - `display.clip` with a camera facing the cut: shell, bore, internal cavity, passage, blind hole, enclosure, or wall/floor relationship (see [Clipped views](#clipped-views))
 - `display.mode: "solid"`: shaded CAD view with visible edge linework
-- `display.edges.enabled: false`: shaded surfaces without the edge overlay
+- `display.mode: "shaded"`: shaded surfaces without the edge overlay
 - `display.mode: "xray"`: translucent surfaces with hidden/occluded edges visible
 - `display.mode: "hidden-line"`: line-focused review with occluded edges suppressed
 - `display.mode: "wireframe"`: edge-only review for internal overlap or interference
-- `display.mode: "grid"`: Solid on a fine measuring grid, for reading size and placement at a glance
+- `display.grid: true`: a measuring grid under the model in any display mode, for reading size and placement at a glance
 - labeled or annotated review: use supported CAD Viewer refs, selections, screenshots, or GUI review links
 
 Exploded or labeled review is an intent, not a render mode. Satisfy it through supported CAD Viewer mechanisms, supported JSON job settings, or the GUI link.

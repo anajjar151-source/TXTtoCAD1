@@ -88,7 +88,7 @@ export default function ModelView({ launch, sequence, alone = false, bridge, cli
   // A Quick Edit's views, annotation and pictures are made by the server, which is on this machine.
   const promptFiles = useMemo(() => createHttpPromptFiles({ origin: TUNNEL_ORIGIN, fetch: tunnel }), [tunnel]);
   const chatContext = useMemo(() => chat.queue || chat.send ? createChatPromptContext(bridge, { reach: chat }) : null,
-    [chat.queue, chat.send, chat.sendImages, bridge]);
+    [chat.queue, chat.send, bridge]);
   useEffect(() => () => chatContext?.dispose(), [chatContext]);
   const promptContext = chatContext ?? unavailablePromptContext;
   // The file menu: its path, and Reveal in the desktop's file manager (the server is on this machine).

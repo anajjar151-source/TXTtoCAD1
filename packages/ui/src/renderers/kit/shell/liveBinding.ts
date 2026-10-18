@@ -133,9 +133,12 @@ export function attachLiveBinding<State extends LiveViewState, Controller extend
         return Boolean(actual && typeof actual === 'object') && Object.entries(expected).every(
           ([key, value]) => containsPatch((actual as Record<string, unknown>)[key], value));
       };
-      let expectedDisplay: ReturnType<typeof mergeViewerDisplaySettings>;
+      // What the patch names, as it lands: a setting it does not name may move with it (a renderer
+      // that keeps one motion at a time turns one setting off as another goes on), and is not awaited.
+      let expectedDisplay: Record<string, unknown>;
       return mutate(runtime => {
-        expectedDisplay = mergeViewerDisplaySettings(runtime.readState().display, canonicalPatch);
+        const merged = mergeViewerDisplaySettings(runtime.readState().display, canonicalPatch) as Record<string, unknown>;
+        expectedDisplay = Object.fromEntries(Object.keys(canonicalPatch).map(key => [key, merged[key]]));
         runtime.setDisplaySettings(canonicalPatch as { [key: string]: JsonValue });
       }, state => containsPatch(state.display, expectedDisplay));
     },

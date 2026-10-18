@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef } from "react";
 import { MousePointer2 } from "lucide-react";
-import { viewFeaturesForKind } from "@text-to-cad/core/common/viewSettings.js";
+import { scenePartCount, viewFeaturesForKind } from "@text-to-cad/core/common/viewSettings.js";
 import RendererShell from "../kit/shell/RendererShell.jsx";
 import { usePreviewState, useRendererShell } from "../kit/shell/useRendererShell.js";
 import { usePreviewScene } from "../kit/shell/usePreviewScene.js";
@@ -58,8 +58,8 @@ function GlbSurface({ view, data }) {
   const selection = useSceneSelection({ scene, requestRender: requestHighlightFrame });
   const selectionRef = useRef(selection);
   selectionRef.current = selection;
-  // Explode where the file has several rigid nodes that draw (`glbScene.js`).
-  const features = useMemo(() => viewFeaturesForKind("glb", { parts: scene?.explodeParts || 0 }), [scene]);
+  // Parts where the file has several meshes to colour, Explode where it has several rigid nodes that draw (`glbScene.js`).
+  const features = useMemo(() => viewFeaturesForKind("glb", { parts: scenePartCount(scene), explodeParts: scene?.explodeParts || 0 }), [scene]);
   const live = useMemo(() => ({
     declined: GLB_DECLINED_LIVE_COMMANDS,
     commands: { clearSelection: () => selectionRef.current.clear() },

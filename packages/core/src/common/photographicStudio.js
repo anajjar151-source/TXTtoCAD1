@@ -6,17 +6,20 @@ import {
 import {
   PHOTOGRAPHIC_STUDIO_GROUND_DIFFUSE_WEIGHT,
   PHOTOGRAPHIC_STUDIO_GROUND_EMISSIVE_INTENSITY,
+  PHOTOGRAPHIC_STUDIO_GROUND_EMISSIVE_NEUTRAL_BELOW,
   PHOTOGRAPHIC_STUDIO_GROUND_EMISSIVE_NEUTRAL_MIX,
+  PHOTOGRAPHIC_STUDIO_BACKDROP,
   PHOTOGRAPHIC_STUDIO_CONTACT_SHADOW,
+  PHOTOGRAPHIC_STUDIO_FLOOR_FADE,
   PHOTOGRAPHIC_STUDIO_FLOOR_FINISHES,
   PHOTOGRAPHIC_STUDIO_CARD_DISTANCE,
   PHOTOGRAPHIC_STUDIO_FRAME,
   PHOTOGRAPHIC_STUDIO_KEY_CARD,
   PHOTOGRAPHIC_STUDIO_KEY_DIRECTION,
   PHOTOGRAPHIC_STUDIO_SOFT_SHADOW,
-  PHOTOGRAPHIC_STUDIO_KEY_ILLUMINANCE,
-  PHOTOGRAPHIC_STUDIO_STAGE_RADIUS_MULTIPLIER
+  PHOTOGRAPHIC_STUDIO_KEY_ILLUMINANCE
 } from "./photographicStudioRig.js";
+import { createStudioBackdrop } from "./studioBackdrop.js";
 import { createStudioContactShadow, syncDitherScale } from "./studioContactShadow.js";
 import { createStudioFloorReflection } from "./studioFloorReflection.js";
 import { createStudioFrame } from "./studioFrame.js";
@@ -100,14 +103,15 @@ function disposeGround(state) {
 function updatePhysicalGroundColor(material, color) {
   material.color.set(color).multiplyScalar(PHOTOGRAPHIC_STUDIO_GROUND_DIFFUSE_WEIGHT);
   material.emissive.set(color);
-  // A tiny neutral component gives near-black backdrop colors enough linear
-  // energy to remain visible without perceptibly cooling ordinary colors.
-  material.emissive.r += (1 - material.emissive.r)
-    * PHOTOGRAPHIC_STUDIO_GROUND_EMISSIVE_NEUTRAL_MIX;
-  material.emissive.g += (1 - material.emissive.g)
-    * PHOTOGRAPHIC_STUDIO_GROUND_EMISSIVE_NEUTRAL_MIX;
-  material.emissive.b += (1 - material.emissive.b)
-    * PHOTOGRAPHIC_STUDIO_GROUND_EMISSIVE_NEUTRAL_MIX;
+  // A tiny neutral component gives a near-black floor enough linear energy for its shadow
+  // to show; it fades out as the colour lightens, so any other floor keeps its own tone.
+  const { r, g, b } = material.emissive;
+  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  const mix = PHOTOGRAPHIC_STUDIO_GROUND_EMISSIVE_NEUTRAL_MIX
+    * Math.max(0, 1 - luminance / PHOTOGRAPHIC_STUDIO_GROUND_EMISSIVE_NEUTRAL_BELOW);
+  material.emissive.r += (1 - r) * mix;
+  material.emissive.g += (1 - g) * mix;
+  material.emissive.b += (1 - b) * mix;
 }
 
 // The floor's shading is a few shallow gradients (the sweep's reflection, the key's
@@ -119,6 +123,7 @@ function updatePhysicalGroundColor(material, color) {
 // every average colour as it was. A snapshot that averages STUDIO_DITHER_SCALE squared
 // samples into each pixel it keeps draws the noise that much wider (`syncDitherScale`).
 const FLOOR_DITHER_FRAGMENT = /* glsl */ `
+gl_FragColor.a *= studioFloorFade();
 #ifdef STUDIO_DITHER_SCALE
 gl_FragColor.rgb += (rand(gl_FragCoord.xy) + rand(gl_FragCoord.yx + 17.0) - 1.0) * STUDIO_DITHER_SCALE
   / (255.0 * max(gl_FragColor.a, 0.05));
@@ -128,10 +133,32 @@ gl_FragColor.rgb += (rand(gl_FragCoord.xy) + rand(gl_FragCoord.yx + 17.0) - 1.0)
 #endif
 `;
 
-function patchFloor(material, reflection) {
+// The floor has no edge (`PHOTOGRAPHIC_STUDIO_FLOOR_FADE`): from `uStudioFloorFade` of the
+// plane's half-width out to its inscribed circle it fades to nothing, and the backdrop shows
+// through, with its shadow and its reflection, which are drawn on it. Squared, the fade's tail
+// is long: no ring where it ends, even seen low across the floor, where it is foreshortened.
+const FLOOR_FADE_VERTEX_PARS = /* glsl */ `
+varying vec2 vStudioFloorPlane;
+`;
+const FLOOR_FADE_FRAGMENT_PARS = /* glsl */ `
+uniform float uStudioFloorFade;
+varying vec2 vStudioFloorPlane;
+float studioFloorFade() {
+  float fade = 1.0 - smoothstep(uStudioFloorFade, 1.0, length(vStudioFloorPlane) * 2.0);
+  return fade * fade;
+}
+`;
+
+function patchFloor(material, reflection, fade) {
   material.onBeforeCompile = (shader) => {
     reflection?.patch(shader);
-    shader.fragmentShader = shader.fragmentShader.replace("#include <dithering_fragment>", FLOOR_DITHER_FRAGMENT);
+    shader.uniforms.uStudioFloorFade = fade;
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", `#include <common>\n${FLOOR_FADE_VERTEX_PARS}`)
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvStudioFloorPlane = position.xy;");
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", `#include <common>\n${FLOOR_FADE_FRAGMENT_PARS}`)
+      .replace("#include <dithering_fragment>", FLOOR_DITHER_FRAGMENT);
   };
   material.customProgramCacheKey = () => (reflection ? "studio-floor-reflection" : "studio-floor-dither");
 }
@@ -159,6 +186,8 @@ function createState(THREE, runtime) {
     target,
     shadowMapSize: null,
     ground: null,
+    floorFade: { value: 0 },
+    backdrop: null,
     contactShadow: null,
     reflection: null,
     reflectionHidden: null,
@@ -245,16 +274,16 @@ function updateFloorFinish(THREE, state, configuration, { contactShadow, softwar
       requestFrame: contactShadow.requestFrame || null
     });
     // Nothing of the floor itself, nor a guide lying on it, is reflected.
-    state.reflectionHidden = () => [state.ground, state.contactShadow?.layer, ...guides()].filter(Boolean);
+    state.reflectionHidden = () => [state.ground, state.contactShadow?.layer, state.backdrop?.object, ...guides()].filter(Boolean);
     hookScene(state);
   } else {
     releaseReflection(state);
   }
-  patchFloor(material, state.reflection);
+  patchFloor(material, state.reflection, state.floorFade);
   material.needsUpdate = true;
 }
 
-function updateGround(THREE, state, configuration, bounds, sceneScale, extentBounds = bounds, {
+function updateGround(THREE, state, configuration, bounds, extentBounds = bounds, {
   contactShadow = {},
   softwareRendering = false,
   guides = () => [],
@@ -291,7 +320,7 @@ function updateGround(THREE, state, configuration, bounds, sceneScale, extentBou
     material.polygonOffset = true;
     material.polygonOffsetFactor = 1;
     material.polygonOffsetUnits = 1;
-    if (kind === "physical") patchFloor(material, null);
+    if (kind === "physical") patchFloor(material, null, state.floorFade);
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);
     ground.name = "studio-ground";
     // The physical floor takes its shadow from the contact layer, which softens it;
@@ -316,18 +345,16 @@ function updateGround(THREE, state, configuration, bounds, sceneScale, extentBou
     state.contactShadow?.setDitherScale(ditherScale);
   }
   state.ground.material.opacity = configuration.backdrop.groundOpacity;
-  const minimumSize = sceneScale === "urdf" ? 0.5 : 100;
   // The plane's SIZE and where it is centred come from `extentBounds`: a caller whose
   // model moves hands over its rest placement, so posing or playing never rescales
   // or slides the floor under it. Only the plane's height follows the model.
   const spanX = extentBounds.max[0] - extentBounds.min[0];
   const spanY = extentBounds.max[1] - extentBounds.min[1];
-  const stageSize = Math.max(
-    spanX,
-    spanY,
-    extentBounds.radius * PHOTOGRAPHIC_STUDIO_STAGE_RADIUS_MULTIPLIER,
-    minimumSize
-  );
+  // It fades out from `inner` of the model's reach to its rim at `outer` of it, so it has no
+  // edge, however far the camera pulls back or however low it looks across the floor.
+  const reach = Math.max(extentBounds.radius, Math.hypot(spanX, spanY) / 2);
+  const stageSize = 2 * reach * PHOTOGRAPHIC_STUDIO_FLOOR_FADE.outer;
+  state.floorFade.value = PHOTOGRAPHIC_STUDIO_FLOOR_FADE.inner / PHOTOGRAPHIC_STUDIO_FLOOR_FADE.outer;
   // Geometry keeps its authored coordinates: the PLANE moves, never the model.
   // The default pins the floor to the document's Z=0; "lowest" follows the
   // current bounds. Neither placement clips the model.
@@ -435,7 +462,7 @@ export function softboxPoint(index) {
   ];
 }
 
-function updateRendererAndScene(THREE, runtime, state, configuration) {
+function updateRendererAndScene(THREE, runtime, state, configuration, ditherScale) {
   const { renderer, scene } = runtime;
   // Product rendering needs authored paint colors and bright whites to remain
   // distinct. Filmic compression made ordinary CAD albedos look pastel/gray.
@@ -462,6 +489,13 @@ function updateRendererAndScene(THREE, runtime, state, configuration) {
   // canvas alpha so the viewer checkerboard and PNG export agree exactly.
   scene.background = alpha < 1 ? null : color;
   renderer.setClearColor?.(color, alpha);
+  // Over the clear, the studio's sweep in that colour (studioBackdrop.js): never a flat fill.
+  if (!state.backdrop) {
+    state.backdrop = createStudioBackdrop(THREE, PHOTOGRAPHIC_STUDIO_BACKDROP);
+    state.group.add(state.backdrop.object);
+  }
+  state.backdrop.update({ color, opacity: alpha });
+  syncDitherScale(state.backdrop.object.material, ditherScale);
   state.keyLight.visible = configuration.lighting.enabled;
 }
 
@@ -531,7 +565,6 @@ function updateFrame(THREE, runtime, state, configuration, bounds, options, qual
 export function applyPhotographicStudio(THREE, runtime, configuration = {}, {
   bounds = runtime?.modelBounds,
   groundBounds = null,
-  sceneScale = "cad",
   shadowMapSize = 2048,
   contactShadow = {},
   ditherScale = 1,
@@ -548,7 +581,7 @@ export function applyPhotographicStudio(THREE, runtime, configuration = {}, {
   runtime.photographicStudio = state;
   const resolvedBounds = resolveBounds(bounds, runtime.modelRadius);
 
-  updateRendererAndScene(THREE, runtime, state, resolved);
+  updateRendererAndScene(THREE, runtime, state, resolved, ditherScale);
   if (resolved.lighting.enabled) updateKeyLight(
     THREE,
     state,
@@ -558,7 +591,7 @@ export function applyPhotographicStudio(THREE, runtime, configuration = {}, {
     runtime.softwareRendering === true
   );
   const restBounds = groundBounds ? resolveBounds(groundBounds, runtime.modelRadius) : resolvedBounds;
-  updateGround(THREE, state, resolved, resolvedBounds, sceneScale, restBounds,
+  updateGround(THREE, state, resolved, resolvedBounds, restBounds,
     { contactShadow, softwareRendering: runtime.softwareRendering === true,
       guides: () => [runtime.gridHelper, runtime.originAxis], ditherScale });
   // Its occlusion is sized from the model at rest, so a pose never changes its reach.
@@ -573,6 +606,8 @@ export function disposePhotographicStudio(runtime) {
   const state = runtime?.photographicStudio;
   if (!state) return;
   disposeGround(state);
+  state.backdrop?.dispose();
+  state.backdrop = null;
   state.frame?.dispose();
   state.frame = null;
   state.keyLight.shadow?.map?.dispose?.();

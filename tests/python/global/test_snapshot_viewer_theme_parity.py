@@ -10,9 +10,8 @@ from tests.python.support.paths import add_repo_path, repo_path
 
 add_repo_path("packages/cadgen/src")
 from cadgen.snapshot_core import (
-    CAMERA_OPTION_KEYS, DISPLAY_GROUP_KEYS, DISPLAY_MODES, DISPLAY_OPTION_KEYS,
-    DISPLAY_MODE_SETTING_KEYS, PART_COLOR_MODES, SnapshotError,
-    load_display_option, normalize_common_job, validate_camera_option,
+    CAMERA_OPTION_KEYS, CAD_MODEL_DISPLAY_MODES, DISPLAY_GROUP_KEYS, DISPLAY_MODES, DISPLAY_OPTION_KEYS,
+    SnapshotError, display_modes_for_kind, load_display_option, normalize_common_job, validate_camera_option,
     validate_display_settings_values,
 )
 
@@ -54,12 +53,10 @@ def python_accepts(values, validator):
 class SharedDisplayContractParityTests(unittest.TestCase):
     def test_exported_closed_key_sets_and_enums_match(self):
         expected = {
-            # A file's modes are the snapshot's display modes; Render is asked for on its own
-            # (Preview's, a snapshot's `render`), its settings kept beside the modes'.
+            # A file's modes are the snapshot's display modes; Preview's look is asked for on its
+            # own (a snapshot's `preview`), and its settings are the viewer's alone.
             "VIEW_MODE_VALUES": DISPLAY_MODES,
-            "VIEW_LOOK_VALUES": DISPLAY_MODES | {"render"},
             "VIEW_SETTINGS_KEYS": DISPLAY_OPTION_KEYS,
-            "VIEW_COLOR_MODE_VALUES": PART_COLOR_MODES,
             **{f"VIEW_{name.upper()}_KEYS": keys for name, keys in DISPLAY_GROUP_KEYS.items()
                if name not in {"clip", "exploded"}},
         }
@@ -68,48 +65,38 @@ class SharedDisplayContractParityTests(unittest.TestCase):
             with self.subTest(export=name):
                 self.assertEqual(set(actual[name]), set(values))
 
-        actual_modes = javascript("view.VIEW_MODE_SETTING_KEYS")
-        self.assertEqual({key: set(value) for key, value in actual_modes.items()}, DISPLAY_MODE_SETTING_KEYS)
+    def test_each_kind_offers_the_same_modes_in_both_languages(self):
+        # The viewer offers Parts only where a file has several parts, which a snapshot cannot know
+        # before it reads the file: the snapshot takes it for any 3D file, and the page draws a
+        # file of one part in Solid. Every other mode is offered alike.
+        kinds = ["step", "stp", "stl", "3mf", "glb", "urdf", "sdf"]
+        offered = javascript("cases.map(kind => view.viewFeaturesForKind(kind, { parts: 2 }).modes)", kinds)
+        for kind, modes in zip(kinds, offered):
+            with self.subTest(kind=kind):
+                self.assertEqual(set(modes), set(display_modes_for_kind(kind)))
+        self.assertEqual(DISPLAY_MODES - {"solid", "parts"}, CAD_MODEL_DISPLAY_MODES)
 
     def test_display_values_match_in_both_languages(self):
-        def setting(mode, **values):
-            return {"modes": {mode: values}}
-
         valid = [
             {}, *({"mode": mode} for mode in DISPLAY_MODES), {"appearance": "dark"},
+            {"grid": True}, {"grid": False}, {"mode": "parts", "grid": True},
             *({group: {}} for group in DISPLAY_GROUP_KEYS),
             {"camera": {"projection": "perspective", "focalLength": 20}},
             {"camera": {"projection": "orthographic", "focalLength": 200}},
-            setting("solid", flat=True, parts={"colorMode": "by-part", "colors": ["#aBc", "#123456"]}),
-            setting("solid", edges={"enabled": False, "color": "#abc"}, grid={"enabled": True, "density": 4}),
-            setting("render", lighting={"quality": "preview", "exposure": -5, "rotation": -180, "size": 0.25, "fill": 0}),
-            setting("render", lighting={"quality": "final", "exposure": 5, "rotation": 180, "size": 3, "fill": 1}),
-            setting("render", background={"opacity": 0.35}, floor={"placement": "origin", "finish": "glossy", "enabled": False}),
-            setting("xray", opacity=0, parts={"colorMode": "single", "color": "#fff"}),
-            setting("xray", opacity=1, edges={"color": "#fff"}, axes={"enabled": True, "opacity": 0.5}),
-            setting("wireframe", grid={"density": 0.25}, edges={"color": "#fff"}),
             {"clip": {"axis": "z", "at": -12.5, "invert": True}}, {"clip": {"enabled": False, "at": 3}},
             {"exploded": {"enabled": True, "amount": 1}},
         ]
         invalid = [
-            None, [], True, "solid", {"render": {}}, {"guides": {}}, {"partColor": {}},
-            *({old: {}} for old in ("surfaces", "edges", "lighting", "background", "floor", "grid", "axes")),
-            *({"mode": value} for value in (None, [], {}, True, "", "SOLID", "grid", "hidden_line")),
+            None, [], True, "solid", {"render": {}}, {"preview": {}}, {"guides": {}}, {"partColor": {}},
+            # A mode has no settings of its own: the per-mode tree, and every group it held, are gone.
+            {"modes": {}}, {"modes": {"solid": {"flat": True}}}, {"modes": {"render": {"floor": {"enabled": False}}}},
+            *({old: {}} for old in ("surfaces", "edges", "lighting", "background", "floor", "axes", "parts", "flat")),
+            *({"grid": value} for value in (None, 0, 1, "on", {}, {"enabled": True})),
+            *({"mode": value} for value in (None, [], {}, True, "", "SOLID", "Grid", "grid", "render", "hidden_line")),
             *({"appearance": value} for value in (None, [], {}, True, "system")),
             *({group: value} for group in DISPLAY_GROUP_KEYS for value in (None, [], True, "off", {"typo": 1}, {"enabled": 0})),
             *({"camera": {"focalLength": value}} for value in (None, "50", True, 19.9, 200.1)),
-            {"camera": {"enabled": True}}, {"modes": []}, {"modes": {"grid": {}}},
-            setting("solid", lighting={}), setting("render", grid={}), setting("wireframe", parts={}),
-            setting("solid", flat=1), setting("xray", opacity=True), setting("xray", opacity=1.01),
-            setting("xray", edges={"enabled": False}), setting("render", background={"enabled": True}),
-            * (setting("solid", parts={"colors": value}) for value in (None, [], "#fff", ["white"], ["#fff"] * 51)),
-            setting("solid", parts={"colorMode": "by_part"}), setting("solid", edges={"visibility": "all"}),
-            setting("render", lighting={"quality": None}), setting("render", lighting={"exposure": -5.01}),
-            setting("render", lighting={"rotation": -180.1}), setting("render", lighting={"size": 0.24}),
-            setting("render", lighting={"fill": "0.5"}), setting("render", floor={"placement": "auto"}),
-            setting("render", floor={"finish": "shiny"}), setting("render", floor={"finish": True}),
-            setting("render", background={"opacity": -0.1}), setting("render", background={"color": "white"}),
-            setting("hidden-line", grid={"density": 4.01}), setting("solid", axes={"enabled": 1}),
+            {"camera": {"enabled": True}},
             {"clip": {"axis": "w"}}, {"clip": {"offset": 0.5}}, {"clip": {"offsets": {"x": 0.5}}},
             {"exploded": {"amount": 1.01}},
             *({"clip": {"at": value}} for value in (None, "3", True, [])),
@@ -122,33 +109,28 @@ class SharedDisplayContractParityTests(unittest.TestCase):
                 self.assertEqual(index < len(valid), python[index])
                 self.assertEqual(python[index], shared[index])
 
-    def test_python_packets_resolve_to_the_same_mode_and_overrides(self):
-        # A display, and whether the job asks for Render (`render`, never a display mode).
+    def test_python_packets_resolve_to_the_same_mode_and_grid(self):
+        # A display, and whether the job asks for Preview's look (`preview`, never a display mode).
         cases = [
             ({}, False), ({}, True), ({"mode": "xray"}, False), ({"mode": "hidden-line"}, False), ({"mode": "wireframe"}, False),
-            ({"mode": "solid", "modes": {"render": {"lighting": {"exposure": 1}}}}, False),
-            ({"modes": {"render": {"floor": {"enabled": False}, "background": {"opacity": 0.35}}}}, True),
-            ({"mode": "solid", "camera": {"projection": "perspective"}, "modes": {"solid": {"grid": {"enabled": True, "color": "#abc"}}}}, False),
-            ({"modes": {"render": {"floor": {"finish": "glossy", "placement": "origin"}}}}, True),
+            ({"mode": "shaded"}, False), ({"mode": "parts", "grid": True}, False),
+            ({"mode": "solid", "camera": {"projection": "perspective"}, "grid": True}, False),
+            ({"mode": "xray", "grid": True}, True),
         ]
-        packets = [normalize_common_job({"input": "part.step", "outputs": [{"path": "out.png"}], "display": display, "render": render},
-                                      mode="view", resolved_cwd=Path("."), timestamp="parity") for display, render in cases]
-        self.assertEqual([render for _, render in cases], [packet.get("render", False) for packet in packets])
-        expected = javascript("cases.map(([display, render]) => view.resolveViewSettings(display, { render }))", cases)
-        actual = javascript("cases.map(packet => view.resolveViewSettings(packet.display, { render: packet.render === true }))", packets)
+        packets = [normalize_common_job({"input": "part.step", "outputs": [{"path": "out.png"}], "display": display, "preview": preview},
+                                      mode="view", resolved_cwd=Path("."), timestamp="parity") for display, preview in cases]
+        self.assertEqual([preview for _, preview in cases], [packet.get("preview", False) for packet in packets])
+        expected = javascript("cases.map(([display, preview]) => view.resolveViewSettings(display, { preview }))", cases)
+        actual = javascript("cases.map(packet => view.resolveViewSettings(packet.display, { preview: packet.preview === true }))", packets)
         self.assertEqual(expected, actual)
         self.assertEqual("perspective", actual[1]["camera"]["projection"])
         self.assertEqual("orthographic", actual[0]["camera"]["projection"])
-        self.assertFalse(actual[5]["lighting"]["enabled"])
-        self.assertFalse(actual[6]["floor"]["enabled"])
-        self.assertEqual(0.35, actual[6]["background"]["opacity"])
+        self.assertTrue(actual[1]["lighting"]["enabled"])
+        self.assertEqual("origin", actual[1]["floor"]["placement"])
+        self.assertFalse(actual[5]["edges"]["enabled"])
+        self.assertEqual(("parts", "by-part", True), (actual[6]["mode"], actual[6]["surfaces"]["colorMode"], actual[6]["grid"]["enabled"]))
         self.assertTrue(actual[7]["grid"]["enabled"])
-        self.assertEqual("#aabbcc", actual[7]["grid"]["color"])
-        self.assertEqual("lowest", actual[1]["floor"]["placement"])
-        self.assertEqual("glossy", actual[8]["floor"]["finish"])
-        self.assertEqual("origin", actual[8]["floor"]["placement"])
-        placements = javascript("cases.map(packet => scene.resolveViewSceneSettings({display: packet.display, render: packet.render === true}).render.configuration.backdrop.groundPlacement)", [packets[1], packets[8]])
-        self.assertEqual(["lowest", "origin"], placements)
+        self.assertEqual(("render", False), (actual[8]["mode"], actual[8]["grid"]["enabled"]), "Preview draws no grid")
 
     def test_public_camera_keys_match_the_shared_pose_fields(self):
         self.assertEqual(set(javascript('CAMERA_SPEC_KEYS.filter(key => !["projection", "focalLength"].includes(key))')), set(CAMERA_OPTION_KEYS))

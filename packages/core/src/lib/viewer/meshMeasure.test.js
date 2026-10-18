@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { measureLabelText, measurementMark } from "./measureDimension.js";
 import { measurementFromPicks } from "./measurement.js";
-import { boundsMeasurePicks, meshMeasurePick } from "./meshMeasure.js";
+import { meshMeasurePick } from "./meshMeasure.js";
 import { GLB_SCENE_UNITS, threeMfSceneUnits } from "./sceneUnits.js";
 
 // A camera looking straight down at a 100-unit triangle, one pixel a unit.
@@ -32,8 +32,6 @@ test("a mesh's length is in its file's unit and says it is approximate, wherever
   assert.equal(measureLabelText(measurementFromPicks({ point: [0, 0, 0] }, { point: [3, 4, 0] })), "5.00 mm", "a STEP's stays exact");
 });
 
-test("the model's size is three measurements along its box's edges", () => {
-  const picks = boundsMeasurePicks({ min: [0, 0, 0], max: [40, 20, 10] }, threeMfSceneUnits("inch"));
-  assert.deepEqual(picks.map(([start, end]) => measureLabelText(measurementFromPicks(start, end))), ["≈ 40.000 in", "≈ 20.000 in", "≈ 10.000 in"]);
+test("a 3MF's declared unit is one of the 3MF unit names", () => {
   assert.throws(() => threeMfSceneUnits("furlong"), /micron, millimeter, centimeter, inch, foot, meter/);
 });

@@ -1,31 +1,29 @@
-import { normalizeViewSettings, resolveViewSettings } from "@text-to-cad/core/common/viewSettings.js";
+import { normalizePreviewSettings, normalizeViewSettings, resolveViewSettings } from "@text-to-cad/core/common/viewSettings.js";
 
 import { buildStepClipPatch } from "@text-to-cad/core/lib/viewer/clipPlane.js";
 
-const object = value => Boolean(value) && typeof value === "object" && !Array.isArray(value);
-
-// A patch merges into what is there, in the same shape: `mode` picks the mode and keeps every
-// mode's settings; the shared groups merge field by field; `modes.<mode>` merges each of its
-// groups field by field and replaces a plain value (Solid's `flat`, X-ray's `opacity`).
+// A patch merges into what is there, in the same shape: `mode` picks the mode and `grid` switches
+// the grid; the shared groups merge field by field.
 export function mergeViewerDisplaySettings(current, patch) {
   const normalized = normalizeViewSettings(patch);
   const base = normalizeViewSettings(current);
   const next = { ...base };
   if (Object.hasOwn(patch, "mode")) next.mode = normalized.mode;
+  // The grid is off unless said: switched off, it is left unsaid, so a display stays sparse.
+  if (Object.hasOwn(patch, "grid")) { if (normalized.grid) next.grid = true; else delete next.grid; }
   if (normalized.appearance) next.appearance = normalized.appearance;
   if (normalized.camera) next.camera = { ...base.camera, ...normalized.camera };
   if (normalized.exploded) next.exploded = { ...base.exploded, ...normalized.exploded };
   if (normalized.clip) next.clip = buildStepClipPatch(base.clip, normalized.clip);
-  if (normalized.modes) {
-    const modes = { ...base.modes };
-    for (const [mode, settings] of Object.entries(normalized.modes)) {
-      const own = { ...modes[mode] };
-      for (const [key, value] of Object.entries(settings)) own[key] = object(value) ? { ...own[key], ...value } : value;
-      modes[mode] = own;
-    }
-    next.modes = modes;
-  }
   return normalizeViewSettings(next);
+}
+
+/** Preview's settings with `patch` merged in, each group field by field. */
+export function mergePreviewSettings(current, patch) {
+  const base = normalizePreviewSettings(current ?? {});
+  const next = { ...base };
+  for (const [group, values] of Object.entries(normalizePreviewSettings(patch))) next[group] = { ...base[group], ...values };
+  return normalizePreviewSettings(next);
 }
 
 // A camera command carries both pose and optional View controls. Explicit lens

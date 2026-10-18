@@ -79,3 +79,27 @@ it('a camera handed to the viewport, or a zoom to a selection, is the user\'s ca
   act(() => { expect(viewport.current.zoomToBounds({ min: [0, 0, 0], max: [4, 2, 1] }, { animate: false })).toBe(true); });
   expect(runtime.userMovedCamera).toBe(true);
 });
+
+
+it('prompt capture preserves the actual projection, lens and zoom for snapshot replay', () => {
+  const viewport = React.createRef<any>();
+  const { runtime } = mount({ ref: viewport });
+  Object.defineProperties(runtime.renderer.domElement, { clientWidth: { value: 800 }, clientHeight: { value: 600 } });
+  runtime.camera.zoom = 2;
+  const ortho = viewport.current.promptCamera();
+  expect(ortho.display.camera).toEqual({ projection: 'orthographic' });
+  expect(ortho.camera.orthographicHalfHeight).toBe(20);
+  expect(ortho.camera.zoom).toBeUndefined(); // Already folded into the half-height.
+  const perspective = new THREE.PerspectiveCamera(50, 800 / 600);
+  perspective.setFocalLength(85);
+  perspective.position.copy(runtime.camera.position);
+  perspective.up.copy(runtime.camera.up);
+  perspective.zoom = 1.5;
+  (runtime as any).camera = perspective;
+  const captured = viewport.current.promptCamera();
+  expect(captured.display.camera.projection).toBe('perspective');
+  expect(captured.display.camera.focalLength).toBeCloseTo(85);
+  expect(captured.camera.zoom).toBe(1.5);
+  expect(captured.camera.position).toEqual(perspective.position.toArray());
+  expect(captured.camera.orthographicHalfHeight).toBeCloseTo(perspective.position.length() * Math.tan(THREE.MathUtils.degToRad(perspective.getEffectiveFOV()) / 2));
+});

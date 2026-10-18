@@ -38,6 +38,16 @@ describe('the shell live binding', () => {
     expect(() => harness({ commands: ['select', 'clearSelection'], declined: { select: 'no' } })).toThrow('"select"');
     expect(() => harness({ commands: ['select', 'clearSelection', 'capture'] })).toThrow('already part of every renderer');
   });
+  it('settles a display patch on what it names, though a setting it does not name moves with it', async () => {
+    // A renderer keeping one motion at a time: Clip going on takes Explode off.
+    let display: Record<string, unknown> = { mode: 'solid', exploded: { enabled: true, amount: 0.5 }, clip: { enabled: false, axis: 'x', invert: false } };
+    const view = harness({ declined }, {
+      readState: () => ({ ...state(), display }),
+      setDisplaySettings: vi.fn((patch: Record<string, unknown>) => { display = { ...display, ...patch, exploded: { enabled: false, amount: 0 } }; }),
+    });
+    const settled = await view.controller.setDisplaySettings({ clip: { enabled: true, axis: 'z', invert: false } });
+    expect(settled.display).toMatchObject({ clip: { enabled: true, axis: 'z' }, exploded: { enabled: false } });
+  });
   it('fails loudly when a declared command is missing from the mounted view', async () => {
     const view = harness({ commands: ['select', 'clearSelection'] }, { select: vi.fn() });
     await expect(view.controller.clearSelection()).rejects.toThrow('declared the live command "clearSelection"');

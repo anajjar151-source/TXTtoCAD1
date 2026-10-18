@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { afterEach, expect, it } from 'vitest';
 import { useAnnotationSession } from './session.js';
 import { ANNOTATION_COLORS, AnnotationToolbar, annotationColors } from './toolbar.jsx';
+import { SUB_TOOLBAR_WIDTH_CLASS } from '../renderers/kit/tools/SubToolbar.jsx';
 
 afterEach(cleanup);
 
@@ -13,12 +14,17 @@ function Panel({ colorScheme = 'light' }: { colorScheme?: 'light' | 'dark' }) {
   return <AnnotationToolbar annotation={session} history={history} colorScheme={colorScheme} />;
 }
 
-it("Annotate's controls: every tool a button | what is drawn next as dropdowns, placement among them, then Undo, Redo and Clear", async () => {
+it("Annotate's controls, two rows at the sub-toolbars' one width: every tool a button, over what is drawn next as dropdowns, placement among them, then Undo, Redo and Clear", async () => {
   render(<Panel />);
   const row = screen.getByRole('toolbar', { name: 'Annotation controls' });
   const label = (element: Element) => element.getAttribute('role') === 'separator' ? '|' : element.getAttribute('aria-label');
+  // No rule between the halves: they are two rows, one over the other, whatever the view's width.
   expect([...row.querySelectorAll('[role=group], [role=separator]')].map(label))
-    .toEqual(['Annotation tools', '|', 'Annotation style', 'Annotation history']);
+    .toEqual(['Annotation tools', 'Annotation style', 'Annotation history']);
+  expect(row.className.split(/\s+/)).toEqual(expect.arrayContaining(['flex-col', ...SUB_TOOLBAR_WIDTH_CLASS.split(/\s+/)]));
+  expect([...row.children].map(child => child.getAttribute('role') === 'group' ? child.getAttribute('aria-label')
+    : [...child.querySelectorAll('[role=group]')].map(group => group.getAttribute('aria-label')).join(' + ')))
+    .toEqual(['Annotation tools', 'Annotation style + Annotation history']);
   expect(within(screen.getByRole('group', { name: 'Annotation tools' })).getAllByRole('button').map(button => button.getAttribute('aria-label')))
     .toEqual(['Pen', 'Line', 'Arrow', 'Rectangle', 'Ellipse', 'Text', 'Eraser']);
   expect(within(screen.getByRole('group', { name: 'Annotation history' })).getAllByRole('button').map(button => button.getAttribute('aria-label')))

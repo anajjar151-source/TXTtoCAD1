@@ -41,11 +41,11 @@ are for reading and maintaining the contracts.
 
 | Contract | Definition | Public entry point |
 | --- | --- | --- |
-| `ViewerHost`, `ClipboardPort`, `PromptFiles` (a Quick Edit's views, annotations and pictures, made as files), `usage` | [Host types](../src/host/types.ts) | `@text-to-cad/ui/host` |
+| `ViewerHost`, `ClipboardPort`, `PromptFiles` (a Quick Edit's views and annotations, saved as JSON), `usage` | [Host types](../src/host/types.ts) | `@text-to-cad/ui/host` |
 | `FileSource` (`stat`, and `list` and `search` where the host has them), `FileActions`, `FileViewerState` | [File viewer types](../src/file-viewer/types.ts) | `@text-to-cad/ui/file-viewer` |
 | `PromptContextPort` (`deliver`, `send`), bundles, references, delivery receipts and `formatPromptMessage` (the one message a Quick Edit is) | [Prompt types](../../core/src/prompt/types.ts) | `@text-to-cad/core/prompt` |
 | `CadWorkspaceService` (the catalog of the files on screen, `folder`, `search`), `createCadClient` (`{ origin, fetch, … }`), `isMissingFileError`, `CadResourceProvider`, worker tickets | [CAD service types](../../core/src/client/types.ts) | `@text-to-cad/core/client` |
-| `createHttpPromptFiles` (the viewer server's `PromptFiles`: `POST /__cad/prompt-files`, then asked again until rendered) | [Prompt files](../../core/src/client/promptFiles.js) | `@text-to-cad/core/client` |
+| `createHttpPromptFiles` (the viewer server's `PromptFiles`: `POST /__cad/prompt-files`, writes JSON and returns paths) | [Prompt files](../../core/src/client/promptFiles.js) | `@text-to-cad/core/client` |
 | `StepRendererOptions`, `CadLiveBinding` | [STEP registration](../src/renderers/step/index.ts) | `@text-to-cad/ui/renderers/step` |
 | `TabStore`, `TabRecordStorage`, `createTabStore`, `useTabViewerState` (the tab's one store: its settings, the view of the file on screen, and `FileViewer`'s state from both) | [Tab store](../src/tab-store/tabStore.ts), [the record](../src/tab-store/tabRecord.ts) | `@text-to-cad/ui/tab-store` |
 | `CadPreferenceSource`, `createCadPreferences` (the tab's settings as renderers read them) | [Viewer preferences](../src/renderers/workspace/preferences.ts) | `@text-to-cad/ui/renderers/workspace` |
@@ -210,10 +210,10 @@ references do not promise to survive edits. Shared serialization handles quoting
 `formatPromptMessage(context, { attachmentPath })` is the one
 message a Quick Edit is, whether sent, queued or copied: what the person wrote;
 then `File: <path>`; then `References:` and one reference per line; then each
-file that travels as a file by its label and path (`Current view: <png>`,
-`View 1: <png>`, `Views (cadgen snapshot --job): <job.json>`, `Annotation: <file.annotation.json>`),
-where `attachmentPath` says where it was saved. A picture sent beside the text
-as an image block is not named.
+JSON file by its label and path (`Views (cadgen snapshot --job): <job.json>`,
+`Annotation: <file.annotation.json>`), where `attachmentPath` says where it was saved.
+No pictures are rendered, attached or sent.
+
 
 `PromptContextAction` (a host renderer's prompt action) reads the subscribed
 destination and labels the action Add to prompt or Copy for prompt. It calls delivery during the
@@ -238,15 +238,18 @@ they do not transfer Promise or Blob values across native IPC.
 
 Quick Edit is the shared, host-neutral note to the agent
 ([the design system](settings-ui.md#quick-edit)), and its buttons are what the host can carry out.
-Every way it goes carries the same: its words, its references, and the files
-`host.promptFiles` makes for it at the press — a picture of each view it carries
-(the view on screen as it goes, and each its annotations were drawn in; one such view
-the same as the one on screen stands for it), those views as a snapshot job file
-(`cadgen snapshot --job <file>` renders them again, over the model or an edit of
-it), and the annotations as an annotation file, `.annotation.json` ([annotation](annotation.md)). The server renders
-the pictures with the snapshot's own code and its own look — solid, light,
-orthographic — whatever the viewer showed (`createHttpPromptFiles` asks until
-they are made). **Copy Prompt** is always there: the message goes through
+Every way it goes carries its words, references and a snapshot packet captured at
+Copy, Queue or Send. The packet includes the current view plus distinct drawn views
+with remaining ink; an equivalent drawn entry uses the exact current framing.
+Shared input, inline annotation ([annotation](annotation.md)) and measurements
+appear once. Each job may override shared fields. Projection and lens are preserved.
+Packets up to 1024 bytes of compact UTF-8 JSON are inlined; larger packets are
+written as one temporary `.snapshot.json` and named by path. Hosts use
+`resolvePromptMessage` to resolve an attachment's optional `inlineText` before its
+path, keeping destination binding inside the gesture. Drawing, selecting and typing
+keep data in memory. Nothing renders at the press. The agent saves inline JSON to
+a temporary file before calling `cadgen snapshot --job <file>`.
+**Copy Prompt** is always there: the message goes through
 `ClipboardPort.writeText`, which takes a `Promise<string>` so the write starts
 inside the gesture while the files are still being made; its references name their
 files by absolute path, as copied references do (below), and every file is named by
@@ -259,18 +262,18 @@ document or revision never retargets it. A Quick Edit that reached its destinati
 `usage.used('quickEdit')`, for its count; a host that throws there changes nothing.
 
 `ViewerHost.promptFiles` is a `PromptFiles`: `create({ name, input, views, annotation, measurements })`
-answers where the job, the annotation and each view's picture were made, `read(path)`
-fetches one, and the optional `save({ name, kind, data })` writes a Quick Edit chip's
-copy as a file at once and answers its path, which the chip copies (`kind` "annotation", the
-annotation; "measurement", one measurement). `createHttpPromptFiles({ origin, fetch })` from `@text-to-cad/core/client`
-is the viewer server's: it posts the request to `POST /__cad/prompt-files`, which
-answers at once and renders off the request, then asks `GET /__cad/prompt-files?id=<id>`
-until they are made, reads a file at `GET /__cad/prompt-files/<name>`, and saves at
-`POST /__cad/prompt-files/save`. The files
+answers `{ inline: compactJson }` or `{ snapshot: absolutePath }`, `read(path)` fetches JSON,
+and optional `save({ name, kind, data })` remains for older clients that export individual
+annotation or measurement files. Current chips do not call it. `createHttpPromptFiles({ origin, fetch })` from
+`@text-to-cad/core/client` posts to `POST /__cad/prompt-files`, which validates the packet in memory and returns inline JSON or writes the larger
+snapshot and returns its path with HTTP 200. The client advertises `acceptInline: true`;
+requests without it always receive a saved path, so already-open clients remain compatible. There is no render worker
+or polling endpoint. Guarded `GET /__cad/prompt-files/<name>` serves JSON only;
+`POST /__cad/prompt-files/save` supports those older clients. The files
 are scratch in the system's temporary directory and outlive the viewer until the
-system clears them. The response and the persisted job name every file by
-absolute path, including the annotation, so replay works from another working
-folder. Both apps pass one; the MCP app's
+system clears them. The response and persisted snapshot name input and output
+files by absolute path; annotation data is inline, so replay works from another
+working folder. Both apps pass one; the MCP app's
 reaches the server through its tunnel.
 
 ## App-specific interfaces
@@ -305,15 +308,14 @@ picture's size — one model at a time, each once per visit, and only a model wh
 artifact status is already `compiled`, and keeps the picture through `onThumbnail`
 as it keeps the file on screen's. The home never builds anything: an unbuilt model
 keeps its placeholder until a view shows it.
-`readState().display` and `setDisplaySettings(patch)` use the same sparse per-mode
-schema as snapshots: `mode` selects `solid`, `xray`, `hidden-line`, or
-`wireframe`; `modes.<mode>` holds that mode's settings, while appearance, camera,
-clip and exploded are shared. Patches merge supplied fields within each mode's
-groups. A mode patch selects its remembered overrides without clearing anything.
-Reset removes only the named mode's overrides. There is no Custom state or legacy
-shape migration. Render is no mode: it is Preview's, which no live command opens, so
-`mode: "render"` is refused as any unknown mode is, and `modes.render` is Preview's
-Render settings. Camera projection/lens changes preserve viewport pose and zoom.
+`readState().display` and `setDisplaySettings(patch)` use the same sparse display
+schema as snapshots: `mode` selects `solid`, `shaded`, `parts`, `xray`, `hidden-line`,
+or `wireframe` (each a look at its own defaults), `grid` switches the measuring grid,
+and appearance, camera, clip and exploded are shared. Patches merge supplied fields;
+a mode has no settings of its own, and a patch naming any is refused. There is no
+Custom state or legacy shape migration. Render is no mode: it is Preview's, which no
+live command opens, so `mode: "render"` is refused as any unknown mode is; Preview's
+own settings are the viewer's panel's, not the display's. Camera projection/lens changes preserve viewport pose and zoom.
 `resetCamera` frames the model again without turning the camera — exactly what
 STEP's context-menu "Zoom to fit" does. Cube shortcuts change only orientation.
 

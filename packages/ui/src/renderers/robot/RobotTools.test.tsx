@@ -184,14 +184,13 @@ it('robot Select opens in hand, before Annotate, Measure and Clip: it picks link
   expect([robot.filter(), robot.knobs(), picks.latest!.enabled]).toEqual(['Selection filter: Position', 1, false]);
   expect(robot.toolNames()).toEqual(SELECT_IN_HAND);
 
-  // Display is not a tool: its settings (each mode's page), from the navbar's right end, open over
-  // Select and leave it the tool, with its knobs; Escape puts them away.
-  await user.click(within(robot.pane.querySelector<HTMLElement>('[data-viewer-navbar]')!).getByRole('button', { name: /^Display mode: / }));
-  await user.click(screen.getByRole('button', { name: 'Solid settings' }));
-  await waitFor(() => expect(document.querySelector('[data-display-settings]')).not.toBeNull());
+  // Display is not a tool: its menu (the modes and Grid), from its tile at the strip's end, opens over
+  // Select and leaves it the tool, with its knobs; Escape puts it away.
+  await user.click(within(robot.pane.querySelector<HTMLElement>('[data-cad-toolbar] [data-view-controls]')!).getByRole('button', { name: /^Display mode: / }));
+  await waitFor(() => expect(document.querySelector('[role=menu][aria-label="Display"]')).not.toBeNull());
   expect([robot.toolNames(), robot.knobs()]).toEqual([SELECT_IN_HAND, 1]);
-  fireEvent.keyDown(document.activeElement || document.body, { key: 'Escape' });
-  await waitFor(() => expect(document.querySelector('[data-display-settings]')).toBeNull());
+  await user.keyboard('{Escape}');
+  await waitFor(() => expect(document.querySelector('[role=menu][aria-label="Display"]')).toBeNull());
   expect(robot.toolNames()).toEqual(SELECT_IN_HAND);
 
   // A pose off its default stays in the section when the filter puts the knobs away; its Pose row
@@ -207,11 +206,12 @@ it('robot Select opens in hand, before Annotate, Measure and Clip: it picks link
   robot.client.dispose();
 });
 
-it('a robot is a 3D view: Display and Preview end the navbar, the strip keeping to its tools', async () => {
+it('a robot is a 3D view: Projection, Display and Preview end the strip after its rule, the navbar holding none of them', async () => {
   const robot = await openRobot();
-  const actions = robot.pane.querySelector<HTMLElement>('[data-viewer-navbar] [data-view-controls]')!;
-  expect([...actions.querySelectorAll('button')].map(button => button.getAttribute('aria-label'))).toEqual(['Display mode: Solid', 'Preview']);
-  expect(within(robot.pane).getByRole('group', { name: 'Interaction tools' }).querySelector('[data-view-controls]')).toBeNull();
+  const strip = within(robot.pane).getByRole('group', { name: 'Interaction tools' });
+  const actions = strip.querySelector<HTMLElement>('[data-strip-rule] + [data-view-controls]')!;
+  expect([...actions.querySelectorAll('button')].map(button => button.getAttribute('aria-label'))).toEqual(['Projection: Orthographic', 'Display mode: Solid', 'Preview']);
+  expect(robot.pane.querySelectorAll('[data-viewer-navbar] [data-view-controls] button')).toHaveLength(0);
   robot.client.dispose();
 });
 

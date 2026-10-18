@@ -49,6 +49,10 @@ DXF_KINDS = snapshot.enabled_kinds(DOOR_KINDS["dxf"])
 ALL_KINDS = snapshot.enabled_kinds(("step", "stp", "dxf", "glb", "stl", "3mf", "urdf", "srdf", "sdf"))
 
 
+# A drawing's one camera: its plan view, centred on (50, 30), 30 drawing units above and below.
+PLAN = {"position": [50, 30, 120], "target": [50, 30, 0], "up": [0, 1, 0], "orthographicHalfHeight": 30}
+
+
 class DxfSnapshotRefusalTests(unittest.TestCase):
     """Every option that only ever meant something for the 3D flat pattern."""
 
@@ -73,25 +77,21 @@ class DxfSnapshotRefusalTests(unittest.TestCase):
     def test_display_settings_describe_a_scene_a_drawing_does_not_have(self) -> None:
         for display in (
             {"mode": "hidden-line"},
-            {"modes": {"solid": {"flat": True}}},
-            {"modes": {"render": {"lighting": {"exposure": 1.2}}}},
-            {"modes": {"render": {"floor": {"enabled": True}}}},
-            {"modes": {"render": {"background": {"color": "#112233"}}}},
+            {"mode": "solid"},
+            {"mode": "parts"},
+            {"grid": True},
             {"camera": {"projection": "perspective"}},
-            {"modes": {"solid": {"edges": {"enabled": True}}}},
             {"clip": {"enabled": True}},
             {"exploded": {"amount": 0.5}},
-            {"modes": {"solid": {"grid": {"enabled": True}}}},
-            {"modes": {"solid": {"axes": {"enabled": True}}}},
         ):
             with self.subTest(display=display):
                 self.refuses(self.job(display=display), r"describes? a 3D scene")
 
     def test_the_refusal_names_the_setting_and_the_flag_that_replaces_it(self) -> None:
         with self.assertRaises(snapshot.SnapshotError) as raised:
-            self.prepare(self.job(display={"mode": "hidden-line", "modes": {"render": {"floor": {"enabled": True}}}}))
+            self.prepare(self.job(display={"mode": "hidden-line", "grid": True}))
         message = str(raised.exception)
-        self.assertIn("display.mode, display.modes", message)
+        self.assertIn("display.grid, display.mode", message)
         self.assertIn("a.dxf", message)
         self.assertIn("--appearance light|dark", message)
 
@@ -106,6 +106,25 @@ class DxfSnapshotRefusalTests(unittest.TestCase):
             self.job(outputs=[{"path": "a.png", "camera": "iso"}]),
             r"camera poses a model in space",
         )
+        tilted = {"position": [10, -10, 10], "target": [0, 0, 0], "up": [0, 0, 1], "orthographicHalfHeight": 5}
+        self.refuses(self.job(camera=tilted), r"The one camera a job may give a drawing is its plan view")
+        self.refuses(self.job(camera={**PLAN, "up": [1, 0, 0]}), r"plan view")
+
+    def test_a_plan_view_frames_the_window_a_quick_edit_was_looking_at(self) -> None:
+        single, prepared = self.prepare(self.job(camera=PLAN))
+        self.assertTrue(single)
+        self.assertEqual(
+            {"position": [50.0, 30.0, 120.0], "target": [50.0, 30.0, 0.0], "up": [0.0, 1.0, 0.0], "orthographicHalfHeight": 30.0},
+            prepared[0].job["outputs"][0]["camera"],
+        )
+
+    def test_ink_and_measurements_are_drawn_over_a_drawing(self) -> None:
+        annotation = {"units": "mm", "parts": {}, "marks": [
+            {"id": "1", "kind": "stroke", "part": None, "points": [0, 0, 0, 10, 10, 0], "color": "#ff2d55", "width": 2}]}
+        mark = {"start": [0, 0, 0], "end": [100, 0, 0], "label": "100.00 mm", "color": "#d59090"}
+        _, prepared = self.prepare(self.job(camera=PLAN, annotation=annotation, measurements=[mark]))
+        self.assertEqual(annotation, prepared[0].job["annotation"])
+        self.assertEqual([mark], prepared[0].job["measurements"])
 
     def test_the_job_refusal_is_the_same_sentence_the_retired_flag_speaks(self) -> None:
         # The flag half of this is asserted against the same two functions in
@@ -174,7 +193,7 @@ class DxfSnapshotRefusalTests(unittest.TestCase):
         # also be handed; a .dxf in the same packet still gets the drawing's
         # answer rather than a 3D render nobody could reproduce in the viewer.
         self.refuses(self.job(camera="top"), r"camera poses a model in space", kinds=ALL_KINDS)
-        self.refuses(self.job(render=True), r"render describes a 3D scene", kinds=ALL_KINDS)
+        self.refuses(self.job(preview=True), r"preview describes a 3D scene", kinds=ALL_KINDS)
 
     def test_a_non_drawing_input_is_refused_by_what_it_is(self) -> None:
         (self.root / "part.step").write_text("ISO-10303-21;\n", encoding="utf-8")
@@ -259,7 +278,7 @@ class DxfSnapshotDoorSurfaceTests(unittest.TestCase):
         # instead -- the standard the job-packet refusals already meet. An
         # `unrecognized arguments` line meets none of it.
         expected = {
-            "--camera": ("poses a model in space", "no camera and no views to choose between"),
+            "--camera": ("poses a model in space", "no camera to pose and no views to choose between"),
             "--display": ("describes a 3D scene", "--appearance light|dark"),
             "--mode": ("view and list", "no parts to list"),
             "--view-labels": ("view name into the image", "no camera"),

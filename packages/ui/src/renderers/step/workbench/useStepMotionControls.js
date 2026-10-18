@@ -8,11 +8,11 @@ import { poseValuesForPreset } from "../components/workbench/PoseControlsSection
 // Single command boundary for STEP motion. Refs are published synchronously so
 // queued playback callbacks cannot resurrect the previous motion owner.
 //
-// One motion at a time: Explode, Position and a routine's frame replace each other, the others
-// going back to rest when one is used (and when Explode's tool is taken up, which the host watches)
-// — nothing is set aside to come back. Position and the routine are both here; Explode is the
-// host's view settings, so `host.onUse(motion)` tells it which of these two was used ("position" or
-// "animation") and it takes Explode off. The tools view and Preview each have their own motion
+// One of four at a time: Explode, Clip, Position and a routine's frame replace each other, the
+// others going back to their defaults when one is SET (its value changed; a tool taken up or a
+// panel pressed changes nothing) — nothing is set aside to come back. Position and the routine are
+// both here; Explode and Clip are the host's view settings, so `host.onUse(motion)` tells it which
+// of these two was used ("position" or "animation") and it takes Explode and Clip off. The tools view and Preview each have their own motion
 // (`useStepMotion`, `useStepPreviewMotion`): their own values, their own routine and its `clock`.
 export function useStepMotionControls({
   selectedStepModuleDefinition, selectedAnimationClips, selectedActiveAnimationClip,

@@ -7,92 +7,98 @@ import { resolveCadEdgeSettings } from "./cadInk.js";
 import { applyMaterialSettingsToRecord as applyViewerMaterialSettings } from "../lib/viewer/surfaceMaterials.js";
 import { resolveViewSceneSettings } from "./sceneSettings.js";
 import { renderJobContext, modelOptionsForRenderJob } from "./renderMeshScene.js";
-import { ALL_VIEW_FEATURES, EDGELESS_VIEW_FEATURES, RENDER_FLOOR_PLACEMENT, normalizeViewSettings, resolveViewSettings, resetViewMode, viewModeChanged, VIEW_MODE_VALUES } from "./viewSettings.js";
+import { DEFAULT_PART_COLOR_SETTINGS } from "./displaySettings.js";
+import {
+  ALL_VIEW_FEATURES, EDGELESS_VIEW_FEATURES, RENDER_FLOOR_PLACEMENT, STEP_PART_VIEW_FEATURES, VIEW_MODE_VALUES, normalizePreviewSettings,
+  normalizeViewSettings, previewSettingsChanged, readPreviewSettings, readViewSettings, resolveViewSettings, scenePartCount,
+  viewFeaturesForKind, viewGridDefaults
+} from "./viewSettings.js";
 
-const RENDER = { render: true };
+const PREVIEW = { preview: true };
 
-test("input stays sparse, canonicalizes colors and refuses a setting its mode does not have", () => {
+test("input stays sparse and refuses what a display does not have", () => {
   assert.deepEqual(normalizeViewSettings(), { mode: "solid" });
-  assert.deepEqual(normalizeViewSettings({ modes: { render: { floor: { color: "#AbC" } } } }),
-    { mode: "solid", modes: { render: { floor: { color: "#aabbcc" } } } });
+  assert.deepEqual(normalizeViewSettings({ mode: "parts", grid: true }), { mode: "parts", grid: true });
   for (const [input, message] of [
+    // Preview's look is no display mode: it is asked for on its own (`preview`).
+    [{ mode: "render" }, /display\.mode must be one of: solid, shaded, parts, xray, hidden-line, wireframe/],
     [{ mode: "grid" }, /display\.mode must be one of/],
-    // Render is no display mode: it is asked for on its own (`render`).
-    [{ mode: "render" }, /display\.mode must be one of: solid, xray, hidden-line, wireframe/],
+    [{ grid: "on" }, /display\.grid must be a boolean/],
+    // A mode has no settings of its own, and Preview's are not the display's.
+    [{ modes: { solid: { flat: true } } }, /Unsupported display fields: modes/],
+    [{ preview: { floor: { finish: "glossy" } } }, /Unsupported display fields: preview/],
     [{ surfaces: {} }, /Unsupported display fields: surfaces/],
-    [{ modes: { solid: { lighting: {} } } }, /Unsupported display\.modes\.solid fields: lighting/],
-    [{ modes: { solid: { grid: { opacity: 2 } } } }, /display\.modes\.solid\.grid\.opacity must be a finite number between 0 and 1/],
-    [{ modes: { xray: { edges: { enabled: false } } } }, /Unsupported display\.modes\.xray\.edges fields: enabled/],
-    [{ modes: { render: { background: { enabled: true } } } }, /Unsupported display\.modes\.render\.background fields: enabled/],
     [{ camera: { enabled: true } }, /Unsupported display\.camera fields: enabled/],
     [{ camera: { focalLength: 19 } }, /display\.camera\.focalLength/],
     [{ clip: null }, /clip/]
   ]) assert.throws(() => normalizeViewSettings(input), message);
 });
 
-test("each mode draws its own settings; Render, asked for on its own, alone is in perspective, whatever the camera says", () => {
-  assert.deepEqual(VIEW_MODE_VALUES, ["solid", "xray", "hidden-line", "wireframe"]);
-  for (const mode of VIEW_MODE_VALUES) {
-    const view = resolveViewSettings({ mode, camera: { projection: "orthographic" } });
-    assert.equal(view.camera.projection, "orthographic");
-    assert.equal(viewModeChanged({ mode }, mode), false);
-    const rendered = resolveViewSettings({ mode, camera: { projection: "orthographic" } }, RENDER);
-    assert.deepEqual([rendered.mode, rendered.camera.projection], ["render", "perspective"], `Render over ${mode}`);
-  }
-  assert.equal(viewModeChanged({}, "render"), false);
-  const solid = resolveViewSettings({ modes: { solid: { flat: true, edges: { enabled: false } } } });
-  assert.deepEqual([solid.surfaces.style, solid.edges.enabled], ["flat", false]);
-  const xray = resolveViewSettings({ mode: "xray", modes: { xray: { opacity: 0.5 } } });
-  assert.deepEqual([xray.surfaces.opacity, xray.edges.visibility, xray.edges.enabled], [0.5, "all", true]);
-  assert.equal(resolveViewSettings({ mode: "xray" }).surfaces.opacity, 0.22);
-  assert.deepEqual([resolveViewSettings({ mode: "hidden-line" }).surfaces.style, resolveViewSettings({ mode: "wireframe" }).surfaces.style], ["hidden", "off"]);
-  const render = resolveViewSettings({}, RENDER);
-  assert.deepEqual([render.lighting.enabled, render.background.enabled, render.floor.enabled, render.edges.enabled], [true, true, true, false]);
-  assert.equal(resolveViewSettings({ modes: { render: { floor: { enabled: false } } } }, RENDER).floor.enabled, false);
-  assert.equal(resolveViewSettings({ mode: "solid" }).lighting.enabled, false);
+test("a stored display keeps what this build reads and leaves out the rest, setting by setting", () => {
+  const stored = { mode: "grid", modes: { solid: { flat: true } }, grid: true, clip: { enabled: true, at: 4 }, exploded: { amount: 2 } };
+  assert.deepEqual(readViewSettings(stored), { mode: "solid", grid: true, clip: { enabled: true, at: 4 } });
+  assert.deepEqual(readViewSettings(null), { mode: "solid" });
+  assert.deepEqual(readPreviewSettings({ floor: { finish: "glossy" }, lighting: { exposure: 9 }, grid: {} }), { floor: { finish: "glossy" } });
 });
 
-test("every mode keeps its own settings, and Render its own: another's change is not the one on screen's", () => {
-  const display = { mode: "solid", modes: { solid: { grid: { enabled: true } }, render: { lighting: { exposure: 1 } } } };
-  assert.equal(resolveViewSettings(display, RENDER).grid.enabled, false, "Render has no grid");
-  assert.equal(resolveViewSettings(display, RENDER).lighting.exposure, 1);
-  assert.equal(resolveViewSettings(display).grid.enabled, true);
-  assert.equal(resolveViewSettings({ ...display, mode: "xray" }).grid.enabled, false, "X-ray's grid is its own");
-  assert.deepEqual(resetViewMode(display, "render"), { mode: "solid", modes: { solid: { grid: { enabled: true } } } });
-  assert.deepEqual(resetViewMode(resetViewMode(display, "render"), "solid"), { mode: "solid" });
+test("Preview's settings are sparse, canonical and its own", () => {
+  assert.deepEqual(normalizePreviewSettings({ floor: { color: "#AbC" } }), { floor: { color: "#aabbcc" } });
+  for (const input of [{ grid: {} }, { background: { enabled: true } }, { floor: { finish: "shiny" } }, { lighting: { quality: "ultra" } }]) {
+    assert.throws(() => normalizePreviewSettings(input));
+  }
+  assert.equal(previewSettingsChanged({}), false);
+  assert.equal(previewSettingsChanged({ floor: { finish: "matte" } }), false, "a value at its default is no change");
+  assert.equal(previewSettingsChanged({ floor: { finish: "glossy" } }), true);
+});
+
+test("each mode is its own look at its defaults; Preview, asked for on its own, alone is in perspective, whatever the camera says", () => {
+  assert.deepEqual(VIEW_MODE_VALUES, ["solid", "shaded", "parts", "xray", "hidden-line", "wireframe"]);
+  for (const mode of VIEW_MODE_VALUES) {
+    const view = resolveViewSettings({ mode, camera: { projection: "orthographic" } });
+    assert.deepEqual([view.mode, view.camera.projection], [mode, "orthographic"]);
+    const previewed = resolveViewSettings({ mode, camera: { projection: "orthographic" } }, PREVIEW);
+    assert.deepEqual([previewed.mode, previewed.camera.projection, previewed.edges.enabled], ["render", "perspective", false], `Preview over ${mode}`);
+  }
+  const look = mode => {
+    const { surfaces, edges } = resolveViewSettings({ mode });
+    return [surfaces.style, surfaces.colorMode, surfaces.opacity, edges.enabled, edges.visibility];
+  };
+  assert.deepEqual(look("solid"), ["shaded", "original", 1, true, "visible"]);
+  assert.deepEqual(look("shaded"), ["shaded", "original", 1, false, "visible"]);
+  assert.deepEqual(look("parts"), ["shaded", "by-part", 1, true, "visible"]);
+  assert.deepEqual(look("xray"), ["shaded", "original", 0.22, true, "all"]);
+  assert.deepEqual(look("hidden-line"), ["hidden", "original", 1, true, "visible"]);
+  assert.deepEqual(look("wireframe"), ["off", "original", 1, true, "all"]);
+  assert.deepEqual(resolveViewSettings({ mode: "parts" }).surfaces.colors, [...DEFAULT_PART_COLOR_SETTINGS.colors]);
+  const preview = resolveViewSettings({}, PREVIEW);
+  assert.deepEqual([preview.lighting.enabled, preview.background.enabled, preview.floor.enabled, preview.edges.enabled], [true, true, true, false]);
+  assert.equal(resolveViewSettings({}, { ...PREVIEW, previewSettings: { floor: { enabled: false } } }).floor.enabled, false);
+  assert.equal(resolveViewSettings({ mode: "solid" }, { previewSettings: { lighting: { exposure: 1 } } }).lighting.enabled, false,
+    "Preview's settings draw nothing outside Preview");
 });
 
 test("viewer preview and snapshot final are environment defaults, not changes", () => {
-  assert.equal(resolveViewSettings({}, RENDER).lighting.quality, "final");
+  assert.equal(resolveViewSettings({}, PREVIEW).lighting.quality, "final");
   const options = { lightingQuality: "preview" };
-  assert.equal(resolveViewSettings({}, { ...options, ...RENDER }).lighting.quality, "preview");
-  assert.equal(viewModeChanged({ modes: { render: { lighting: { quality: "preview" } } } }, "render", options), false);
-  assert.equal(viewModeChanged({ modes: { render: { lighting: { quality: "final" } } } }, "render", options), true);
-  assert.equal(resolveViewSceneSettings({ display: {}, ...options, ...RENDER }).quality.id, "standard");
+  assert.equal(resolveViewSettings({}, { ...options, ...PREVIEW }).lighting.quality, "preview");
+  assert.equal(previewSettingsChanged({ lighting: { quality: "preview" } }, options), false);
+  assert.equal(previewSettingsChanged({ lighting: { quality: "final" } }, options), true);
+  assert.equal(resolveViewSceneSettings({ display: {}, ...options, ...PREVIEW }).quality.id, "standard");
 });
 
-test("a mode's change compares effective values and excludes what modes share", () => {
-  const shared = { clip: { enabled: true, at: 0.2 }, exploded: { enabled: true, amount: 0.5 }, camera: { projection: "perspective" } };
-  assert.equal(viewModeChanged({ ...shared }, "solid"), false);
-  assert.equal(viewModeChanged({ modes: { solid: { flat: false } } }, "solid"), false);
-  assert.equal(viewModeChanged({ modes: { solid: { grid: { enabled: true } } } }, "solid"), true);
-  assert.equal(viewModeChanged({ modes: { solid: { grid: { enabled: true } } } }, "xray"), false);
-  // An offered setting alone counts: a mesh's view has no edges to have changed.
-  assert.equal(viewModeChanged({ modes: { solid: { edges: { color: "#ff0000" } } } }, "solid", { features: EDGELESS_VIEW_FEATURES }), false);
-});
-
-test("a grid turned on is the measuring grid, and its axes are a toggle of their own", () => {
+test("the grid is a switch every mode draws, off by default, the same measuring grid wherever it is on, and never in Preview", () => {
   for (const appearance of ["light", "dark"]) {
     const dark = appearance === "dark";
-    const view = resolveViewSettings({ modes: { solid: { grid: { enabled: true } } } }, { appearance });
-    assert.deepEqual(view.grid, { enabled: true, color: dark ? "#64768a" : "#94a3b8", opacity: dark ? 0.42 : 0.38, density: 2 });
-    assert.equal(view.axes.enabled, false);
+    const grid = { color: dark ? "#5d9ac0" : "#4ea8cc", opacity: dark ? 0.35 : 0.45, density: 1 };
+    assert.deepEqual(viewGridDefaults(appearance), grid);
     for (const mode of VIEW_MODE_VALUES) {
-      const plain = resolveViewSettings({ mode }, { appearance });
-      assert.deepEqual([plain.grid.enabled, plain.axes.enabled], [false, false], `${mode} (${appearance}) draws no grid and no axes`);
+      assert.deepEqual(resolveViewSettings({ mode }, { appearance }).grid, { enabled: false, ...grid }, `${mode} (${appearance})`);
+      assert.deepEqual(resolveViewSettings({ mode, grid: true }, { appearance }).grid, { enabled: true, ...grid }, `${mode} on its grid (${appearance})`);
+      assert.equal(resolveViewSettings({ mode, grid: true }, { appearance }).axes.enabled, false, "no axis guide");
     }
+    assert.equal(resolveViewSettings({ grid: true }, { appearance, ...PREVIEW }).grid.enabled, false);
   }
-  assert.equal(resolveViewSettings({ modes: { solid: { axes: { enabled: true } } } }).axes.enabled, true);
+  assert.equal(resolveViewSettings({ grid: true }, { features: EDGELESS_VIEW_FEATURES }).grid.enabled, true, "a view without edges has its grid");
 });
 
 test("hidden-line and wireframe edges are light on a dark backdrop", () => {
@@ -103,8 +109,8 @@ test("hidden-line and wireframe edges are light on a dark backdrop", () => {
   assert.equal(resolveViewSettings({ mode: "solid" }, { appearance: "dark" }).edges.color, "#253443");
 });
 
-test("Render's custom lighting and background keep CAD edges off", () => {
-  const custom = resolveViewSceneSettings({ display: { modes: { render: { background: { opacity: 0.35 } } } }, ...RENDER });
+test("Preview's custom lighting and background keep CAD edges off", () => {
+  const custom = resolveViewSceneSettings({ display: {}, ...PREVIEW, previewSettings: { background: { opacity: 0.35 } } });
   assert.equal(custom.camera.projection, "perspective");
   assert.equal(custom.render.configuration.backdrop.opacity, 0.35);
   assert.equal(custom.display.edges.enabled, false);
@@ -113,7 +119,8 @@ test("Render's custom lighting and background keep CAD edges off", () => {
 
 test("snapshot public boundary rejects removed camera fields and explicit null display", () => {
   for (const job of [
-    { display: null }, { display: { mode: "shaded" } }, { display: { mode: "render" } }, { render: "yes" },
+    { display: null }, { display: { mode: "grid" } }, { display: { mode: "render" } }, { preview: "yes" },
+    { display: { modes: { render: {} } } },
     { camera: { projection: "perspective" } },
     { outputs: [{ camera: { focalLength: 85 } }] }
   ]) assert.throws(() => renderJobContext(mesh(), job));
@@ -167,29 +174,31 @@ function mesh() {
 
 test("draw bridge keeps surface opacity, edge visibility and edge color independent", () => {
   // Edges belong to a CAD model, so the job says it is one.
-  const context = renderJobContext(mesh(), { kind: "step", display: { mode: "xray", modes: { xray: { opacity: 0.63, edges: { color: "#ff0000" } } } } });
+  const context = renderJobContext(mesh(), { kind: "step", display: { mode: "xray" } });
   const model = buildModel(THREE, mesh(), { ...modelOptionsForRenderJob(context), edgeRendering: { mode: "basic" } });
   try {
     const record = model.displayRecords[0];
-    assert.equal(record.material.opacity, 0.63);
+    assert.equal(record.material.opacity, 0.22);
     assert.equal(record.edgeMaterials[0].depthTest, false);
-    assert.equal(record.edgeMaterials[0].color.getHexString(), "ff0000");
-    const next = resolveViewSceneSettings({ display: { mode: "xray", modes: { xray: { opacity: 0.4, edges: { color: "#0000ff" } } } } });
+    assert.equal(record.edgeMaterials[0].color.getHexString(), "253443");
+    // A dark Wireframe draws its edges light, with no faces behind them.
+    const next = resolveViewSceneSettings({ display: { mode: "wireframe" }, appearance: "dark" });
     model.update({ displayMode: next.display.mode, surfaceSettings: next.view.surfaces, edgeSettings: next.display.edges });
-    assert.equal(model.displayRecords[0].material.opacity, 0.4);
-    assert.equal(model.displayRecords[0].edgeMaterials[0].color.getHexString(), "0000ff");
+    assert.equal(model.displayRecords[0].edgeMaterials[0].color.getHexString(), "c9d3de");
+    const solid = resolveViewSceneSettings({ display: { mode: "solid" } });
     applyViewerMaterialSettings(THREE, model.displayRecords[0], model.runtime.materialSettings, {
-      displayMode: next.display.mode, surfaceSettings: next.view.surfaces
+      displayMode: solid.display.mode, surfaceSettings: solid.view.surfaces
     });
-    assert.equal(model.displayRecords[0].material.opacity, 0.4, "viewer fallback follows the same grouped opacity");
+    assert.equal(model.displayRecords[0].material.opacity, 1, "viewer fallback follows the same grouped opacity");
   } finally { model.dispose(); }
 });
 
-test("hidden-line uses a depth-only surface; wireframe has none, and Solid's edges turn off", () => {
+test("hidden-line uses a depth-only surface; wireframe has none; Shaded is Solid's surface without its edges", () => {
   for (const [display, colorWrite, depthWrite, edges] of [
     [{ mode: "hidden-line" }, false, true, true],
     [{ mode: "wireframe" }, false, false, true],
-    [{ mode: "solid", modes: { solid: { edges: { enabled: false } } } }, true, true, false]
+    [{ mode: "solid" }, true, true, true],
+    [{ mode: "shaded" }, true, true, false]
   ]) {
     const context = renderJobContext(mesh(), { kind: "step", display });
     const model = buildModel(THREE, mesh(), { ...modelOptionsForRenderJob(context), edgeRendering: { mode: "basic" } });
@@ -202,21 +211,36 @@ test("hidden-line uses a depth-only surface; wireframe has none, and Solid's edg
 });
 
 test("a file that is not a CAD model has no edges, explode or section, and shows an edge-made mode as Solid, without rewriting what was saved", () => {
-  const saved = { mode: "wireframe", modes: { solid: { edges: { color: "#ff0000" } } },
-    clip: { enabled: true, axis: "x" }, exploded: { enabled: true, amount: 0.8 } };
+  const saved = { mode: "wireframe", grid: true, clip: { enabled: true, axis: "x" }, exploded: { enabled: true, amount: 0.8 } };
   const step = resolveViewSettings(saved, { features: ALL_VIEW_FEATURES });
   assert.equal(step.mode, "wireframe");
   assert.equal(step.edges.enabled, true);
   const mesh = resolveViewSettings(saved, { features: EDGELESS_VIEW_FEATURES });
   assert.equal(mesh.mode, "solid");
   assert.equal(mesh.surfaces.style, "shaded");
-  assert.equal(mesh.edges.enabled, false);
+  assert.equal(mesh.edges.enabled, false, "Solid draws no edges where there are none");
+  assert.equal(mesh.grid.enabled, true);
   assert.deepEqual([step.clip.enabled, step.exploded.enabled, mesh.clip.enabled, mesh.exploded.enabled], [true, true, false, false]);
-  assert.equal(resolveViewSettings({ modes: { solid: { flat: true } } }, { features: EDGELESS_VIEW_FEATURES }).surfaces.style, "flat");
-  // Render is not made of edges, and stays available.
-  assert.equal(resolveViewSettings({}, { features: EDGELESS_VIEW_FEATURES, ...RENDER }).mode, "render");
-  for (const mode of ["xray", "hidden-line"]) assert.equal(resolveViewSettings({ mode }, { features: EDGELESS_VIEW_FEATURES }).mode, "solid");
+  // Preview's look is not made of edges, and stays available.
+  assert.equal(resolveViewSettings({}, { features: EDGELESS_VIEW_FEATURES, ...PREVIEW }).mode, "render");
+  for (const mode of ["shaded", "xray", "hidden-line"]) assert.equal(resolveViewSettings({ mode }, { features: EDGELESS_VIEW_FEATURES }).mode, "solid");
   assert.equal(normalizeViewSettings(saved).mode, "wireframe", "the saved settings still mean Wireframe on the next STEP file");
+});
+
+test("what each kind of file offers: a STEP every mode, any other 3D file Solid, and Parts where it has several parts", () => {
+  assert.equal(viewFeaturesForKind("step"), ALL_VIEW_FEATURES);
+  assert.deepEqual(STEP_PART_VIEW_FEATURES, { modes: ["solid", "shaded", "xray", "hidden-line", "wireframe"], settings: ["edges", "clip"] });
+  assert.deepEqual(viewFeaturesForKind("stl", { parts: 1 }), { modes: ["solid"], settings: ["clip"] });
+  assert.deepEqual(viewFeaturesForKind("3mf", { parts: 3 }), { modes: ["solid", "parts"], settings: ["clip"] });
+  assert.deepEqual(viewFeaturesForKind("urdf", { parts: 4 }), { modes: ["solid", "parts"], settings: ["clip"] });
+  assert.deepEqual(viewFeaturesForKind("glb", { parts: 5, explodeParts: 2 }), { modes: ["solid", "parts"], settings: ["clip", "exploded"] });
+  assert.deepEqual(viewFeaturesForKind("glb", { parts: 5, explodeParts: 1 }).settings, ["clip"]);
+  assert.equal(viewFeaturesForKind("dxf"), EDGELESS_VIEW_FEATURES);
+  assert.deepEqual([scenePartCount({ meshCount: 3 }), scenePartCount({ partCount: 2 }), scenePartCount(null)], [3, 2, 0]);
+  // A mesh's Parts colours its parts, with no edges to draw.
+  const parts = resolveViewSettings({ mode: "parts" }, { features: viewFeaturesForKind("3mf", { parts: 3 }) });
+  assert.deepEqual([parts.mode, parts.surfaces.colorMode, parts.edges.enabled], ["parts", "by-part", false]);
+  assert.equal(resolveViewSettings({ mode: "parts" }, { features: viewFeaturesForKind("stl", { parts: 1 }) }).mode, "solid");
 });
 
 test("a view is resolved from the lists it opts into, one feature at a time", () => {
@@ -230,39 +254,44 @@ test("a view is resolved from the lists it opts into, one feature at a time", ()
   assert.deepEqual(EDGELESS_VIEW_FEATURES.modes, ["solid"]);
 });
 
-test("light Render separates a white background from the gray floor", () => {
-  const view = resolveViewSettings({ appearance: "light" }, RENDER);
+test("light Preview separates a white background from the gray floor", () => {
+  const view = resolveViewSettings({ appearance: "light" }, PREVIEW);
   assert.equal(view.background.color, "#ffffff");
   assert.equal(view.floor.color, "#e7e7e5");
-  const scene = resolveViewSceneSettings({ display: { appearance: "light" }, ...RENDER });
+  const scene = resolveViewSceneSettings({ display: { appearance: "light" }, ...PREVIEW });
   assert.equal(scene.render.configuration.backdrop.color, "#ffffff");
   assert.equal(scene.render.configuration.backdrop.groundColor, "#e7e7e5");
-  assert.equal(resolveViewSettings({ modes: { render: { background: { color: "#abc123" } } } }, RENDER).background.color, "#abc123");
+  assert.equal(resolveViewSettings({}, { ...PREVIEW, previewSettings: { background: { color: "#abc123" } } }).background.color, "#abc123");
 });
 
-test("the floor is matte until Glossy is chosen, and a snapshot gives the studio the finish the viewer does", () => {
-  for (const finish of ["shiny", "Glossy", true, null]) assert.throws(() => normalizeViewSettings({ modes: { render: { floor: { finish } } } }));
-  const glossy = { modes: { render: { floor: { finish: "glossy" } } } };
-  assert.equal(resolveViewSettings({}, RENDER).floor.finish, "matte");
-  assert.equal(resolveViewSettings(glossy, RENDER).floor.finish, "glossy");
-  assert.equal(viewModeChanged(glossy, "render"), true);
-  // The viewer's store and a snapshot's job resolve one display through the same recipe.
-  for (const display of [{}, glossy]) {
-    const viewer = resolveViewSceneSettings({ display, ...RENDER }).render.configuration.backdrop;
-    const snapshot = renderJobContext(mesh(), { kind: "step", display, ...RENDER }).sceneSettings.render.configuration.backdrop;
-    assert.equal(snapshot.groundFinish, display.modes?.render.floor.finish ?? "matte");
-    assert.deepEqual(snapshot, viewer);
-  }
+test("dark Preview is a charcoal studio, not a black void: background and floor share one charcoal", () => {
+  const view = resolveViewSettings({ appearance: "dark" }, PREVIEW);
+  assert.equal(view.background.color, "#202226");
+  assert.equal(view.floor.color, "#202226");
+  const scene = resolveViewSceneSettings({ display: { appearance: "dark" }, ...PREVIEW });
+  assert.equal(scene.render.configuration.backdrop.color, "#202226");
+  assert.equal(scene.render.configuration.backdrop.groundColor, "#202226");
 });
 
-test("Render's floor stands at the model's lowest point until Model origin is chosen, and a snapshot's stands where the viewer's does", () => {
-  assert.equal(RENDER_FLOOR_PLACEMENT, "lowest");
-  for (const appearance of ["light", "dark"]) assert.equal(resolveViewSettings({}, { appearance, ...RENDER }).floor.placement, "lowest");
-  const origin = { modes: { render: { floor: { placement: "origin" } } } };
-  assert.equal(viewModeChanged(origin, "render"), true);
-  for (const [display, placement] of [[{}, "lowest"], [origin, "origin"]]) {
-    const viewer = resolveViewSceneSettings({ display, ...RENDER }).render.configuration.backdrop;
-    const snapshot = renderJobContext(mesh(), { kind: "step", display, ...RENDER }).sceneSettings.render.configuration.backdrop;
-    assert.deepEqual([viewer.groundPlacement, snapshot.groundPlacement], [placement, placement]);
-  }
+test("the floor is matte until Glossy is chosen, and a snapshot's Preview is the viewer's at its defaults", () => {
+  const glossy = { floor: { finish: "glossy" } };
+  assert.equal(resolveViewSettings({}, PREVIEW).floor.finish, "matte");
+  assert.equal(resolveViewSettings({}, { ...PREVIEW, previewSettings: glossy }).floor.finish, "glossy");
+  assert.equal(previewSettingsChanged(glossy), true);
+  // The viewer's Preview, nothing changed, and a snapshot's `preview` resolve through the same recipe.
+  const viewer = resolveViewSceneSettings({ display: {}, ...PREVIEW }).render.configuration.backdrop;
+  const snapshot = renderJobContext(mesh(), { kind: "step", display: {}, ...PREVIEW }).sceneSettings.render.configuration.backdrop;
+  assert.equal(snapshot.groundFinish, "matte");
+  assert.deepEqual(snapshot, viewer);
+});
+
+test("Preview's floor stands at Z=0 until Lowest point is chosen, and a snapshot's stands where the viewer's does", () => {
+  assert.equal(RENDER_FLOOR_PLACEMENT, "origin");
+  for (const appearance of ["light", "dark"]) assert.equal(resolveViewSettings({}, { appearance, ...PREVIEW }).floor.placement, "origin");
+  const lowest = { floor: { placement: "lowest" } };
+  assert.equal(previewSettingsChanged(lowest), true);
+  assert.equal(resolveViewSceneSettings({ display: {}, ...PREVIEW, previewSettings: lowest }).render.configuration.backdrop.groundPlacement, "lowest");
+  const viewer = resolveViewSceneSettings({ display: {}, ...PREVIEW }).render.configuration.backdrop;
+  const snapshot = renderJobContext(mesh(), { kind: "step", display: {}, ...PREVIEW }).sceneSettings.render.configuration.backdrop;
+  assert.deepEqual([viewer.groundPlacement, snapshot.groundPlacement], ["origin", "origin"]);
 });

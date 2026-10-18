@@ -1,11 +1,8 @@
-import { createPromptContext, formatPromptMessage, formatPromptReference, parsePromptReference, referencePart, resolveAttachmentPaths, textPart } from "@text-to-cad/core/prompt";
+import { createPromptContext, formatPromptReference, parsePromptReference, referencePart, resolvePromptMessage, textPart } from "@text-to-cad/core/prompt";
 import { normalizeMeasurementMarks } from "@text-to-cad/core/lib/viewer/measureDimension.js";
 
 const stem = path => String(path || "").split("/").pop().replace(/\.[^.]+$/, "") || "view";
 const stemOf = resource => stem(resource.kind === "url" ? new URL(resource.url).pathname : resource.path);
-const slug = label => String(label).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "view";
-/** A view's picture as a prompt titles it: "Current view", "View 1". */
-export const viewTitle = label => (label === "current" ? "Current view" : String(label).replace(/^view\b/, "View"));
 // Awaited the first time something reads it: a file is fetched only by a host that carries its bytes.
 const lazy = start => {
   let started = null;
@@ -55,17 +52,14 @@ export const quickEditSelection = references => references.filter(reference => r
 /**
  * A Quick Edit as one prompt context: what the person wrote, the file on screen (always), the
  * selection in it (`references`, in the prompt grammar), and — once the host has made them
- * (`files`, which may still be rendering) — a picture of each view it carries (`views`: the one on
- * screen as it went, and each its annotation was drawn in), those views as a snapshot job file
- * (`cadgen snapshot --job` renders them again), and the annotation as an annotation file (`annotation`). Each
- * file says where it was saved (`path`); its bytes are read (`read`) only by a host that carries
- * them. Built at the press, from what is live then.
+ * (`files`) — the current and drawn views with annotation and measurements, inline
+ * when small or named by the saved .snapshot.json path. No pictures are rendered or attached. Built at the press.
  *
  * @param {{ resource: object, references?: object[], text: string, views?: { label: string }[],
- *   files?: Promise<{ job: string, annotation: string | null, images: { label: string, path: string }[] }> | null,
- *   read?: (path: string) => Promise<Blob>, annotation?: boolean }} quickEdit
+ *   files?: Promise<{ snapshot?: string, inline?: string }> | null,
+ *   read?: (path: string) => Promise<Blob> }} quickEdit
  */
-export function createQuickEditContext({ resource, references = [], text, views = [], files = null, read = null, annotation = false }) {
+export function createQuickEditContext({ resource, references = [], text, views = [], files = null, read = null }) {
   const parts = [
     textPart(String(text || "").trim(), "text"),
     referencePart({ resource: { ...resource }, target: { kind: "whole-resource" } }, "file"),
@@ -74,23 +68,22 @@ export function createQuickEditContext({ resource, references = [], text, views 
   if (files && views.length) {
     const name = stemOf(resource);
     const made = pick => { const path = files.then(pick); path.catch(() => {}); return path; };
-    const file = (id, label, fileName, mimeType, pick) => {
-      const path = made(pick);
-      parts.push({ id, kind: "attachment", label, name: fileName, mimeType, path, content: lazy(() => path.then(read)), about: ["file"] });
-    };
-    views.forEach((view, index) => file(`view-${index}`, viewTitle(view.label), `${name}-${slug(view.label)}.png`, "image/png", result => result.images[index].path));
-    file("views", "Views (cadgen snapshot --job)", `${name}.job.json`, "application/json", result => result.job);
-    if (annotation) file("annotation", "Annotation", `${name}.annotation.json`, "application/json", result => result.annotation);
+    const path = made(result => result.snapshot || "");
+    const inlineText = made(result => typeof result.inline === "string"
+      ? `Snapshot JSON (cadgen snapshot --job):\n\`\`\`json\n${result.inline}\n\`\`\`` : null);
+    parts.push({ id: "snapshot", kind: "attachment", label: "Snapshot (cadgen snapshot --job)",
+      name: `${name}.snapshot.json`, mimeType: "application/json", path, inlineText,
+      content: lazy(() => files.then(result => typeof result.inline === "string"
+        ? new Blob([result.inline], { type: "application/json" }) : read(result.snapshot))), about: ["file"] });
   }
   return createPromptContext(parts);
 }
 
 /**
  * A Quick Edit as the person copies it: its references by their files' absolute paths, and its
- * pictures, views and annotation by the paths they were saved at, since text carries no file.
+ * snapshot as inline JSON or the path it was saved at.
  * @returns {Promise<string>}
  */
 export async function copiedQuickEdit(context) {
-  const paths = await resolveAttachmentPaths(context);
-  return formatPromptMessage(context, { attachmentPath: part => paths.get(part.id) });
+  return resolvePromptMessage(context);
 }

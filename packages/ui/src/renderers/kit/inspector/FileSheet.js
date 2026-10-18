@@ -335,7 +335,7 @@ export function FileSheetSliderField({ label, value, onValueCommit, valueInputPr
   return <FileSheetControlRow>
     <div className="grid min-h-7 min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5" data-position-control="">
       <div className="min-w-0">
-        {label != null ? <TooltipHint content={labelTitle || label} overflowOnly><span className={cn(FILE_SHEET_FIELD_LABEL_CLASSES, "leading-3")}>{label}</span></TooltipHint> : null}
+        {label != null ? <TooltipHint content={labelTitle || label} overflowOnly><span data-file-sheet-field-label="" className={cn(FILE_SHEET_FIELD_LABEL_CLASSES, "leading-3")}>{label}</span></TooltipHint> : null}
         {/* Under its label, its thumb clear of the label's foot. */}
         <div className="mt-1 min-w-0">{children}</div>
       </div>

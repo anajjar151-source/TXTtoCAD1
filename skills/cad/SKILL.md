@@ -139,14 +139,22 @@ print(selection.ref, face.area)
 
 A note from the viewer's Quick Edit reads: what the person wants, then
 `File:` (the document it is about), `References:` (one per line, as above), and
-the files of what they looked at: `Current view:` and `View 1:`… (PNGs of the
-view on screen and each view an annotation was drawn in, the annotation drawn on them —
-attached as images where the chat takes them, the person's measurements drawn
-on them), `Views (cadgen snapshot --job):` (a snapshot job file of those views;
-its `measurements` give each one's exact ends and reading) and `Annotation:` (the
-annotation itself).
-`cadgen snapshot --job <job file>` renders the same views again, annotation
-included; after an edit, render it to check the change where the person looked
+snapshot context. Every prompt includes the current view and any distinct views
+with remaining annotation ink. Copy, Queue and Send capture this at the press.
+Packets up to 1 KiB of compact UTF-8 JSON appear under `Snapshot JSON (cadgen
+snapshot --job):`; larger packets are written to a temporary `.snapshot.json`
+file named under `Snapshot (cadgen snapshot --job):`. Nothing renders at handoff,
+and no PNGs are attached. Both forms use the same schema: shared input, inline
+annotation and measurements, and one job per view.
+Read `measurements` in that JSON for the dimension endpoints (model units) and
+displayed labels. They are references for interpreting the request, not constraints
+automatically applied to geometry. For inline JSON, save the object to a temporary
+`.snapshot.json` before rendering: `--job` takes a file path, not inline JSON.
+When annotations are provided, render with `cadgen snapshot --job <snapshot file>`
+and inspect them before editing. Without annotations, the captured view is optional
+context: render it when it helps interpret the request, or proceed from the text,
+references and measurements. After an edit, replay relevant views to check the change
+where the person looked
 ([annotations and Quick Edit views](references/snapshot-review.md#annotations-and-quick-edit-views)).
 
 A reference into a file that is not a STEP names what the viewer picked in it, in that
@@ -225,5 +233,5 @@ validation don't replace this.
   file return `url?file=<its URL-encoded absolute path>`. If it fails to launch, say so.
 
 Generate changed artifacts first: the viewer never runs model scripts. Existing
-STEP files compile on open when needed. Topology selection and measurement
-require STEP; meshes support visual review.
+STEP files compile on open when needed. Exact topology selection and measurement
+require STEP; supported mesh viewers also offer approximate measurements on triangles.

@@ -20,6 +20,8 @@ export const MEASURE_SNAP_LABELS = {
   face: "Face",
   // A point on a mesh's triangle (`meshMeasure.js`), between its corners and sides.
   surface: "Surface",
+  // A circle's or arc's centre, where a drawing's pick snaps to a hole.
+  center: "Centre",
   free: "Point"
 };
 

@@ -13,14 +13,15 @@ const turned = degrees => {
   return camera({ position: [100 * Math.sin(radians), -100 * Math.cos(radians), 0] });
 };
 
-test("a view is the viewer's camera at the prompt's size, with what places or hides the parts and nothing of how it looks", () => {
+test("a view is the viewer's camera at the prompt's size, its mode and Grid switch, and what places or hides the parts", () => {
   const made = promptView({ camera: camera(), width: 800, height: 600 }, {
-    display: { mode: 'xray', clip: { enabled: true, axis: 'x', at: 2, invert: false }, exploded: { enabled: false, amount: 0.5 } },
+    display: { mode: 'xray', grid: true, appearance: 'dark', camera: { projection: 'perspective' },
+      clip: { enabled: true, axis: 'x', at: 2, invert: false }, exploded: { enabled: false, amount: 0.5 } },
     state: { kinematics: { elbow: 30 }, jointValues: {}, hide: ['o1.2'], focus: [] },
   });
   assert.deepEqual(made, {
     camera: camera(), width: 1600, height: 1200,
-    display: { clip: { enabled: true, axis: 'x', at: 2, invert: false } },
+    display: { mode: 'xray', grid: true, clip: { enabled: true, axis: 'x', at: 2, invert: false } },
     kinematics: { elbow: 30 },
     selection: { hide: ['o1.2'] },
   });
@@ -28,6 +29,10 @@ test("a view is the viewer's camera at the prompt's size, with what places or hi
   // Explode is the view's where it spreads the parts, never on at no amount.
   const spread = amount => promptView({ camera: camera(), width: 800, height: 600 }, { display: { exploded: { enabled: true, amount } } }).display;
   assert.deepEqual([spread(0), spread(0.5)], [undefined, { exploded: { enabled: true, amount: 0.5 } }]);
+  // The grid says off too: a snapshot replays the view exactly. A drawing has no mode, and says none.
+  assert.deepEqual(promptView({ camera: camera(), width: 800, height: 600 }, { display: { mode: 'parts' } }).display, { mode: 'parts', grid: false });
+  assert.ok(!sameView(view({ display: { mode: 'solid', grid: false } }), view({ display: { mode: 'solid', grid: true } })));
+  assert.ok(!sameView(view({ display: { mode: 'solid', grid: false } }), view({ display: { mode: 'shaded', grid: false } })));
 });
 
 test("a routine's kept frame is the view's animation, a snapshot job's {clip, time}", () => {
@@ -50,13 +55,24 @@ test('a camera nudged less than 2°, zoomed or panned less than 5% is the same v
   assert.ok(!sameView(view(), view({ selection: { hide: ['o1.2'] } })));
 });
 
-test("a prompt carries the view on screen, then each drawn view that still has ink; a drawn view the same as the one on screen stands for it", () => {
+test('every prompt carries the exact current view, reusing a matching ink view or appending it', () => {
   const drawn = [{ ...view(), label: 'view 1' }, { ...view({ camera: turned(90) }), label: 'view 2' }, { ...view({ camera: turned(180) }), label: 'view 3' }];
   const ink = [{ view: 'view 1' }, { view: 'view 3' }];
-  // Sent from where view 1 was drawn: it stands for the view on screen.
-  assert.deepEqual(promptViews(view({ camera: turned(1) }), drawn, ink).map(entry => entry.label), ['view 1', 'view 3']);
-  // Sent from elsewhere: the view on screen leads.
-  assert.deepEqual(promptViews(view({ camera: turned(45) }), drawn, ink).map(entry => entry.label), ['current', 'view 1', 'view 3']);
-  // No ink: the view on screen alone.
-  assert.deepEqual(promptViews(view(), drawn, []).map(entry => entry.label), ['current']);
+  const current = view({ camera: turned(1), width: 1200, height: 1600 });
+  const merged = promptViews(current, drawn, ink);
+  assert.deepEqual(merged, [{ ...current, label: 'view 1' }, drawn[2]]);
+  assert.equal(drawn[0].width, 1600, 'the stored annotation view stays unchanged');
+  const moved = view({ camera: turned(45) });
+  assert.deepEqual(promptViews(moved, drawn, ink), [drawn[0], drawn[2], { ...moved, label: 'current view' }]);
+  assert.deepEqual(promptViews(current, drawn, []), [{ ...current, label: 'current view' }], 'selection/text/measurements alone still have a view');
+  assert.deepEqual(promptViews(current, [], [{}]), [{ ...current, label: 'current view' }]);
+  assert.deepEqual(promptViews(null, drawn, ink), [drawn[0], drawn[2]]);
+});
+
+test('a prompt view retains the captured projection and lens, and groups different lenses separately', () => {
+  const captured = { camera: camera(), display: { camera: { projection: 'perspective', focalLength: 85 } }, width: 800, height: 600 };
+  const made = promptView(captured, { display: { mode: 'solid', grid: false } });
+  assert.deepEqual(made.display.camera, captured.display.camera);
+  assert.ok(!sameView(made, { ...made, display: { ...made.display, camera: { projection: 'orthographic' } } }));
+  assert.ok(!sameView(made, { ...made, display: { ...made.display, camera: { projection: 'perspective', focalLength: 50 } } }));
 });

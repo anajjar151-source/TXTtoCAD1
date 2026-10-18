@@ -101,7 +101,9 @@ class RefusedRequestsLeaveOutUntouched(_Workspace):
         cases = [
             (stl_door, [self.stl, self.out, "--display", "wireframe"], r"applies to STEP models only"),
             (stl_door, [self.stl, self.out, "--display", '{"exploded":{"amount":0.5}}'], r"display\.exploded moves a model's parts apart"),
-            (stl_door, [self.stl, self.out, "--display", '{"modes":{"render":{"lighting":{"fill":9}}}}'], r"display\.modes\.render\.lighting\.fill"),
+            (stl_door, [self.stl, self.out, "--display", '{"modes":{"solid":{"flat":true}}}'], r"display has unknown key\(s\): modes"),
+            (stl_door, [self.stl, self.out, "--display", '{"grid":"on"}'], r"display\.grid"),
+            (stl_door, [self.stl, self.out, "--display", "shaded"], r"display\.mode 'shaded' applies to STEP models only"),
             (step_door, [self.stl, self.out], r"does not render \.stl inputs"),
             (step_door, [script, self.out], r"a model script is a program"),
             (stl_door, [self.stl, self.out, "--mode", "section"], r"Unsupported render mode: section"),
@@ -198,19 +200,19 @@ class CrossKindOptionsAreRefusedByName(_Workspace):
                           "quality": {"tessellation": {"chordTolerance": 0.001}}})
 
     def test_a_mesh_doors_mode_error_offers_only_the_modes_it_accepts(self) -> None:
-        """S12: `--display Wireframe` on an STL used to list all five presets."""
+        """S12: `--display Wireframe` on an STL used to list every mode."""
         code, said = run_door(stl_door, [self.stl, self.out, "--display", "Wireframe"])
         self.assertEqual(1, code)
-        self.assertIn("Supported modes: solid", said)
-        for step_only in ("xray", "hidden-line", "wireframe"):
+        self.assertIn("Supported modes: parts, solid", said)
+        for step_only in ("shaded", "xray", "hidden-line", "wireframe"):
             self.assertNotIn(step_only, said)
         with self.assertRaises(SnapshotError) as caught:
             self.resolve(self.stl_job(display={"mode": "Wireframe"}))
-        self.assertIn("display.mode must be one of: solid;", str(caught.exception))
-        # A STEP door still offers every preset.
+        self.assertIn("display.mode must be one of: parts, solid;", str(caught.exception))
+        # A STEP door still offers every mode.
         step = self.write("part.step", "ISO-10303-21;\nEND-ISO-10303-21;\n")
         code, said = run_door(step_door, [step, self.out, "--display", "Wireframe"])
-        self.assertIn("hidden-line, solid, wireframe, xray", said)
+        self.assertIn("hidden-line, parts, shaded, solid, wireframe, xray", said)
 
 
 class SrdfPairingTests(_Workspace):
@@ -488,7 +490,7 @@ class DisplayIsValidatedOncePerJob(_Workspace):
         return validate.call_count
 
     def test_whichever_way_the_display_arrives(self) -> None:
-        display = {"mode": "solid", "modes": {"render": {"lighting": {"fill": 0.4}}}}
+        display = {"mode": "parts", "grid": True, "clip": {"axis": "z", "at": 0.4}}
         self.write("stage.json", json.dumps(display))
         packet = self.write("packet.json", json.dumps({"jobs": [self.stl_job(), self.stl_job(display="solid")]}))
         ways = {
@@ -587,6 +589,39 @@ class AnnotationAndTargetTests(_Workspace):
         options = SnapshotOptions(**fields)
         return resolve_render_job_packet(load_job_from_options(options, cwd=self.root), cwd=self.root)
 
+    def test_packet_defaults_and_per_job_replacements_reach_the_renderer(self) -> None:
+        mark = {"start": [0, 0, 0], "end": [10, 0, 0], "label": "10 mm", "color": "#ff2d55"}
+        empty = {"units": "mm", "parts": {}, "marks": []}
+        other = self.write("other.stl", STL)
+        packet = {"input": "part.stl", "annotation": "ink.annotation.json", "measurements": [mark], "jobs": [
+            {"outputs": [{"path": "shared.png"}]},
+            {"input": str(other), "annotation": empty, "measurements": [], "outputs": [{"path": "empty.png"}]},
+            {"annotation": ANNOTATION, "measurements": [{**mark, "label": "local"}], "outputs": [{"path": "local.png"}]},
+        ]}
+        original = json.dumps(packet)
+        jobs = self.resolve(packet)["jobs"]
+        self.assertEqual([job["input"] for job in jobs], ["part.stl", str(other), "part.stl"])
+        self.assertEqual([job["annotation"] for job in jobs], [ANNOTATION, empty, ANNOTATION])
+        self.assertEqual([job.get("measurements", []) for job in jobs], [[mark], [], [{**mark, "label": "local"}]])
+        self.assertEqual(json.dumps(packet), original)
+        # CLI overrides still win over both the shared and the per-job values.
+        path = self.write("shared.snapshot.json", json.dumps(packet))
+        overridden = self.from_options(job=str(path), input=str(other),
+            annotation=ANNOTATION, annotation_specified=True,
+            measurements=[mark], measurements_specified=True)["jobs"]
+        self.assertEqual([job["input"] for job in overridden], [str(other)] * 3)
+        self.assertEqual([job["annotation"] for job in overridden], [ANNOTATION] * 3)
+        self.assertEqual([job["measurements"] for job in overridden], [[mark]] * 3)
+
+    def test_packet_defaults_are_validated_and_unknown_fields_are_refused(self) -> None:
+        for fields, error in (
+            ({"annotation": ["invalid"]}, "annotation is the path"),
+            ({"measurements": [{"start": []}]}, "measurements"),
+            ({"annotations": {}}, "unknown key.*annotations"),
+        ):
+            with self.subTest(fields=fields), self.assertRaisesRegex(SnapshotError, error):
+                self.resolve({"input": "part.stl", **fields, "jobs": [{"outputs": [{"path": "x.png"}]}]})
+
     def test_an_annotation_file_or_object_reaches_the_page_as_the_object(self) -> None:
         by_file = self.resolve(self.stl_job(annotation="ink.annotation.json"))["jobs"][0]
         self.assertEqual((by_file["annotation"], by_file["resolved"]["annotationSource"]), (ANNOTATION, str(self.annotation)))
@@ -621,15 +656,13 @@ class AnnotationAndTargetTests(_Workspace):
                 self.assertEqual(code, 2)
                 self.assertIn("--sketch", said)
 
-    def test_an_annotation_that_is_not_one_is_refused_and_a_drawing_or_a_list_takes_none(self) -> None:
+    def test_an_annotation_that_is_not_one_is_refused_and_a_list_takes_none(self) -> None:
         self.write("list.json", "[]")
-        self.write("panel.dxf", "0\nEOF\n")
         for job, said in (
             (self.stl_job(annotation="missing.json"), "annotation file does not exist: missing.json"),
             (self.stl_job(annotation="list.json"), "an annotation is a JSON object with units, parts and marks"),
             (self.stl_job(annotation=["not", "one"]), "annotation is the path of an annotation JSON file"),
             ({"input": "part.stl", "mode": "list", "outputs": [], "annotation": ANNOTATION}, "only view mode draws it"),
-            ({"input": "panel.dxf", "outputs": [{"path": "o.png"}], "annotation": ANNOTATION}, "panel.dxf has no parts or space"),
         ):
             with self.subTest(job=job), self.assertRaisesRegex(SnapshotError, re.escape(said)):
                 self.resolve(job)
@@ -647,12 +680,10 @@ class AnnotationAndTargetTests(_Workspace):
                 run.return_value = snapshot_core.snapshot_result({"ok": True, "mode": "view", "outputs": []})
                 code, _ = run_door(door, [self.stl, self.out, "--measurements", "marks.json"])
                 self.assertEqual((code, run.call_args.args[0].measurements), (0, "marks.json"))
-        self.write("panel.dxf", "0\nEOF\n")
         for job, said in (
             (self.stl_job(measurements=[{**mark, "color": "red"}]), "measurements[0].color is #rrggbb"),
             (self.stl_job(measurements="gone.json"), "measurements file does not exist: gone.json"),
             ({"input": "part.stl", "mode": "list", "outputs": [], "measurements": [mark]}, "only view mode draws them"),
-            ({"input": "panel.dxf", "outputs": [{"path": "o.png"}], "measurements": [mark]}, "no space to draw them in"),
         ):
             with self.subTest(job=job), self.assertRaisesRegex(SnapshotError, re.escape(said)):
                 self.resolve(job)

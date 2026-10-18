@@ -2,29 +2,28 @@
 
 ## Display modes
 
-`--display` accepts `solid` (the default), `xray`, `hidden-line`,
-`wireframe`, a JSON object, or a JSON file path. The CLI defaults to
-`appearance: "light"`; use `"dark"` to request dark appearance. Settings are
-sparse: omitted parameters inherit the active mode's defaults. Each mode keeps
-its own settings under `modes`; editing an inactive mode does not select it.
+`--display` takes a mode, the Viewer's Display modes: `solid` (the default:
+shaded, with the model's CAD edges), `shaded` (the same surfaces, no edges),
+`parts` (Solid with each part its own colour), `xray`, `hidden-line` or
+`wireframe`. Each is drawn at its own defaults: a mode has nothing else to set.
+`--grid` draws the measuring grid under the model in any mode; it is off by
+default. The grid has minor and major lines at round steps sized to the model, a
+red X axis and a green Y axis, and fades out around the origin.
 
-`--render` (a job's `"render": true`) draws the photographic Render instead of
-the display mode: studio lighting, floor and environment, in perspective, with
-Render's own settings from `display.modes.render`. It is view mode only.
+`--display` also takes a JSON object, or a JSON file path, in the Viewer's
+display shape: `mode`, `grid` (a boolean), `appearance` (`light`, the CLI's
+default, or `dark`), `camera` (`projection`, `focalLength`), `clip` and
+`exploded`. Anything else is refused. A job's `display` is the same object.
+
+`--preview` (a job's `"preview": true`) draws Preview's photographic look
+instead of the display mode: studio lighting, floor and environment, in
+perspective, at Preview's defaults. It draws no grid, and is view mode only.
 
 ```bash
-cadgen step snapshot part.step review.png --render
-cadgen step snapshot part.step review.png --render --display '{"appearance":"dark","modes":{"render":{"floor":{"enabled":false},"background":{"opacity":0.5}}}}'
-cadgen step snapshot part.step review.png --display display.json --camera front
+cadgen step snapshot part.step review.png --display xray --grid
+cadgen step snapshot part.step review.png --preview
+cadgen step snapshot part.step review.png --display '{"mode":"parts","appearance":"dark"}' --camera front
 ```
-
-Shared settings are `appearance`, `camera`, `clip` and `exploded`. Solid has
-`parts`, `flat`, `edges`, `grid` and `axes`; Render has `parts`, `lighting`,
-`background` and `floor`; X-ray has `parts`, `opacity`, `edges`, `grid` and
-`axes`; Hidden Line and Wireframe have `edges`, `grid` and `axes`. The grid and
-axes start off. Enable them explicitly in a mode, for example
-`{"modes":{"solid":{"grid":{"enabled":true}}}}`. The retired `grid` mode,
-top-level style groups and unknown keys are refused.
 
 A clip keeps the part of a model on the lower side of a plane across
 `axis` (`x`, `y` or `z`), or the upper side with `invert`, and fills the cut
@@ -35,18 +34,18 @@ own numbers — or, without `at`, through the middle of the model at rest. Every
 input takes one, as the viewer's Clip cuts every 3D file. A camera facing
 the cut (`right`, `back` or `top`; `left`, `front` or `bottom` inverted) draws a
 section view. `--camera` or a job/output `camera` specifies pose and framing;
-`display.camera` specifies projection and focal length (20–200 mm). Render
-uses perspective; the other modes use the shared projection, orthographic by
-default. Opacity is 0 for transparent and 1 for opaque, including partially
-transparent PNG backgrounds.
+`display.camera` specifies projection and focal length (20–200 mm). Preview
+uses perspective; the display modes use the shared projection, orthographic by
+default.
 
-`edges` and the `xray`, `hidden-line` and `wireframe` modes describe a CAD
+The `shaded`, `xray`, `hidden-line` and `wireframe` modes are told apart by a CAD
 model's topology edges, and apply to STEP/STP inputs only. `exploded` moves parts
 apart: a STEP assembly's, or a GLB's rigid nodes (a GLB of one is refused as it
 renders, saying so); an STL, a 3MF or a robot description refuses it by name. A
-mesh or a robot description (STL, 3MF, GLB, URDF, SRDF, SDF) takes `solid` with its
-other settings and `clip`, or `--render`, and refuses unsupported settings by name
-before anything is rendered. A robot job's `selection.hide` takes its part ids (a
+mesh or a robot description (STL, 3MF, GLB, URDF, SRDF, SDF) takes `solid`, or
+`parts` (each object, mesh or link its own colour; a file of one part is drawn in
+Solid, as the Viewer offers Parts only for several), with `--grid` and `clip`, or
+`--preview`, and refuses unsupported settings by name before anything is rendered. A robot job's `selection.hide` takes its part ids (a
 Quick Edit's view names the parts the Links panel hid); `focus` is a STEP's.
 
 ## Meshes and robot descriptions
@@ -60,13 +59,13 @@ snapshot's own.
 
 - A GLB is its own glTF scene: nodes, skins, morph targets and authored
   materials, drawn where its skins and morph weights put them. `solid` wears the
-  viewer's surface over its colours, maps and opacity; `--render` shows the finish
+  viewer's surface over its colours, maps and opacity; `--preview` shows the finish
   the file authored. Its clips play in the viewer's preview: a snapshot draws the file
   at rest, lights and grounds it on the box its clips sweep, as the viewer does,
   and refuses `--animation` and `--video`.
 - An STL is one object and a 3MF one per object (and per material within one),
   each in its colour. They author no finish: `solid` wears the viewer's surface and
-  `--render` the studio's.
+  `--preview` the studio's.
 - A robot is drawn where the viewer opens it: every joint at its default, then an
   SRDF's `home` group state, with the joints `--joint-values` names on top. A
   colour the description gives a visual wins over the colours its link mesh
@@ -105,11 +104,26 @@ ignored, and gone is not silent. `--camera`, `--display`, `--mode` and
 `--view-labels` are out of the signature and out of `--help`, and passing one is
 refused by name — what the flag meant, why a flat drawing has no such thing, and
 what to pass instead — rather than reported as an unrecognized argument. A job
-(or `cadgen snapshot` routing a `.dxf`) that carries `camera`,
+(or `cadgen snapshot` routing a `.dxf`) that carries a `camera` other than a plan view,
 any `display` key but `appearance`, `mode` other than `view`,
 `scale`, an output `label`/`viewLabel`, or `output.padding`, `output.viewLabels`
 or `output.tightFrame` is refused by name with what a drawing is — in the same
 words, because the flag and the job key are one request arriving two ways.
+
+What a job may add is what the viewer's DXF pane shows and a Quick Edit's views
+carry. A `camera` that is the drawing's **plan view** — looking straight down at
+the sheet, `up` +Y — frames the window it names in place of the fit:
+
+```json
+{"input": "plate.dxf", "camera": {"target": [50, 30, 0], "position": [50, 30, 120], "up": [0, 1, 0],
+  "orthographicHalfHeight": 30}, "outputs": [{"path": "window.png", "width": 1600, "height": 900}]}
+```
+
+(centred on 50, 30, 30 drawing units above and below the centre). An `annotation`
+whose marks lie on the sheet (on no part, their points `x, y, 0` in drawing
+coordinates) and `measurements` (`start`/`end` in drawing coordinates) are drawn
+over the drawing, as the pane drew them. A Quick Edit prompt on a DXF writes
+exactly this job.
 
 ## Requests and OUT
 
@@ -133,15 +147,43 @@ the packet, and `--width`/`--height` size every output. A TARGET given with
 revision, a sibling). OUT is ignored with `--job`; the jobs' outputs say where
 the files go.
 
+A `.snapshot.json` file can hold one job, a list of jobs, or a `jobs` envelope.
+The envelope accepts shared `input`, `annotation`, and `measurements` defaults:
+
+```json
+{
+  "input": "/path/model.step",
+  "annotation": { "units": "mm", "parts": {}, "marks": [] },
+  "measurements": [],
+  "jobs": [
+    { "camera": "iso", "outputs": [{ "path": "/tmp/iso.png" }] },
+    { "camera": "top", "measurements": [], "outputs": [{ "path": "/tmp/top.png" }] }
+  ]
+}
+```
+
+An omitted job field inherits its shared value. A present job field replaces the
+whole value: lists and annotation objects are never merged. Use `measurements: []`
+or an annotation object with `marks: []` to suppress shared marks for a job.
+Per-job input paths and annotation file references still work. CLI flags override
+both shared and per-job values. Other envelope fields are refused. The extension
+is descriptive; `--job FILE` still reads existing `.job.json` files.
+
 ## Annotations
 
 A job's `annotation` (the `--annotation` flag sets it on every job) is ink drawn over
 the model: an annotation JSON file's path, resolved as a job's `input` is, or the
-annotation object itself. The CAD Viewer's Annotate tool writes one with a Quick Edit
-prompt, beside a job file that renders the views the person looked at with it
-(`cadgen.viewer.prompt_files`). Snapshot reads the file and hands the object to
+annotation object itself. Quick Edit captures a packet at Copy, Queue or
+Send, with annotation inline at the top, the current view and distinct drawn views
+(`cadgen.viewer.prompt_files`). Up to 1024 compact UTF-8 bytes is returned inline
+in the prompt; larger packets are saved as one `.snapshot.json`. To render inline
+JSON, save it to a temporary file first: `--job` takes a file path. No separate
+annotation file or image is written.
+Annotation chips do not copy or write separate files.
+Snapshot reads the packet and hands the object to
 the page, which draws it with the viewer's own code: what an agent renders is
-what the person drew. A drawing (DXF) and `--mode list` take no annotation.
+what the person drew. `--mode list` takes no annotation; a drawing's (DXF) lies on
+its sheet (see [Drawings](#drawings)).
 
 ```json
 { "units": "mm",
@@ -178,12 +220,12 @@ colour`). An unknown field is refused, never read as a default.
 
 A job's `measurements` (the `--measurements` flag sets them on every job: the
 list, one measurement alone, or a file of either) are dimensions drawn over the
-picture, as the CAD Viewer's Measure draws them. A click on a measurement's
-Quick Edit chip copies it in this form; a Quick Edit prompt's job carries every
+picture, as the CAD Viewer's Measure draws them. Measurement chips do not copy
+individual references; a Quick Edit prompt's job carries every
 measurement the person took, so an agent sees and reads the exact distances
 they meant. Each is drawn by the viewer's own code, every one labelled, its
 lines as heavy against the image's height as against a viewer 900 pixels tall.
-A drawing (DXF) and `--mode list` take none.
+`--mode list` takes none; a drawing's are in its own coordinates.
 
 ```json
 "measurements": [
@@ -284,22 +326,13 @@ that total or to the complete CLI process time. Use this attribution to choose
 a targeted profile; a small model's stage proportions do not establish where
 a larger assembly spends its time.
 
-Photographic snapshots use the same floor placement as the Viewer. Render's
-translucent floor stands at the model's lowest point. To place it at the
-document's Z=0 plane instead:
+Photographic snapshots (`--preview`) are Preview at its defaults: the floor
+stands at the document's Z=0 plane, matte, and the lighting is Preview's Final
+quality. Preview's own settings (lighting, background, floor) are the Viewer's
+alone; a snapshot has none to set.
 
-```bash
-cadgen step snapshot part.step review.png --render --display '{"modes":{"render":{"floor":{"placement":"origin"}}}}'
-```
-
-`display.modes.render.floor.placement` accepts `lowest` (the default) or
-`origin`; it moves only the floor, never the model or lighting.
-`display.modes.render.floor.finish` accepts `matte` (the default) or `glossy`,
-the Viewer's Floor finish: a glossy floor also reflects the model.
-`display.modes.render.floor.enabled: false` removes the floor.
-
-A Render still is the Viewer's converged picture: 32 samples of its studio frame, a
+A Preview still is the Viewer's converged picture: 32 samples of its studio frame, a
 fraction of a pixel apart, with ambient occlusion in the seams and recesses and the key
-light's shadows as soft as its softbox (`lighting.size`). On a GPU that adds a fraction of
+light's shadows as soft as its softbox. On a GPU that adds a fraction of
 a second to the render; a video's frames, and a renderer that runs in software, draw one
 sample each.

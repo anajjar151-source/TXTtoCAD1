@@ -278,7 +278,7 @@ const ShellViewport = forwardRef(function ShellViewport({
     // routine never rescales the ground under the model. Its lights and its height follow the model.
     const studioState = studio.applyPhotographicStudio(runtime.THREE, runtime, configuration, {
       bounds, groundBounds: runtime.zeroPoseBounds || null,
-      sceneScale: normalizedSceneScaleMode, shadowMapSize: renderShadowMapSizeRef.current,
+      shadowMapSize: renderShadowMapSizeRef.current,
       // While a routine plays or a pose is dragged, the floor shadow's heights are measured at
       // most this often (its cast shadow still follows every frame), and once more at rest, in
       // a frame of their own that keeps the shadow maps.
@@ -444,8 +444,8 @@ const ShellViewport = forwardRef(function ShellViewport({
       return annotationAt({ x: clientX - rect.left, y: clientY - rect.top }, screen, pointerType === "touch" ? TOUCH_HIT_PX : undefined)[0]?.id ?? null;
     },
     // The camera as a snapshot job says it, and the viewport's size: a prompt's view
-    // (`annotation/views.js`). A snapshot is always orthographic, so a perspective view becomes the
-    // orthographic one framing what it frames at the orbit point.
+    // (`annotation/views.js`), including the actual projection and lens. The equivalent half-height
+    // also lets annotation view grouping detect perspective zooms and pans.
     promptCamera() {
       const runtime = runtimeRef.current;
       const camera = runtime?.camera, target = runtime?.controls?.target, element = runtime?.renderer?.domElement;
@@ -454,7 +454,11 @@ const ShellViewport = forwardRef(function ShellViewport({
         ? Math.abs(camera.top - camera.bottom) / 2 / (camera.zoom || 1)
         : camera.position.distanceTo(target) * Math.tan(runtime.THREE.MathUtils.degToRad(camera.getEffectiveFOV()) / 2);
       return {
-        camera: { position: camera.position.toArray(), target: target.toArray(), up: camera.up.toArray(), orthographicHalfHeight: halfHeight },
+        camera: { position: camera.position.toArray(), target: target.toArray(), up: camera.up.toArray(), orthographicHalfHeight: halfHeight,
+          ...(camera.isPerspectiveCamera ? { zoom: camera.zoom } : {}) },
+        display: { camera: camera.isPerspectiveCamera
+          ? { projection: "perspective", focalLength: camera.getFocalLength() }
+          : { projection: "orthographic" } },
         width: element.clientWidth, height: element.clientHeight
       };
     },

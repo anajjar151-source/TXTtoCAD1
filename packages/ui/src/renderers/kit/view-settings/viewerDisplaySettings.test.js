@@ -1,31 +1,35 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { normalizeViewSettings, resolveViewSettings, viewModeChanged } from '@text-to-cad/core/common/viewSettings.js';
+import { normalizeViewSettings, previewSettingsChanged, resolveViewSettings } from '@text-to-cad/core/common/viewSettings.js';
 import { DISPLAY_MODE_OPTIONS } from './DisplayModeOptions.js';
 import {
-  cameraForViewSettings, mergeViewerDisplaySettings, previewDisplaySettings,
+  cameraForViewSettings, mergePreviewSettings, mergeViewerDisplaySettings, previewDisplaySettings,
   viewerDisplaySettingsForCamera
 } from './viewerDisplaySettings.js';
 
-test('the viewer offers the working display modes in their intended order: Render is Preview\'s, no display mode', () => {
+test('the viewer offers the display modes in their intended order: Preview is no display mode, and Grid a switch', () => {
   assert.deepEqual(DISPLAY_MODE_OPTIONS.map(({ value, label }) => [value, label]), [
-    ['solid', 'Solid'], ['xray', 'X-ray'], ['hidden-line', 'Hidden line'], ['wireframe', 'Wireframe']
+    ['solid', 'Solid'], ['shaded', 'Shaded'], ['parts', 'Parts'], ['xray', 'X-ray'], ['hidden-line', 'Hidden line'], ['wireframe', 'Wireframe']
   ]);
 });
 
-test('live patches merge only supplied mode settings and preserve the shared camera and tools', () => {
-  const current = { mode: 'solid', camera: { focalLength: 80 }, modes: { render: { lighting: { exposure: 1, size: 2 } } },
-    clip: { enabled: true, axis: 'y', at: 0.35 } };
-  const next = mergeViewerDisplaySettings(current, { modes: { render: { lighting: { exposure: 2 } } } });
-  assert.deepEqual(next, { ...current, modes: { render: { lighting: { exposure: 2, size: 2 } } } });
+test('live patches merge only what they say and preserve the shared camera and tools', () => {
+  const current = { mode: 'solid', camera: { focalLength: 80 }, clip: { enabled: true, axis: 'y', at: 0.35 } };
+  assert.deepEqual(mergeViewerDisplaySettings(current, { mode: 'parts' }), { ...current, mode: 'parts' });
+  assert.deepEqual(mergeViewerDisplaySettings(current, { grid: true }), { ...current, grid: true });
+  assert.deepEqual(mergeViewerDisplaySettings({ ...current, grid: true }, { grid: false }), current, 'a grid switched off is left unsaid');
   assert.throws(() => mergeViewerDisplaySettings(current, { lighting: { exposure: 1 } }), /Unsupported/);
-  assert.throws(() => normalizeViewSettings({ mode: 'grid' }), /mode/);
+  assert.throws(() => mergeViewerDisplaySettings(current, { modes: { solid: { flat: true } } }), /Unsupported display fields: modes/);
+  assert.throws(() => normalizeViewSettings({ mode: 'Grid' }), /mode/);
+  // Preview's settings merge group by group, field by field.
+  const preview = mergePreviewSettings({ lighting: { exposure: 1, size: 2 } }, { lighting: { exposure: 2 }, floor: { finish: 'glossy' } });
+  assert.deepEqual(preview, { lighting: { exposure: 2, size: 2 }, floor: { finish: 'glossy' } });
 });
 
 test('preset camera changes retain the actual camera position, target and zoom', () => {
   const camera = { position: [30, 40, 50], target: [3, 4, 5], up: [0, 0, 1], zoom: 1.4,
     projection: 'orthographic', focalLength: 120, orthographicHalfHeight: 24 };
-  for (const mode of ['solid', 'xray', 'hidden-line', 'wireframe']) {
+  for (const mode of ['solid', 'shaded', 'parts', 'xray', 'hidden-line', 'wireframe']) {
     const next = cameraForViewSettings(camera, { mode });
     const expected = resolveViewSettings({ mode }).camera;
     assert.deepEqual(next, { ...camera, projection: expected.projection, focalLength: expected.focalLength });
@@ -36,12 +40,12 @@ test('preset camera changes retain the actual camera position, target and zoom',
 test('the viewer Preview baseline is inherited without an override or Custom state', async () => {
   const { resolveViewSceneSettings } = await import('@text-to-cad/core/common/sceneSettings.js');
   const options = { lightingQuality: 'preview' };
-  const scene = resolveViewSceneSettings({ display: {}, render: true, ...options });
+  const scene = resolveViewSceneSettings({ display: {}, preview: true, ...options });
   assert.equal(scene.view.lighting.quality, 'preview');
   assert.equal(scene.quality.id, 'standard');
-  assert.equal(viewModeChanged({}, 'render', options), false);
-  assert.equal(viewModeChanged({ modes: { render: { lighting: { quality: 'preview' } } } }, 'render', options), false);
-  assert.equal(viewModeChanged({ modes: { render: { lighting: { quality: 'final' } } } }, 'render', options), true);
+  assert.equal(previewSettingsChanged({}, options), false);
+  assert.equal(previewSettingsChanged({ lighting: { quality: 'preview' } }, options), false);
+  assert.equal(previewSettingsChanged({ lighting: { quality: 'final' } }, options), true);
 });
 
 test('camera commands activate explicit projection and lens while pose-only updates leave View unchanged', () => {

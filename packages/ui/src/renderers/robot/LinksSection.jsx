@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Box } from "lucide-react";
+import { Anchor, Box } from "lucide-react";
 import { ROW_NAME_UNDER_ACTIONS, TREE_GLYPH_STROKE, TREE_INDENT_PX, TREE_ROW_DENSE_ICON_CLASS, TreeRowSurface, TreeRowChevron, TreeRowGuides, TreeRowLabel } from "@text-to-cad/ui/primitives/tree-row";
 import { TreeFilterHighlight, TreeFilterInput } from "@text-to-cad/ui/primitives/tree-filter";
 import { cn } from "@text-to-cad/ui/utils";
@@ -56,10 +56,13 @@ function rowHandlers(node, selection) {
 // visual's mesh) as a leaf whose place under the link already says what it is.
 //
 // `pinned` is the robot's one root: there is nothing to collapse it into, so it has no
-// chevron and takes no indent level — its children start at the tree's left edge, and
+// chevron (an anchor in its place) and takes no indent level — its children start at the tree's left edge, and
 // their chevron column is what sets them under it. It is still a row: the root is a
 // real link, selectable, and often the one with the base geometry and mass.
-// A mesh object's row carries the Model tree's part box, in the column a link's chevron takes.
+// A mesh object's row carries the Model tree's part box, in the column a link's chevron takes; the
+// robot's one root (which has no chevron: it does not fold) an anchor there, the link the robot is
+// fixed by, so no row is left without a glyph in that column.
+const rootGlyph = <span className="grid h-6 w-4 shrink-0 place-items-center" aria-hidden="true"><Anchor className={TREE_ROW_DENSE_ICON_CLASS} strokeWidth={TREE_GLYPH_STROKE}/></span>;
 const objectGlyph = node => node.kind === "component"
   ? <span className="grid h-6 w-4 shrink-0 place-items-center" aria-hidden="true"><Box className={TREE_ROW_DENSE_ICON_CLASS} strokeWidth={TREE_GLYPH_STROKE}/></span>
   : null;
@@ -68,17 +71,20 @@ function RobotRow({ node, depth = 0, pinned = false, highlighted, expanded, togg
   const open = pinned || expanded.has(node.id), branch = node.children.length > 0;
   const { choose, enter, leave } = rowHandlers(node, selection);
   const visibility = robotVisibilityState(node.partIds, hiddenIds), actions = rowActions(visibility);
-  return <li className="min-w-0" ref={element => { if (element) rowRefs.current.set(node.id, element); else rowRefs.current.delete(node.id); }}>
-    <TreeRowSurface dense active={highlighted.has(node.id)} className="group/row gap-0 pr-0" style={{ paddingLeft: depth * TREE_INDENT_PX, ...actions.style }}
+  // The row itself is what a selection scrolls to, never its list item: a branch's item holds its
+  // whole subtree (the root's, the whole robot), which never fits the view and would be centred.
+  return <li className="min-w-0">
+    <TreeRowSurface ref={element => { if (element) rowRefs.current.set(node.id, element); else rowRefs.current.delete(node.id); }}
+      dense active={highlighted.has(node.id)} className="group/row gap-0 pr-0" style={{ paddingLeft: depth * TREE_INDENT_PX, ...actions.style }}
       onMouseEnter={enter} onMouseLeave={leave}>
       {/* Its owners' faint lines, each under its 16px disclosure column. */}
       <TreeRowGuides depth={depth} column={16}/>
-      {pinned ? null : branch ? <button type="button" aria-label={`${open ? "Collapse" : "Expand"} ${node.label}`} aria-expanded={open}
+      {pinned ? rootGlyph : branch ? <button type="button" aria-label={`${open ? "Collapse" : "Expand"} ${node.label}`} aria-expanded={open}
         className="grid h-6 w-4 shrink-0 place-items-center rounded focus-visible:ring-2 focus-visible:ring-ring"
         onClick={() => toggle(node)}><TreeRowChevron expanded={open}/></button> : objectGlyph(node) || <span className="w-4 shrink-0"/>}
       <button type="button" aria-label={`Select ${node.label}`} aria-pressed={highlighted.has(node.id)}
         onClick={choose} onFocus={enter} onBlur={leave}
-        className={cn("flex h-full min-w-0 flex-1 items-center gap-1.5 rounded pr-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", pinned && "pl-2", actions.name)}>
+        className={cn("flex h-full min-w-0 flex-1 items-center gap-1.5 rounded pr-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", actions.name)}>
         {/* Name first: in a narrow panel the joint takes the truncation, never the link. */}
         <TreeRowLabel className="max-w-full shrink-0">{node.label}</TreeRowLabel>
         {node.detail && <TreeRowLabel className="flex-1 text-micro text-muted-foreground">{node.detail}</TreeRowLabel>}

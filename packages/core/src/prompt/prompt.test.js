@@ -74,3 +74,17 @@ test('a delivery ledger delivers each operation once, bounds work in flight, and
   await ledger.deliver('a', () => { restarted += 1; return { status: 'copied', partIds: [] }; });
   assert.equal(restarted, 1, 'the oldest completed operation was evicted');
 });
+
+
+test('prompt serialization prefers inline text and preserves references without reading file bytes', async () => {
+  const { resolvePromptMessage } = await import('./index.js');
+  const small = { id: 'snapshot', kind: 'attachment', name: 'a.snapshot.json', mimeType: 'application/json',
+    content: { then() { throw new Error('must not fetch bytes'); } },
+    inlineText: Promise.resolve('Snapshot JSON:\n{"jobs":[]}'), path: Promise.resolve('') };
+  const context = createPromptContext([textPart('Keep it.'), small]);
+  assert.equal(await resolvePromptMessage(context), 'Keep it.\n\nSnapshot JSON:\n{"jobs":[]}');
+  assert.equal(await resolvePromptMessage(createPromptContext([textPart('Keep it.'), { ...small,
+    inlineText: Promise.resolve(null), path: Promise.resolve('/tmp/a.snapshot.json'), label: 'Snapshot' }])),
+    'Keep it.\n\nSnapshot: /tmp/a.snapshot.json');
+  await assert.rejects(resolvePromptMessage(createPromptContext([{ ...small, inlineText: Promise.reject(new Error('save failed')) }])), /save failed/);
+});

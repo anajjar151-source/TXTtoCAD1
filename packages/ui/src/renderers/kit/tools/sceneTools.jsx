@@ -5,7 +5,7 @@ import { useModelTools } from "./model-effects/ModelTools.jsx";
 import { useMeasureSession } from "./measure/useMeasureSession.js";
 import { useQuickEditMeasurements } from "./measure/measurementChips.jsx";
 import { measureSelectHandlers } from "./measure/measureSelection.js";
-import { MeasureIcon, MeasureSizeBar, SCENE_MEASURE_TOOL, SceneMeasureOverlay } from "./measure/SceneMeasure.jsx";
+import { MeasureIcon, SCENE_MEASURE_TOOL, SceneMeasureOverlay } from "./measure/SceneMeasure.jsx";
 
 // The tools a scene the kit draws offers, in two halves around the shell: what Quick Edit must know
 // before the shell is made (the tool in hand, Measure's session), and the strip, the row under it
@@ -23,7 +23,7 @@ import { MeasureIcon, MeasureSizeBar, SCENE_MEASURE_TOOL, SceneMeasureOverlay } 
 export function useSceneToolState({ toolModes, previewing, fileKey, revision, measurable, resource }) {
   const [mode, set] = useState(toolModes.defaultMode);
   const measure = useMeasureSession({ fileKey, revision, picking: measurable && !previewing && mode === SCENE_MEASURE_TOOL });
-  const measurements = useQuickEditMeasurements(measure, resource);
+  const measurements = useQuickEditMeasurements(measure);
   return { tool: { mode, set }, measure, measurements: measurable ? measurements : null, measuring: measurable && !previewing && mode === SCENE_MEASURE_TOOL };
 }
 
@@ -50,7 +50,8 @@ export function useSceneTools({ shell, scene, features, state, measurable, clear
       onSelect: () => { if (shell.toolMode !== SCENE_MEASURE_TOOL) shell.selectTool(SCENE_MEASURE_TOOL); } }) : null,
     ...effects.tools
   ].filter(Boolean);
-  const subToolbar = measuring ? <MeasureSizeBar scene={scene} measure={measure} disabled={shell.idle} /> : effects.subToolbar;
+  // Measure has no row under the strip: its measurements are its own chips.
+  const subToolbar = measuring ? null : effects.subToolbar;
   const runtime = useRef(null);
   const overlay = viewport => {
     runtime.current = viewport.runtimeRef;

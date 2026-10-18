@@ -26,12 +26,17 @@ export default function SubToolbar({ label, className, children, ...props }) {
   </div>;
 }
 
+// Every sub-toolbar is one width, the drawing toolbar's (Annotate's tools, style and history at
+// their natural size, 202px): a slider tool's row takes it too, so the column under the
+// strip never changes width from one tool to the next.
+export const SUB_TOOLBAR_WIDTH_CLASS = "w-[202px]";
+
 /**
  * The width of a slider tool's sub-toolbar: one width for all of
  * them, their slider taking whatever their buttons leave (`min-w-0 flex-1`), so a conditional
  * button (Animation's Routines) shortens the slider rather than the row.
  */
-export const SLIDER_SUB_TOOLBAR_CLASS = "w-56 flex-nowrap data-[touch]:w-80";
+export const SLIDER_SUB_TOOLBAR_CLASS = `${SUB_TOOLBAR_WIDTH_CLASS} flex-nowrap data-[touch]:w-80`;
 
 /**
  * A slider tool's row is one shape: what leads it (Clip's axis; Animation's routines and Play),

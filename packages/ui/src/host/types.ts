@@ -12,10 +12,9 @@ export interface ClipboardPort {
   writeImage(image: Blob | Promise<Blob>): Promise<void>;
 }
 /**
- * A Quick Edit's files, made on this machine for its prompt to carry and name: the views it carries
- * as a snapshot job file (`cadgen snapshot --job` renders them), its annotation as an annotation file, and
- * each view's picture, rendered with the snapshot's own code. `create` answers where they are once
- * they are made; `read` fetches one. `createHttpPromptFiles` (`@text-to-cad/core/client`) is the
+ * A Quick Edit's .snapshot.json, made at Copy/Queue/Send: shared input, inline annotation
+ * and measurements, with one job per drawn view (`cadgen snapshot --job` renders them).
+ * `create` returns compact inline JSON up to 1024 UTF-8 bytes, otherwise writes it and answers its path; `read` fetches it. `createHttpPromptFiles` (`@text-to-cad/core/client`) is the
  * viewer server's.
  */
 export interface PromptFiles {
@@ -24,9 +23,9 @@ export interface PromptFiles {
     views: Array<Record<string, unknown> & { label: string }>;
     annotation: Record<string, unknown> | null;
     measurements?: Array<{ start: number[]; end: number[]; label: string; color: string }>;
-  }): Promise<{ job: string; annotation: string | null; images: Array<{ label: string; path: string }> }>;
+  }): Promise<{ snapshot: string; inline?: never } | { inline: string; snapshot?: never }>;
   read(path: string): Promise<Blob>;
-  /** A Quick Edit chip's copy as a file, written at once: its path (an annotation's annotation, one measurement). */
+  /** Legacy individual-file export for older clients; current annotation and measurement chips do not call it. */
   save?(request: { name: string; kind: 'annotation' | 'measurement'; data: Record<string, unknown> }): Promise<string>;
 }
 /**
@@ -63,7 +62,7 @@ export interface ViewerHost {
   fileActions?: FileActions;
   clipboard: ClipboardPort;
   promptContext: PromptContextPort;
-  /** Makes a Quick Edit's views, annotation and pictures as files. Absent: a prompt carries none of them. */
+  /** Makes a Quick Edit's views and annotation as one snapshot JSON file. Absent: a prompt carries none of them. */
   promptFiles?: PromptFiles;
   /**
    * Show a file, by its absolute path, in this view: a pick in the explorer, a renderer's link.

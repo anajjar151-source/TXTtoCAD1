@@ -404,7 +404,7 @@ export function drawMeasureSnapMarker(context, point, { snapKind = "free", now =
   if (!context || !point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
     return;
   }
-  const snapped = snapKind === "vertex" || snapKind === "edge" || snapKind === "face";
+  const snapped = snapKind === "vertex" || snapKind === "edge" || snapKind === "face" || snapKind === "center";
   const color = snapped ? MEASURE_SNAP_COLOR : MEASURE_SNAP_FREE_COLOR;
   const { x, y } = point;
 
@@ -445,6 +445,11 @@ export function drawMeasureSnapMarker(context, point, { snapKind = "free", now =
     context.lineTo(x, y + 4.2);
     context.lineTo(x - 4.2, y);
     context.closePath();
+    context.stroke();
+  } else if (snapKind === "center") {
+    // A circle's or arc's centre: a ring round the crosshair's point.
+    context.beginPath();
+    context.arc(x, y, 4, 0, Math.PI * 2);
     context.stroke();
   }
   context.restore();

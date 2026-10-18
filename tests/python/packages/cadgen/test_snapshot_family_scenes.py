@@ -240,7 +240,7 @@ class SnapshotFamilySceneTests(unittest.TestCase):
         (workspace / "red_box.glb").write_bytes(box_glb(color=(0.85, 0.05, 0.05), metallic=0, roughness=0.6))
 
         # No guides: a silhouette is then everything that is not the backdrop.
-        plain = {"modes": {"solid": {"grid": {"enabled": False}, "axes": {"enabled": False}}}}
+        plain = {"grid": False}
 
         def job(name: str, source: str, display=None, camera="iso", **extra):
             return {"input": source, "display": {"mode": "solid", **plain, **(display or {})}, **extra,
@@ -255,8 +255,8 @@ class SnapshotFamilySceneTests(unittest.TestCase):
             job("straight", "straight.glb", camera="front"),
             job("mirror-solid", "mirror.glb"),
             job("matte-solid", "matte.glb"),
-            job("mirror-render", "mirror.glb", render=True),
-            job("matte-render", "matte.glb", render=True),
+            job("mirror-render", "mirror.glb", preview=True),
+            job("matte-render", "matte.glb", preview=True),
             job("painted", "painted.urdf"),
             job("srdf", "arm.srdf"),
             job("urdf-home", "arm.urdf", jointValues={"shoulder": home_degrees}),

@@ -98,7 +98,7 @@ export function ToolPanelHeadAction({ children }) {
   return slot ? createPortal(children, slot) : null;
 }
 
-export default function ToolPanel({ id, title = null, name = "", label, summary = null, actions = null, header = null, collapsible = true, onClose = null, closeLabel = "",
+export default function ToolPanel({ id, title = null, name = "", label, summary = null, actions = null, header = null, collapsible = true, onClose = null, closeLabel = "", changed = false,
   fit = "fixed", resizable = false, hidden = false, defaultCollapsed = false, lead = false, children }) {
   const [headSlot, setHeadSlot] = useState(null);
   const stack = useContext(ToolStackContext);
@@ -111,12 +111,11 @@ export default function ToolPanel({ id, title = null, name = "", label, summary 
   if (inSidebar) collapsible = false;
   // A section the sidebar does not offer just now (Preview's are Position and Animation) is as
   // a hidden one: mounted, out of sight, and no tile.
-  if (inSidebar && stack.allowed && !stack.allowed(id)) hidden = true;
   if (inSidebar && !title) title = name || label;
   const closedInSidebar = inSidebar && stack.openSection !== id;
   const register = inSidebar ? stack.register : null;
   const tileTitle = typeof title === "string" ? title : name || label;
-  useLayoutEffect(() => { if (register && id && !hidden) register(id, { title: tileTitle, fit }); }, [register, id, hidden, tileTitle, fit]);
+  useLayoutEffect(() => { if (register && id && !hidden) register(id, { title: tileTitle, fit, changed }); }, [register, id, hidden, tileTitle, fit, changed]);
   // Folded: the person's, kept by the stack across files; a panel drawn alone keeps its own.
   const [ownCollapsed, setOwnCollapsed] = useState(defaultCollapsed);
   const collapsed = collapsible && (kept ? stack.collapsed(id, defaultCollapsed) : ownCollapsed);

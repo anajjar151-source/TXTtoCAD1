@@ -271,7 +271,7 @@ class CadApp:
         self.surface_subscribers = SurfaceSubscribers()
         # The drawing route's renders, off the request and one per drawing (``drawings.py``).
         self.drawings = DrawingRenders(on_crash=lambda error: self._crashed(error, bugs_only=True))
-        self.prompt_files = PromptFiles(on_crash=lambda error: self._crashed(error, bugs_only=True))
+        self.prompt_files = PromptFiles()
         # What a watched build saves, its catalog row computed before a read asks (``warm.py``).
         self.catalog_warm = CatalogWarmer()
         self.start = to_posix_path(os.path.abspath(start if start is not None else _working_folder()))
@@ -317,11 +317,7 @@ class CadApp:
         in flight, no compile the build route started and left running, and no drawing it is
         rendering."""
         return (self.busy_requests() == 0 and not self.ops.client.any_in_flight()
-                and not self.drawings.any_in_flight() and not self.prompt_files.any_in_flight())
-
-    def close(self) -> None:
-        """Release the prompt-render browser owned by this app."""
-        self.prompt_files.close()
+                and not self.drawings.any_in_flight())
 
     # --- server info ------------------------------------------------------
 
@@ -610,7 +606,7 @@ class CadApp:
                     if int(request.headers.get("content-length") or 0) > MAX_BODY_BYTES:
                         response.send_empty(413, [("connection", "close")])
                         return
-                    status, body = self.prompt_files.start(request.body())
+                    status, body = self.prompt_files.create(request.body())
                     response.send_json(status, body)
                 elif pathname == "/__cad/prompt-files/save":
                     from .prompt_files import MAX_BODY_BYTES
@@ -857,13 +853,12 @@ class CadApp:
         response.send_json(status, body)
 
     def _handle_prompt_files_get(self, request, response, pathname, query):
-        """Read a prompt result or file; every request carries the viewer guard."""
+        """Read a prompt JSON file; every request carries the viewer guard."""
         if not request.header(POST_GUARD_HEADER):
             response.send_json(403, {"ok": False, "error": f"missing {POST_GUARD_HEADER} header; send '{POST_GUARD_HEADER}: 1'"})
             return
         if pathname == "/__cad/prompt-files":
-            status, body = self.prompt_files.status(query.get("id"))
-            response.send_json(status, body)
+            response.send_json(404, {"ok": False, "error": "Not found"})
             return
         found = self.prompt_files.file(pathname[len("/__cad/prompt-files/"):])
         if found is None:

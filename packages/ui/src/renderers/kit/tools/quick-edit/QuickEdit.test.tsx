@@ -2,6 +2,7 @@ import React, { Profiler } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import QuickEdit, { quickEditReferenceIds } from '../../../../../dist/renderers/kit/tools/quick-edit/QuickEdit.js';
+import { useQuickEditMeasurements } from '../../../../../dist/renderers/kit/tools/measure/measurementChips.js';
 import { ViewerHostContext } from '../../../../../dist/host/context.js';
 import { testHost } from '../../../../../dist/host/testing/host.js';
 
@@ -124,15 +125,14 @@ it('offers the buttons the host can carry out, the rightmost primary and pressed
   expect(used.mock.calls).toEqual([['quickEdit']]);
 });
 
-it('copies the note with its references by their files\' absolute paths, and the files made for it — each view\'s picture, the views as a job, the annotation — by theirs, keeping it all in the box', async () => {
+it('copies the note with its references by their files\' absolute paths, and its single snapshot by its path, keeping it all in the box', async () => {
   let copied: Promise<string> | string = '';
   const host = testHost({ clipboard: { writeText: async text => { copied = text; }, readText: async () => '', writeImage: async () => {} } });
   const annotation = { present: true };
-  const views = [{ label: 'current' }, { label: 'view 1' }];
+  const views = [{ label: 'view 1' }];
   const prompt = {
     views: () => views,
-    files: vi.fn(async () => ({ job: '/tmp/p/bracket-1.job.json', annotation: '/tmp/p/bracket-1.annotation.json',
-      images: [{ label: 'current', path: '/tmp/p/bracket-1-current.png' }, { label: 'view 1', path: '/tmp/p/bracket-1-view-1.png' }] })),
+    files: vi.fn(async () => ({ snapshot: '/tmp/p/bracket-1.snapshot.json' })),
     read: vi.fn(async () => new Blob()),
     annotation: () => ({ units: 'mm', parts: {}, marks: [] }),
   };
@@ -141,35 +141,79 @@ it('copies the note with its references by their files\' absolute paths, and the
   // The annotation is a chip of its own, Annotation; without a way to wipe it, it has no X.
   expect(buttons()).toEqual(['Close Quick Edit', 'Annotation', 'Copy Prompt']);
   write('Round this edge.');
+  expect(prompt.files).not.toHaveBeenCalled();
   fireEvent.click(within(box()!).getByRole('button', { name: 'Copy Prompt' }));
   // Copied, nothing has gone yet: the note and what it carries stay, and the button says so.
   await waitFor(() => expect(within(box()!).getByRole('button', { name: 'Prompt copied' })).toBeTruthy());
   expect([note(), clear.mock.calls.length]).toEqual(['Round this edge.', 0]);
   expect(await copied).toBe('Round this edge.\n\nFile: /models/parts/bracket.step\nReferences:\n/models/parts/bracket.step#o1.f2'
-    + '\nCurrent view: /tmp/p/bracket-1-current.png\nView 1: /tmp/p/bracket-1-view-1.png'
-    + '\nViews (cadgen snapshot --job): /tmp/p/bracket-1.job.json\nAnnotation: /tmp/p/bracket-1.annotation.json');
+    + '\nSnapshot (cadgen snapshot --job): /tmp/p/bracket-1.snapshot.json');
   expect(prompt.files).toHaveBeenCalledWith(views);
   // Copied as text, no file's bytes were read.
   expect(prompt.read).not.toHaveBeenCalled();
-  // The Annotation chip copies the annotation as its annotation file's JSON, where the host keeps no files.
-  fireEvent.click(within(box()!).getByRole('button', { name: 'Annotation' }));
-  await waitFor(() => expect(copied).toBe(JSON.stringify(prompt.annotation(), null, 2)));
 });
 
-it('the Annotation chip copies the path of a file it saves, and that path pasted in the note is its pill', async () => {
-  let copied = '';
-  const host = testHost({ clipboard: { writeText: async text => { copied = text; }, readText: async () => '', writeImage: async () => {} } });
-  const prompt = { views: () => [], files: vi.fn(), read: vi.fn(), annotation: () => ({ units: 'mm', parts: {}, marks: [] }),
-    save: vi.fn(async () => '/tmp/p/bracket-1.annotation.json') };
+it.each(['Copy Prompt', 'Queue', 'Send'])('%s creates the snapshot only at the press', async action => {
+  const composer = { kind: 'composer', available: true } as const;
+  const delivered: any[] = [];
+  const take = async (context: any) => {
+    delivered.push(context);
+    await Promise.all(context.parts.filter((part: any) => part.kind === 'attachment').map((part: any) => part.path));
+    return { status: 'added' as const, partIds: [] };
+  };
+  const prompt = { views: () => [{ label: 'view 1' }],
+    files: vi.fn(async () => ({ snapshot: '/tmp/p/a.snapshot.json' })), read: vi.fn(async () => new Blob()) };
+  const host = testHost({ promptContext: { getSnapshot: () => composer, subscribe: () => () => {}, deliver: take, send: take } as any });
   mount(host, { annotation: { present: true }, prompt });
-  fireEvent.click(within(box()!).getByRole('button', { name: 'Annotation' }));
-  await waitFor(() => expect(copied).toBe('/tmp/p/bracket-1.annotation.json'));
-  expect(prompt.save).toHaveBeenCalledWith('annotation', prompt.annotation());
-  fireEvent.paste(field(), { clipboardData: { getData: () => '/tmp/p/bracket-1.annotation.json' } });
-  const pill = field().querySelector('[data-quick-edit-note-ref]')!;
-  expect([pill.querySelector('svg')?.getAttribute('data-pick-glyph'), pill.textContent]).toEqual(['pencil', 'Annotation']);
-  // It goes as the path it stands for.
-  expect((pill as HTMLElement).dataset.quickEditNoteRef).toBe('/tmp/p/bracket-1.annotation.json');
+  write('Change this.');
+  expect(prompt.files).not.toHaveBeenCalled();
+  fireEvent.click(within(box()!).getByRole('button', { name: action }));
+  await waitFor(() => expect(prompt.files).toHaveBeenCalledTimes(1));
+  if (action !== 'Copy Prompt') {
+    const attachments = delivered[0].parts.filter((part: any) => part.kind === 'attachment');
+    expect(attachments).toHaveLength(1);
+    expect(await attachments[0].path).toBe('/tmp/p/a.snapshot.json');
+  }
+});
+
+it('annotation and measurement chips keep details and removal without copying or saving individual files', async () => {
+  const writeText = vi.fn(async (_text: string | PromiseLike<string>) => {}), save = vi.fn(), files = vi.fn();
+  const clearInk = vi.fn(), onDelete = vi.fn(), hover = vi.fn();
+  const host = testHost({ clipboard: { writeText, readText: async () => '', writeImage: async () => {} },
+    promptFiles: { create: files, read: vi.fn(), save } });
+  const measure = { measurements: [{ id: 'm1', colorIndex: 0, pickA: { point: [0, 0, 0] },
+    pickB: { point: [3, 4, 0] }, measurement: { euclidean: 5, delta: [3, 4, 0], unit: 'mm' } }],
+    onDelete, hover, clear: vi.fn() };
+  const ink = { units: 'mm', parts: {}, marks: [] };
+  function Note() {
+    const measurements = useQuickEditMeasurements(measure);
+    return <QuickEdit resource={resource} annotation={{ present: true, clear: clearInk }} measurements={measurements}
+      prompt={{ views: () => [{ label: 'current view' }], save, files: async () => ({
+        inline: JSON.stringify({ input: resource.path, jobs: [], annotation: ink, measurements: measurements!.marks() })
+      }) }} />;
+  }
+  render(<ViewerHostContext.Provider value={host}><Note /></ViewerHostContext.Provider>);
+  fireEvent.click(screen.getByRole('button', { name: 'Annotation' }));
+  const chip = screen.getByRole('button', { name: 'Measurement 1: 5.00 mm' });
+  fireEvent.pointerDown(chip, { pointerType: 'touch' });
+  fireEvent.click(chip);
+  const card = document.querySelector<HTMLElement>('[data-quick-edit-ref-card="measure-m1"]')!;
+  expect(card).not.toBeNull();
+  expect(within(card).queryByRole('button', { name: /Copy reference/ })).toBeNull();
+  expect(card.textContent).toContain('Distance5.00 mm');
+  expect(writeText).not.toHaveBeenCalled();
+  expect(save).not.toHaveBeenCalled();
+  expect(files).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Copy Prompt' }));
+  await waitFor(() => expect(writeText).toHaveBeenCalledOnce());
+  const copied = await writeText.mock.calls[0][0];
+  expect(copied).toContain('"measurements":[{"start":[0,0,0],"end":[3,4,0],"label":"5.00 mm"');
+  expect(copied).toContain('"annotation":');
+  expect(save).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Remove Annotation' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Remove Measurement 1: 5.00 mm' }));
+  expect(clearInk).toHaveBeenCalledOnce();
+  expect(onDelete).toHaveBeenCalledWith('m1');
 });
 
 it('a click on a pill in the note selects it whole, highlighted as selected text, so a Backspace takes it', () => {
@@ -328,4 +372,23 @@ it('peeking on a phone, its row is the note\'s field and a plain icon button per
   await waitFor(() => expect(peek.querySelector('[data-quick-edit-peek-action="copy"]')!.getAttribute('aria-label')).toBe('Prompt copied'));
   expect(await copied).toBe('File: /models/parts/bracket.step\nReferences:\n/models/parts/bracket.step#o1.f2');
   expect(within(box()!).getByRole('button', { name: 'Describe your changes…' }).getAttribute('aria-expanded')).toBe('false');
+});
+
+
+it.each(['Copy Prompt', 'Queue', 'Send'])('%s includes a small snapshot as JSON with no file read', async action => {
+  const { resolvePromptMessage } = await import('@text-to-cad/core/prompt');
+  let message = '';
+  const take = async (context: any) => { message = await resolvePromptMessage(context); return { status: 'added' as const, partIds: [] }; };
+  const host = testHost({ clipboard: { writeText: async text => { message = await text; }, readText: async () => '', writeImage: async () => {} },
+    promptContext: { getSnapshot: () => composer, subscribe: () => () => {}, deliver: take, send: take } });
+  const packet = JSON.stringify({ input: resource.path, jobs: [{ camera: 'front' }] });
+  const prompt = { views: () => [{ label: 'current view' }], files: vi.fn(async () => ({ inline: packet })), read: vi.fn() };
+  mount(host, { references: [face], prompt });
+  write('Keep it.');
+  expect(prompt.files).not.toHaveBeenCalled();
+  fireEvent.click(within(box()!).getByRole('button', { name: action }));
+  await waitFor(() => expect(message).toContain('Snapshot JSON (cadgen snapshot --job):'));
+  expect(message).toContain(packet);
+  expect(message).toContain('/models/parts/bracket.step#o1.f2');
+  expect(prompt.read).not.toHaveBeenCalled();
 });

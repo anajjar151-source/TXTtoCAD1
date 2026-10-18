@@ -49,9 +49,8 @@ from cadgen._internal.atomic_replace import write_bytes_atomic
 SNAPSHOT_ORIGIN = "http://localhost"
 SNAPSHOT_RENDER_URL = f"{SNAPSHOT_ORIGIN}/render.html"
 SNAPSHOT_ROUTE_GLOB = f"{SNAPSHOT_ORIGIN}/**"
-# Display is a sparse preset override. The shared browser resolver owns defaults.
+# Display is sparse: a mode, the grid, what modes share. The shared browser resolver owns defaults.
 DISPLAY_APPEARANCES = frozenset({"light", "dark"})
-RENDER_QUALITY_IDS = frozenset({"preview", "final"})
 DEFAULT_TIMEOUT_SECONDS = 300
 # Tearing a video sequence down is one dispose call over objects already in
 # hand, so it gets a short deadline of its own rather than the job's: the
@@ -70,9 +69,9 @@ SUPPORTED_JOB_KEYS = frozenset(
         "mode",
         "outputs",
         "display",
-        # The photographic Render instead of the display mode: studio lighting, floor and
-        # environment, as `display.modes.render` sets them. View mode only.
-        "render",
+        # Preview's photographic look instead of the display mode: studio lighting, floor and
+        # environment, at Preview's defaults. View mode only.
+        "preview",
         "output",
         "quality",
         "camera",
@@ -170,36 +169,18 @@ SIMPLE_RENDER_WIDTH, SIMPLE_RENDER_HEIGHT = SIZE_PROFILES["simple"]
 # What an output's extension may be, per mode. The extension decides the
 # encoding; nothing in a job does.
 STILL_OUTPUT_SUFFIXES = {"view": (".png",)}
-DISPLAY_OPTION_KEYS = frozenset({"mode", "appearance", "camera", "clip", "exploded", "modes"})
-# The working looks `display.mode` picks. Render is no display mode: it is its own request
-# (`--render`, a job's `"render": true`), drawn with Render's own settings, `display.modes.render`.
-DISPLAY_MODES = frozenset({"solid", "xray", "hidden-line", "wireframe"})
-PART_COLOR_MODES = frozenset({"original", "single", "by-part"})
+# A display is a mode, the grid switch, and what every mode shares. A mode is a look at its own
+# defaults, with nothing else to set.
+DISPLAY_OPTION_KEYS = frozenset({"mode", "grid", "appearance", "camera", "clip", "exploded"})
+# The looks `display.mode` picks: Solid (shaded, with CAD edges; the default), Shaded (no edges),
+# Parts (Solid with each part its own colour), X-ray, Hidden line and Wireframe. Preview's look is
+# no display mode: it is its own request (`--preview`, a job's `"preview": true`).
+DISPLAY_MODES = frozenset({"solid", "shaded", "parts", "xray", "hidden-line", "wireframe"})
 DISPLAY_CAMERA_KEYS = frozenset({"projection", "focalLength"})
-DISPLAY_PART_KEYS = frozenset({"colorMode", "color", "colors"})
-DISPLAY_EDGE_KEYS = frozenset({"color"})
-DISPLAY_LIGHTING_KEYS = frozenset({"quality", "exposure", "rotation", "size", "fill"})
-DISPLAY_BACKGROUND_KEYS = frozenset({"color", "opacity"})
-DISPLAY_FLOOR_KEYS = frozenset({"enabled", "placement", "color", "opacity", "finish"})
-DISPLAY_FLOOR_FINISHES = frozenset({"matte", "glossy"})
-DISPLAY_GRID_KEYS = frozenset({"enabled", "color", "opacity", "density"})
-DISPLAY_AXES_KEYS = frozenset({"enabled", "color", "opacity"})
 DISPLAY_CLIP_KEYS = frozenset({"enabled", "axis", "at", "invert"})
 DISPLAY_EXPLODED_KEYS = frozenset({"enabled", "amount"})
 DISPLAY_GROUP_KEYS = {
     "camera": DISPLAY_CAMERA_KEYS, "clip": DISPLAY_CLIP_KEYS, "exploded": DISPLAY_EXPLODED_KEYS,
-}
-DISPLAY_MODE_SETTING_KEYS = {
-    "solid": frozenset({"parts", "flat", "edges", "grid", "axes"}),
-    "render": frozenset({"parts", "lighting", "background", "floor"}),
-    "xray": frozenset({"parts", "opacity", "edges", "grid", "axes"}),
-    "hidden-line": frozenset({"edges", "grid", "axes"}),
-    "wireframe": frozenset({"edges", "grid", "axes"}),
-}
-DISPLAY_MODE_GROUP_KEYS = {
-    "parts": DISPLAY_PART_KEYS, "edges": DISPLAY_EDGE_KEYS, "lighting": DISPLAY_LIGHTING_KEYS,
-    "background": DISPLAY_BACKGROUND_KEYS, "floor": DISPLAY_FLOOR_KEYS,
-    "grid": DISPLAY_GRID_KEYS, "axes": DISPLAY_AXES_KEYS,
 }
 CAMERA_OPTION_KEYS = frozenset({
     "preset", "name", "position", "target", "up", "direction", "zoom", "orthographicHalfHeight",
@@ -484,12 +465,12 @@ def _display_enum(value: object, field: str, allowed: frozenset[str]) -> None:
 
 
 def display_modes_for_kind(kind: str) -> frozenset[str]:
-    """The display presets an input of this kind can be given.
+    """The display modes an input of this kind can be given.
 
-    An error that lists modes lists THESE, so a mesh door never offers a preset it
+    An error that lists modes lists THESE, so a mesh door never offers a mode it
     is about to refuse. An unknown kind gets the full set: its own refusal comes
     first and says what the file is. A DRAWING gets none: it has no scene for a
-    preset to configure, and its whole display is ``appearance``.
+    mode to draw, and its whole display is ``appearance``.
     """
     if kind in DRAWING_KINDS:
         return frozenset()
@@ -522,15 +503,11 @@ def _validate_display_group(value: object, keys: frozenset[str], path: str) -> N
         elif key == "at":
             if isinstance(entry, bool) or not isinstance(entry, (int, float)) or not isfinite(float(entry)):
                 raise SnapshotError(f"{field} must be a finite number: the plane's coordinate on its axis, in millimetres")
-        elif key in {"opacity", "fill", "amount", "focalLength", "exposure", "rotation", "size", "density"}:
-            bounds = {"opacity": (0, 1), "fill": (0, 1), "amount": (0, 1), "focalLength": (20, 200),
-                      "exposure": (-5, 5), "rotation": (-180, 180), "size": (0.25, 3), "density": (0.25, 4)}
+        elif key in {"amount", "focalLength"}:
+            bounds = {"amount": (0, 1), "focalLength": (20, 200)}
             _render_number(entry, field, *bounds[key])
         else:
-            choices = {"projection": frozenset({"orthographic", "perspective"}),
-                       "colorMode": PART_COLOR_MODES, "quality": RENDER_QUALITY_IDS,
-                       "placement": frozenset({"origin", "lowest"}), "finish": DISPLAY_FLOOR_FINISHES,
-                       "axis": frozenset({"x", "y", "z"})}
+            choices = {"projection": frozenset({"orthographic", "perspective"}), "axis": frozenset({"x", "y", "z"})}
             _display_enum(entry, field, choices[key])
 
 
@@ -540,7 +517,7 @@ def validate_display_settings_values(
     source_label: str,
     modes: frozenset[str] | None = None,
 ) -> None:
-    """Validate sparse shared and per-mode settings without filling defaults."""
+    """Validate a sparse display without filling defaults."""
     if not is_plain_object(payload):
         raise SnapshotError(f"display must be a display settings object ({source_label})")
     _display_object(payload, DISPLAY_OPTION_KEYS, "display")
@@ -548,37 +525,22 @@ def validate_display_settings_values(
         mode = payload["mode"]
         if not (isinstance(mode, str) and mode in DISPLAY_MODES):
             _display_enum(mode, "display.mode", modes or DISPLAY_MODES)
+    if "grid" in payload:
+        _render_boolean(payload["grid"], "display.grid")
     if "appearance" in payload:
         _display_enum(payload["appearance"], "display.appearance", DISPLAY_APPEARANCES)
     for name, keys in DISPLAY_GROUP_KEYS.items():
         if name in payload:
             _validate_display_group(payload[name], keys, f"display.{name}")
-    if "modes" not in payload:
-        return
-    # Every mode's settings, Render's among them (`render` draws with them).
-    _display_object(payload["modes"], frozenset(DISPLAY_MODE_SETTING_KEYS), "display.modes")
-    for mode, settings in payload["modes"].items():
-        path = f"display.modes.{mode}"
-        _display_object(settings, DISPLAY_MODE_SETTING_KEYS[mode], path)
-        for name, value in settings.items():
-            field = f"{path}.{name}"
-            if name == "flat":
-                _render_boolean(value, field)
-            elif name == "opacity":
-                _render_number(value, field, 0, 1)
-            else:
-                keys = DISPLAY_MODE_GROUP_KEYS[name]
-                if mode == "solid" and name == "edges":
-                    keys = keys | {"enabled"}
-                _validate_display_group(value, keys, field)
 
 
 # What a 3D input's view offers, as the shared viewer offers it (`viewFeaturesForKind` in
-# @text-to-cad/core's viewSettings.js). Edges are drawn from B-rep topology, so the presets
-# built from them are a STEP's alone. Clip cuts whatever any 3D input draws; Explode moves
-# parts apart, which a STEP assembly and a GLB's nodes have and an STL, a 3MF or a robot
-# description (whose links are posed, not separated) do not.
-CAD_MODEL_DISPLAY_MODES = frozenset({"xray", "hidden-line", "wireframe"})
+# @text-to-cad/core's viewSettings.js). Edges are drawn from B-rep topology, so the modes that
+# draw them, or are told apart by having none (Shaded), are a STEP's alone: any other 3D input
+# is Solid, or Parts with each of its parts, objects or links its own colour. Clip cuts whatever
+# any 3D input draws; Explode moves parts apart, which a STEP assembly and a GLB's nodes have and
+# an STL, a 3MF or a robot description (whose links are posed, not separated) do not.
+CAD_MODEL_DISPLAY_MODES = frozenset({"shaded", "xray", "hidden-line", "wireframe"})
 EXPLODABLE_KINDS = frozenset({"step", "stp", "glb"})
 CAD_MODEL_KINDS = frozenset({"step", "stp"})
 # Inputs that are DRAWN rather than staged. Nothing in `display` but
@@ -608,20 +570,11 @@ def validate_display_for_kind(display: Mapping[str, object], *, kind: str, input
             "(Explode takes a STEP model or a GLB of several parts). Remove the setting; "
             "Clip (display.clip) cuts it."
         )
-    requested = []
     mode = display.get("mode")
     if isinstance(mode, str) and mode in CAD_MODEL_DISPLAY_MODES:
-        requested.append(f"display.mode {mode!r}")
-    for saved_mode, settings in display.get("modes", {}).items():
-        if saved_mode in CAD_MODEL_DISPLAY_MODES:
-            requested.append(f"display.modes.{saved_mode}")
-        elif "edges" in settings:
-            requested.append(f"display.modes.{saved_mode}.edges")
-    if requested:
         raise SnapshotError(
-            f"{', '.join(requested)} {'applies' if len(requested) == 1 else 'apply'} to STEP models only; "
-            f"{input_label} has no CAD edges. "
-            "Remove the setting; this input's display mode is 'solid' (or render it with --render)."
+            f"display.mode {mode!r} applies to STEP models only; {input_label} has no CAD edges. "
+            "Its display mode is 'solid' or 'parts' (or draw Preview's look with --preview)."
         )
 
 
@@ -659,8 +612,8 @@ def _find_display_object(
         display = str(raw_display or "").strip()
         if not display:
             raise SnapshotError("--display requires a JSON object, JSON file path, or display mode")
-        # Preset names are unambiguous even when the working directory contains a
-        # folder with the same name (for example an output folder called render).
+        # Mode names are unambiguous even when the working directory contains a
+        # folder with the same name (for example an output folder called parts).
         if display in DISPLAY_MODES:
             return {"mode": display}
         if display.startswith("{"):
@@ -1053,7 +1006,17 @@ def normalize_snapshot_job_packet(raw_payload: object) -> tuple[bool, list[objec
     if isinstance(raw_payload, list):
         return False, raw_payload
     if is_plain_object(raw_payload) and isinstance(raw_payload.get("jobs"), list):
-        return False, list(raw_payload["jobs"])
+        # Shared data is stored once on disk. A job replaces a whole field, never
+        # merges marks or measurements; an explicit empty value suppresses it.
+        shared_keys = {"input", "annotation", "measurements"}
+        unknown = sorted(set(raw_payload) - shared_keys - {"jobs"})
+        if unknown:
+            raise SnapshotError(f"snapshot packet has unknown key(s): {', '.join(unknown)}")
+        shared = {key: raw_payload[key] for key in shared_keys if key in raw_payload}
+        return False, [
+            {**shared, **job} if is_plain_object(job) else job
+            for job in raw_payload["jobs"]
+        ]
     return True, [raw_payload]
 def validate_render_tessellation(value: object) -> None:
     """Refuse an unusable ``quality.tessellation`` here, where the caller still
@@ -1142,13 +1105,13 @@ def normalize_common_job(
     quality = validate_quality_settings(job.get("quality"))
     if not is_plain_object(job.get("display", {})):
         raise SnapshotError("display must be a display settings object")
-    # Every mode shares its preset defaults with the Viewer; only appearance is
-    # fixed to Light for deterministic CLI output.
+    # Every mode is drawn at the Viewer's defaults; only appearance is fixed to Light for
+    # deterministic CLI output.
     display = {"mode": "solid", "appearance": "light", **job.get("display", {})}
-    # Render is its own request, drawn over the same display settings with Render's own
-    # (`display.modes.render`): the page takes it as `render`, never as a display mode.
-    if "render" in job:
-        _render_boolean(job["render"], "render")
+    # Preview's look is its own request, drawn over the same display at Preview's defaults: the
+    # page takes it as `preview`, never as a display mode.
+    if "preview" in job:
+        _render_boolean(job["preview"], "preview")
 
     if "timeoutSeconds" in job:
         job["timeoutSeconds"] = validate_timeout_seconds(job["timeoutSeconds"])
@@ -1242,9 +1205,9 @@ def normalize_common_job(
         normalized_outputs.append(normalized_output)
 
     return {
-        **{key: value for key, value in job.items() if key != "render"},
-        # Render, the page's own flag beside the display; absent, the display's mode.
-        **({"render": True} if job.get("render") is True else {}),
+        **{key: value for key, value in job.items() if key != "preview"},
+        # Preview, the page's own flag beside the display; absent, the display's mode.
+        **({"preview": True} if job.get("preview") is True else {}),
         "mode": mode,
         "output": output_settings,
         "quality": quality,

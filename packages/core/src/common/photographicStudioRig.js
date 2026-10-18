@@ -57,7 +57,12 @@ export const PHOTOGRAPHIC_STUDIO_PANELS = Object.freeze([
 // and calibrated studio lighting are unaffected.
 export const PHOTOGRAPHIC_STUDIO_GROUND_DIFFUSE_WEIGHT = 0.25;
 export const PHOTOGRAPHIC_STUDIO_GROUND_EMISSIVE_INTENSITY = 0.85;
+// A near-black floor takes a little neutral light (`MIX` of white, in linear light) so its
+// contact shadow still has something to darken. It fades out by `BELOW` linear luminance:
+// any floor lighter than that keeps its own tone, or a dark studio's floor (#202226) would
+// read as a grey haze over the backdrop around the model.
 export const PHOTOGRAPHIC_STUDIO_GROUND_EMISSIVE_NEUTRAL_MIX = 0.02;
+export const PHOTOGRAPHIC_STUDIO_GROUND_EMISSIVE_NEUTRAL_BELOW = 0.005;
 // The floor shadow (studioContactShadow.js) is baked over a square that reaches
 // `reach` times the model's height past its footprint, so the key's soft shadow
 // fits; occlusion fades out over `height` times the larger of that height and
@@ -91,11 +96,25 @@ export const PHOTOGRAPHIC_STUDIO_FRAME = Object.freeze({
   occlusion: Object.freeze({ strength: 1, radius: 0.1, power: 2, maxScreen: 0.2 })
 });
 
-// Full square-ground width relative to model-bounds radius. Keep the camera's
-// fitted far padding on this same multiplier so the ordinary-depth frustum
-// contains the stage instead of cutting an artificial horizon through it.
-// The plane remains two triangles, so increasing its extent adds no geometry.
+// The camera's fitted far padding, relative to model-bounds radius: far past the floor's
+// faded rim (`PHOTOGRAPHIC_STUDIO_FLOOR_FADE`), so the ordinary-depth frustum never cuts
+// through the floor.
 export const PHOTOGRAPHIC_STUDIO_STAGE_RADIUS_MULTIPLIER = 96;
+
+// The floor has no edge: it dissolves into the backdrop as a shadow catcher on a seamless
+// sweep does. Full opacity out to `inner` times the model's reach from its centre (the
+// larger of its rest radius and its footprint's half-diagonal), fading to nothing at
+// `outer` times it, where the plane ends.
+export const PHOTOGRAPHIC_STUDIO_FLOOR_FADE = Object.freeze({ inner: 1.6, outer: 6 });
+
+// The backdrop behind it (studioBackdrop.js): the backdrop colour lifted toward white by
+// `lift` behind the middle of the frame, shaded toward the corners by `shade` of it (more
+// on a dark colour than on a light one), and above the horizon by `wall` of that again.
+export const PHOTOGRAPHIC_STUDIO_BACKDROP = Object.freeze({
+  lift: 0.07,
+  shade: Object.freeze({ dark: 0.38, light: 0.1 }),
+  wall: 0.6
+});
 
 /**
  * The studio's material policy: one fixed finish for every part the rig

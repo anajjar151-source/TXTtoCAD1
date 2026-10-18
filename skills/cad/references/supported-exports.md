@@ -127,14 +127,14 @@ cadgen glb snapshot meshes/bracket.glb tmp/bracket_glb.png
 ```
 
 A mesh carries no CAD topology. Its snapshot door accepts `--display solid`
-(the default), and `--render` for the photographic view. Inline JSON and
-JSON files use per-mode settings under `modes`, with shared `appearance` and
-`camera`. Omitted settings inherit the active mode's defaults.
-`display.clip` cuts it (`at` in the file's own unit: a GLB's metres, a 3MF's
-declared unit, an STL's own numbers) and `display.exploded` moves a GLB's nodes apart
-(a GLB of one is refused as it renders). `edges` and the `xray`, `hidden-line` and
-`wireframe` presets are STEP-only and are refused by name, as `exploded` is for an STL
-or a 3MF.
+(the default) or `--display parts` (each object or mesh its own colour), `--grid`
+for the measuring grid, and `--preview` for Preview's photographic view. Inline JSON
+and JSON files are the Viewer's display object: `mode`, `grid`, `appearance`,
+`camera`, `clip` and `exploded`. `display.clip` cuts it (`at` in the file's own
+unit: a GLB's metres, a 3MF's declared unit, an STL's own numbers) and
+`display.exploded` moves a GLB's nodes apart (a GLB of one is refused as it renders).
+The `shaded`, `xray`, `hidden-line` and `wireframe` modes are STEP-only and are
+refused by name, as `exploded` is for an STL or a 3MF.
 Mesh doors do not have
 `--focus`/`--hide`, `--kinematics`, or `--animation`/`--time`; meshes have no
 canonical CAD occurrences, kinematics,
@@ -143,7 +143,7 @@ refuses a mesh input and names the door that takes it.
 
 The picture is the scene the CAD Viewer draws for the same file, built by the same code:
 an STL or a 3MF is its objects in their colours, and a GLB is its own glTF scene (nodes,
-skins, morph targets and authored materials), so `--render` shows the finish the
+skins, morph targets and authored materials), so `--preview` shows the finish the
 file authored. A GLB's clips play in the viewer; its snapshot is the file at rest.
 
 For a mesh-only model, this is its required visual review. When a STEP is also

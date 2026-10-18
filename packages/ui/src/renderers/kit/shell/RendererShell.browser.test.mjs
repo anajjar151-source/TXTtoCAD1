@@ -139,10 +139,14 @@ test('a shell renderer restores isolated view state on a remount', async (t) => 
   });
   await page.goto(`${origin}/`);
   const first = page.getByTestId('one');
-  // Display's settings are a dropdown from its button at the strip's end, its menu's Custom
-  // submenu (`DisplayPopover.jsx`), portaled out of the pane: a file never opens with it, and it is not a tool.
-  const displayButton = pane => pane.locator('[data-viewer-navbar] [data-view-controls]').getByRole('button', { name: /^Display mode: / });
-  const display = page.locator('[data-display-settings="solid"]');
+  // Display is a menu from its tile at the strip's end, the modes and the Grid switch
+  // (`DisplayPopover.jsx`), portaled out of the pane: a file never opens with it, and it is not a tool.
+  // A pane narrower than a phone's breakpoint (each of two side by side) has a phone's strip: the
+  // view's controls are rows of its More menu, Projection and Display nested submenus, Preview an item.
+  const displayButton = pane => pane.locator('[data-cad-toolbar] [data-view-controls]').getByRole('button', { name: /^Display mode: / });
+  const moreButton = pane => pane.locator('[data-cad-toolbar] [data-strip-more]');
+  const moreMenu = page.getByRole('menu', { name: 'More tools', exact: true });
+  const display = page.getByRole('menu', { name: 'Display', exact: true });
   const cameraZoom = id => page.evaluate(pane => window.cadHarness[pane].controller?.readState().camera?.zoom ?? null, id);
   await displayButton(first).waitFor().catch(async (error) => { throw new Error(`${error.message}; page errors: ${errors.join('; ')}; body: ${await page.locator("body").innerText()}; requests: ${requests.join(", ")}`); });
   await page.waitForFunction(() => Object.keys(window.cadHarness.state.renderers || {}).length > 0);
@@ -161,7 +165,8 @@ test('a shell renderer restores isolated view state on a remount', async (t) => 
   // ISOLATED: a sibling renderer over the same file opens at its own framing, and the first
   // pane keeps the camera it was given.
   await page.evaluate(() => window.cadHarness.second(true));
-  await displayButton(page.getByTestId('two')).waitFor();
+  await moreButton(page.getByTestId('two')).waitFor();
+  assert.equal(await displayButton(page.getByTestId('two')).count(), 0, 'a phone-wide pane has no Display tile');
   await page.waitForFunction(() => window.cadHarness.b.controller?.readState().loading === false);
   assert.equal(await cameraZoom('b'), 1, 'a sibling renderer opens at its own framing');
   assert.ok(requests.includes('/two/mesh.stl'));
@@ -170,14 +175,23 @@ test('a shell renderer restores isolated view state on a remount', async (t) => 
   // observer and camera event publish before taking the saved snapshot.
   await settle(page);
 
-  // The file goes with its Display settings open.
-  await displayButton(first).click();
-  await page.getByRole('button', { name: 'Solid settings', exact: true }).click();
+  // The file goes with its Display menu open, from More (the first pane is phone-wide now too):
+  // Display's submenu lists the modes, then Grid, which toggles and leaves it open.
+  await moreButton(first).click();
+  assert.deepEqual(await moreMenu.getByRole('menuitem').evaluateAll(items => items.map(item => `${item.textContent.trim()}:${item.getAttribute('aria-haspopup') || 'item'}`)),
+    ['Projection:menu', 'Display:menu', 'Preview:item'], 'the view\'s controls are More\'s rows');
+  await moreMenu.getByRole('menuitem', { name: 'Display', exact: true }).click();
   await display.waitFor();
+  assert.deepEqual(await display.getByRole('menuitemradio').allInnerTexts(), ['Solid'], 'an STL of one mesh: Solid alone');
+  assert.equal(await display.getByRole('menuitem').count(), 0, 'no settings page');
+  await display.getByRole('menuitemcheckbox', { name: 'Grid', exact: true }).click();
+  assert.equal(await display.getByRole('menuitemcheckbox', { name: 'Grid', exact: true }).getAttribute('aria-checked'), 'true');
+  await page.waitForFunction(() => window.cadHarness.a.controller.readState().display.grid === true);
+  assert.equal(await display.count(), 1, 'ticking Grid leaves the menu open');
   await page.evaluate(() => window.cadHarness.mounted(false));
   await display.waitFor({ state: 'detached' }).catch(async (error) => {
     const left = await page.evaluate(() => ({
-      open: [...document.querySelectorAll('[data-display-settings]')].map(node => ({ settings: node.getAttribute('data-display-settings'), state: node.getAttribute('data-state'),
+      open: [...document.querySelectorAll('[role=menu]')].map(node => ({ settings: node.getAttribute('aria-label'), state: node.getAttribute('data-state'),
         pane: node.closest('[data-testid]')?.getAttribute('data-testid') ?? 'body' })),
       viewerOne: Boolean(document.querySelector('[data-testid="one"] [data-viewer-layout]')),
       layouts: [...document.querySelectorAll('[data-viewer-layout]')].map(node => `${node.closest('[data-testid]')?.getAttribute('data-testid')}:${node.getAttribute('data-viewer-layout')}`),
@@ -189,12 +203,15 @@ test('a shell renderer restores isolated view state on a remount', async (t) => 
   // Unmount persists the display settings and the camera, under the file and the renderer.
   const before = await page.evaluate(() => window.cadHarness.state);
   assert.deepEqual(Object.keys(before.renderers), [JSON.stringify(['/models/part.stl', 'mesh'])], 'one record per file, keyed [absolute path, renderer id]');
-  for (const saved of Object.values(before.renderers)) assert.ok(Math.abs(saved.camera.zoom - 1.1) < 1e-6, `the camera is persisted: ${JSON.stringify(saved.camera)}`);
+  for (const saved of Object.values(before.renderers)) {
+    assert.ok(Math.abs(saved.camera.zoom - 1.1) < 1e-6, `the camera is persisted: ${JSON.stringify(saved.camera)}`);
+    assert.deepEqual([saved.display.mode, saved.display.grid], ['solid', true], 'and the display: its mode and the Grid switch');
+  }
   await page.evaluate(() => window.cadHarness.mounted(true));
   // Whether Display is open is transient, not file state.
-  await displayButton(first).waitFor();
-  assert.equal(await display.count(), 0, 'the remounted file opens with its Display settings shut');
-  assert.equal(await displayButton(first).getAttribute('data-variant'), 'ghost', 'and its button unlit');
+  await moreButton(first).waitFor();
+  assert.equal(await display.count(), 0, 'the remounted file opens with its Display menu shut');
+  assert.deepEqual([await moreButton(first).getAttribute('aria-expanded'), await moreMenu.count()], ['false', 0], 'and More shut');
   // The pane remounts before the viewport adopts the mesh and publishes its restored
   // camera. Wait for the actual presented frame, not an arbitrary settling delay.
   await page.waitForFunction(() => {
@@ -588,9 +605,9 @@ test('a renderer says more about its load than a download: finding the file, edi
   assert.equal(await card.count(), 0, 'and raises nothing');
 
   // THE CUBE IS THE BOTTOM-RIGHT CORNER'S, far enough off the bottom that its axes stay inside the
-  // view, and the tool stack stops above it. The view's controls, Display then Preview, end the
-  // navbar; the strip keeps to its tools. The right of the view is Quick Edit's, and the bottom middle the host's (a
-  // composer, on some).
+  // view, and the tool stack stops above it. The view's controls, Projection, Display then Preview,
+  // end the strip after its rule; the navbar holds none of them. The right of the view is Quick
+  // Edit's, and the bottom middle the host's (a composer, on some).
   const frameBox = await canvasElement.boundingBox();
   const cubeBox = await pane.getByLabel('View cube', { exact: true }).boundingBox();
   const stackBox = await pane.locator('[data-cad-tool-groups]').boundingBox();
@@ -599,9 +616,10 @@ test('a renderer says more about its load than a download: finding the file, edi
   const offRight = frameBox.x + frameBox.width - cubeBox.x - cubeBox.width;
   assert.ok(offRight >= 0 && offRight < 20, `the view cube stays against the right edge: ${offRight}px`);
   assert.ok(stackBox.y + stackBox.height <= cubeBox.y, 'the tool stack stops above the cube');
-  assert.deepEqual(await pane.locator('[data-viewer-navbar] [data-view-controls] button').evaluateAll(buttons => buttons.map(button => button.getAttribute('aria-label'))),
-    ['Display mode: Solid', 'Preview'], 'Display then Preview, at the navbar\'s right end');
-  assert.equal(await pane.locator('[data-cad-toolbar] [data-view-controls], [data-cad-toolbar] [data-strip-rule]').count(), 0, 'the strip keeps to its tools');
+  assert.deepEqual(await pane.locator('[data-cad-toolbar] [data-view-controls] button').evaluateAll(buttons => buttons.map(button => button.getAttribute('aria-label'))),
+    ['Projection: Orthographic', 'Display mode: Solid', 'Preview'], 'Projection, Display then Preview, at the strip\'s end');
+  assert.equal(await pane.locator('[data-cad-toolbar] [data-strip-rule] + [data-view-controls]').count(), 1, 'after the strip\'s rule');
+  assert.equal(await pane.locator('[data-viewer-navbar] [data-view-controls] button').count(), 0, 'nothing of the view in the navbar');
 
   // FINDING: the wait before the file is even located covers the viewport, and says
   // so as such rather than as a phase of reading it.

@@ -146,10 +146,10 @@ reference host `basic-host` does.
   context for the person's next message, `ui/update-model-context`) needs
   `updateModelContext`; a tab host is not asked: Codex forwards the method
   whether or not its frame declares it. **Send** (the person's message now,
-  `ui/message`) needs `message`, and carries each view as an image block only
-  where the host declares `message.image`; a host that declares it and still
-  refuses one (JSON-RPC -32602) gets the views named by their saved paths
-  instead. A host that takes neither gets Copy Prompt alone
+  `ui/message`) needs `message`. Both actions capture the current view and distinct drawn views at the
+  press. Up to 1024 bytes of compact UTF-8 snapshot JSON goes into the text; larger
+  packets are written as `.snapshot.json` and named by saved path. Views share annotation and measurements. No images or file bytes are attached,
+  even where the host accepts images. A host that takes neither gets Copy Prompt alone
   (`unavailablePromptContext`): Queue and Send are left out, not disabled. In
   Codex, Send from a thread's CAD tab posts into that thread; from the
   sidebar page it goes to the page's own chat tab.
@@ -225,7 +225,7 @@ reference host `basic-host` does.
 | `bridge.ts` | JSON-RPC 2.0 over `postMessage`: requests, the opening tool's result, host context, teardown |
 | `server.ts` | typed calls to the page's three tools: its sync, its answer to a capture, and `cad_http` |
 | `tunnel.ts` | the `fetch` over `cad_http`, a long body a range at a time, and the CAD client over it (`App.tsx` makes one per view): the library, Open, Reveal and the person's settings among its requests |
-| `prompt.ts` | Quick Edit's chat: `chatReach`, what the host's chat takes, and the prompt port over it — Queue through `ui/update-model-context` (a text block titled `Quick edit · <file>` and each view’s image block, kept until the host clears its model context), Send through `ui/message` — with references as absolute paths (Copy Prompt spells them as copied references are) |
+| `prompt.ts` | Quick Edit's chat: `chatReach`, what the host's chat takes, and the prompt port over it — Queue through `ui/update-model-context` (a text block titled `Quick edit · <file>` naming the snapshot path, kept until the host clears its model context), Send through `ui/message` — with references as absolute paths (Copy Prompt spells them as copied references are) |
 | `live.ts`, `sync.ts` | the mounted view's live controller (`@text-to-cad/ui/host`'s registry), and its sync (`cad_sync`), every second: its state for the agent, the agent's requests (`show`, `capture`), the catalog's revision and its build feeds |
 | `presentation.ts` | how the host presents the page, and the election that retires older inline views |
 | `clipboard.ts` | the frame's clipboard, every copy's: the asynchronous clipboard where the host grants it (the resource asks for `clipboardWrite`), else the page's own copy command, still inside the press, for text |

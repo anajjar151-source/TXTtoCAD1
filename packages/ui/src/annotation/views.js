@@ -1,13 +1,12 @@
 /**
- * The views a prompt carries: how the viewer stood when the person sent it, and how it stood when
- * each part of their annotation was drawn. A view is said in a snapshot job's own words (`camera`,
- * `display.clip` and `display.exploded`, `kinematics` or `jointValues`, `animation`, `selection.hide`
- * and `selection.focus`, and the picture's `width` and `height`), so the prompt's views file is a job
- * `cadgen snapshot --job` renders as it was, and how the view looked is the snapshot's own.
+ * The views a prompt carries: how the viewer stood when each part of the annotation was drawn. A view is said in a snapshot job's own words (`camera`,
+ * `display.mode` and `display.grid`, `display.clip` and `display.exploded`, `kinematics` or
+ * `jointValues`, `animation`, `selection.hide` and `selection.focus`, and the picture's `width` and
+ * `height`), so the prompt's views file is a job `cadgen snapshot --job` renders as it was.
  *
  * @typedef {{
  *   camera: { position: number[], target: number[], up: number[], orthographicHalfHeight: number },
- *   display?: { clip?: object, exploded?: object }, kinematics?: Record<string, unknown>,
+ *   display?: { camera?: { projection: string, focalLength?: number }, mode?: string, grid?: boolean, clip?: object, exploded?: object }, kinematics?: Record<string, unknown>,
  *   jointValues?: Record<string, number>, animation?: { clip: string, time: number },
  *   selection?: { hide?: string[], focus?: string[] },
  *   width: number, height: number
@@ -15,18 +14,19 @@
  * @typedef {PromptView & { label: string }} LabelledView
  */
 
-// A prompt's pictures are this many pixels on their longer side, the viewport's shape.
+// The job reserves this resolution for an optional later snapshot, preserving the viewport's shape.
 export const PROMPT_VIEW_LONG_EDGE_PX = 1600;
 const filled = value => Boolean(value) && typeof value === "object" && Object.keys(value).length > 0;
 
 /**
  * The view on screen as a prompt carries it: the viewport's camera and shape (`ShellViewport`'s
- * `promptCamera`), and of the viewer's state what places the parts or hides them — Clip when it is
- * on, the one motion on screen (Explode, the pose, or a routine's kept frame: `{clip, time}`), the
- * parts hidden and isolated — never how it looks: a snapshot's look is its own.
+ * `promptCamera`), its display mode and Grid switch (`display.mode`, `display.grid`: a mode is a look
+ * at its own defaults, so the two say how the view looked), and of the viewer's state what places the
+ * parts or hides them — Clip when it is on, the one motion on screen (Explode, the pose, or a
+ * routine's kept frame: `{clip, time}`), the parts hidden and isolated.
  *
- * @param {{ camera: PromptView["camera"], width: number, height: number } | null} viewport
- * @param {{ display?: { clip?: { enabled?: boolean }, exploded?: { enabled?: boolean } },
+ * @param {{ camera: PromptView["camera"], display?: PromptView["display"], width: number, height: number } | null} viewport
+ * @param {{ display?: { mode?: string, grid?: boolean, clip?: { enabled?: boolean }, exploded?: { enabled?: boolean } },
  *   state?: { kinematics?: object, jointValues?: object, animation?: { clip: string, time: number } | null,
  *     hide?: readonly string[], focus?: readonly string[] } | null }} [viewer]
  * @returns {PromptView | null}
@@ -36,6 +36,9 @@ export function promptView(viewport, { display = {}, state = null } = {}) {
   const scale = PROMPT_VIEW_LONG_EDGE_PX / Math.max(viewport.width, viewport.height);
   const view = { camera: viewport.camera, width: Math.round(viewport.width * scale), height: Math.round(viewport.height * scale) };
   const placed = {};
+  // A view with a mode (a 3D view; a drawing has none) says it, and whether the grid is on.
+  if (display?.mode) Object.assign(placed, { mode: display.mode, grid: display.grid === true });
+  if (viewport.display?.camera) placed.camera = viewport.display.camera;
   if (display?.clip?.enabled) placed.clip = display.clip;
   // Explode only where it spreads the parts: on at no amount is the model as it stands.
   if (display?.exploded?.enabled && Number(display.exploded.amount) > 0) placed.exploded = display.exploded;
@@ -85,19 +88,18 @@ export function sameView(a, b) {
 }
 
 /**
- * A prompt's views: the one on screen as it is sent ("current"), then each view the annotation was
- * drawn in that still has ink, in the order they were drawn. A drawn view the same as the current
- * one stands for it — its ink was drawn there, and nothing of it is lost — so the usual prompt,
- * drawn and sent without moving, has one view.
- *
+ * Every prompt captures the current view plus the views that still have ink.
+ * An equivalent recorded view keeps its label but uses the exact current framing in this export.
  * @param {PromptView | null} current
  * @param {readonly LabelledView[]} drawn
- * @param {readonly { view?: string }[]} ink
+ * @param {readonly { view?: string }[]} items
  * @returns {LabelledView[]}
  */
 export function promptViews(current, drawn, items) {
   const used = new Set(items.map(item => item.view).filter(Boolean));
   const views = drawn.filter(view => used.has(view.label));
-  if (!current || views.some(view => sameView(view, current))) return views;
-  return [{ ...current, label: "current" }, ...views];
+  if (!current) return views;
+  const matching = views.findLastIndex(view => sameView(view, current));
+  if (matching >= 0) return views.map((view, index) => index === matching ? { ...current, label: view.label } : view);
+  return [...views, { ...current, label: "current view" }];
 }

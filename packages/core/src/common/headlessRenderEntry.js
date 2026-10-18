@@ -17,6 +17,7 @@ import {
   renderModel
 } from "./renderMeshScene.js";
 import { validateSnapshotRenderJob } from "./snapshotJobValidation.js";
+import { scenePartCount } from "./viewSettings.js";
 import {
   loadSource,
   sourceIsStep,
@@ -86,7 +87,7 @@ async function captureFamilyScene(family, job) {
   let model;
   try {
     refuseUnexplodable(scene, job);
-    context = renderJobContext({ bounds: scene.bounds, explodeParts: scene.explodeParts || 0 }, job);
+    context = renderJobContext({ bounds: scene.bounds, partCount: scenePartCount(scene), explodeParts: scene.explodeParts || 0 }, job);
     model = headlessSceneModel(THREE, scene, headlessSceneDress(context.sceneSettings));
   } catch (error) { scene.dispose(); throw error; }
   stageTimings.buildModelMs = Math.round(performance.now() - buildStarted);

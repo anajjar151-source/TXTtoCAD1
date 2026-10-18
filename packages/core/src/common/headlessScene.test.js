@@ -47,15 +47,14 @@ function stlBytes() {
   }
   return buffer;
 }
-// What a job asks for: a display, and Render (`render`) or not.
-const settingsFor = (look, kind = "stl") => renderJobContext({ bounds: { min: [0, 0, 0], max: [1, 1, 1] } }, job(kind, look)).sceneSettings;
+// What a job asks for: a display, and Preview's look (`preview`) or not. The scene has parts for Parts to colour.
+const settingsFor = (look, kind = "stl") => renderJobContext({ bounds: { min: [0, 0, 0], max: [1, 1, 1] }, partCount: 2 }, job(kind, look)).sceneSettings;
 const DISPLAYS = {
   "solid light": { display: { mode: "solid", appearance: "light" } },
   "solid dark": { display: { mode: "solid", appearance: "dark" } },
-  render: { render: true },
-  "by part": { display: { mode: "solid", modes: { solid: { parts: { colorMode: "by-part" } } } } },
-  single: { render: true, display: { modes: { render: { parts: { colorMode: "single", color: "#ff8800" } } } } },
-  "flat": { display: { mode: "solid", modes: { solid: { flat: true } } } }
+  preview: { preview: true },
+  parts: { display: { mode: "parts" } },
+  "parts dark": { display: { mode: "parts", appearance: "dark" } }
 };
 function materialState(object3D) {
   const rows = [];
@@ -107,7 +106,7 @@ test("the look is really worn: Inspect's finish in Solid, a GLB's authored finis
   const solid = headlessSceneModel(THREE, headlessSceneFamily(job("glb")).build(THREE, await buildGlbDocumentFromBuffer(glbBytes())),
     headlessSceneDress(settingsFor(DISPLAYS["solid light"], "glb")));
   const render = headlessSceneModel(THREE, headlessSceneFamily(job("glb")).build(THREE, await buildGlbDocumentFromBuffer(glbBytes())),
-    headlessSceneDress(settingsFor(DISPLAYS.render, "glb")));
+    headlessSceneDress(settingsFor(DISPLAYS.preview, "glb")));
   const base = model => model.displayRecords.find(({ mesh }) => mesh.parent?.name === "base" || mesh.name === "base").mesh;
   const inspect = settingsFor(DISPLAYS["solid light"], "glb").theme.materials;
   assert.deepEqual([base(solid).material.roughness, base(solid).material.metalness], [inspect.roughness, inspect.metalness],
@@ -138,9 +137,9 @@ test("a robot opens on the headless stage where the viewer opens it, with the re
 test("a posed robot keeps its REST box for the ground while its live box follows the pose", () => {
   const family = headlessSceneFamily(job("urdf"));
   const robot = robotOf(parseArmUrdf());
-  const rest = headlessSceneModel(THREE, family.build(THREE, robot, job("urdf")), headlessSceneDress(settingsFor(DISPLAYS.render, "urdf")));
+  const rest = headlessSceneModel(THREE, family.build(THREE, robot, job("urdf")), headlessSceneDress(settingsFor(DISPLAYS.preview, "urdf")));
   const posed = headlessSceneModel(THREE, family.build(THREE, robot, job("urdf", { jointValues: { pitch: -90, lift: 0.5 } })),
-    headlessSceneDress(settingsFor(DISPLAYS.render, "urdf")));
+    headlessSceneDress(settingsFor(DISPLAYS.preview, "urdf")));
   assert.notDeepEqual(posed.bounds, rest.bounds, "the arm stands up");
   assert.deepEqual(posed.restBounds, rest.restBounds, "renderModel sizes the grid, stage and studio floor from this box");
   assert.deepEqual(posed.restBounds, posed.scene.restBounds);
@@ -223,11 +222,11 @@ test("the still's tight frame fits a skinned and morphed GLB where it is drawn; 
 
 test("a family scene has no CAD edges, a one-part GLB no Explode, and --mode list lists what it drew", async () => {
   const context = renderJobContext({ bounds: { min: [0, 0, 0], max: [1, 1, 1] } }, job("glb", {
-    display: { mode: "solid", modes: { solid: { edges: { enabled: true } } }, exploded: { enabled: true, amount: 1 }, clip: { enabled: true } }
+    display: { mode: "solid", exploded: { enabled: true, amount: 1 }, clip: { enabled: true } }
   }));
   assert.deepEqual([context.stepDisplayEnabled, context.edgesVisible, context.topologyDisplayEdgesVisible,
     context.displaySettings.exploded.enabled, context.displaySettings.clip.enabled], [false, false, false, false, true]);
-  assert.deepEqual(resolveViewSceneSettings({ display: { mode: "solid", modes: { solid: { edges: { enabled: true } } } }, features: EDGELESS_VIEW_FEATURES }).view.edges.enabled, false);
+  assert.deepEqual(resolveViewSceneSettings({ display: { mode: "solid" }, features: EDGELESS_VIEW_FEATURES }).view.edges.enabled, false);
 
   const model = headlessSceneModel(THREE, headlessSceneFamily(job("glb")).build(THREE, await buildGlbDocumentFromBuffer(glbBytes())),
     headlessSceneDress(context.sceneSettings));

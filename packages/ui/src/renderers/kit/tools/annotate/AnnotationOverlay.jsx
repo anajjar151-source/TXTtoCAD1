@@ -74,9 +74,16 @@ function paintOutline(context, ink, { color }) {
  * the view it was put down in (`viewOf`, the session's `noteView`): a prompt carries every view its
  * ink was drawn in.
  *
- * @param {{ annotation: import("../../../../annotation/session.js").AnnotationSession, runtimeRef: { current: any } }} props
+ * A view that is no 3D scene (a flat one) hands its own `surface`: `place(marks, size)`, the marks
+ * put down as the session keeps them; `onScreen(items, size)`, the ink as it falls on the screen now;
+ * and `view()`, the element a right or middle press and the wheel go on to. Without one, ink goes
+ * into the viewport's scene (`runtimeRef`).
+ *
+ * @param {{ annotation: import("../../../../annotation/session.js").AnnotationSession, runtimeRef?: { current: any },
+ *   viewOf?: (() => object | null) | null, surface?: { place(marks: object[], size: { width: number, height: number }): object[],
+ *     onScreen(items: readonly object[], size: { width: number, height: number }): object[], view(): Element | null } | null }} props
  */
-export default function AnnotationOverlay({ annotation, runtimeRef, viewOf = null }) {
+export default function AnnotationOverlay({ annotation, runtimeRef = null, viewOf = null, surface = null }) {
   const root = useRef(null);
   const canvas = useRef(null);
   const gesture = useRef(null);
@@ -98,17 +105,23 @@ export default function AnnotationOverlay({ annotation, runtimeRef, viewOf = nul
     const rect = root.current.getBoundingClientRect();
     return { x: event.clientX - rect.left, y: event.clientY - rect.top };
   };
-  const onScreen = () => annotationsOnScreen(runtimeRef.current, annotationRef.current.items, size());
+  const surfaceRef = useRef(surface);
+  surfaceRef.current = surface;
+  const onScreen = () => (surfaceRef.current ? surfaceRef.current.onScreen(annotationRef.current.items, size())
+    : annotationsOnScreen(runtimeRef.current, annotationRef.current.items, size()));
+  // Where a press or a wheel that is the view's goes on to: the flat view's own element, or the scene's canvas.
+  const viewElement = () => (surfaceRef.current ? surfaceRef.current.view() : runtimeRef?.current?.renderer?.domElement) || null;
   const viewOfRef = useRef(viewOf);
   viewOfRef.current = viewOf;
   // The view ink is going down in, as the session labels it.
   const viewNow = () => annotationRef.current.noteView?.(viewOfRef.current?.() ?? null);
   // Each mark put down lies where the session's placement says: on the model, or in space.
   const put = marks => {
-    const runtime = runtimeRef.current, session = annotationRef.current;
-    if (!runtime || !marks.length) return;
+    const runtime = runtimeRef?.current, session = annotationRef.current, flat = surfaceRef.current;
+    if ((!flat && !runtime) || !marks.length) return;
     const placement = session.placement ?? "surface", view = viewNow();
-    session.add(projectAnnotations(runtime, marks.map(mark => ({ ...mark, placement, ...(view ? { view } : {}) })), size()));
+    const placed = marks.map(mark => ({ ...mark, placement, ...(view ? { view } : {}) }));
+    session.add(flat ? flat.place(placed, size()) : projectAnnotations(runtime, placed, size()));
   };
   // A mark drawn stays on the preview until the frame after the one that draws it in the model,
   // so it never blinks out between the two.
@@ -184,7 +197,7 @@ export default function AnnotationOverlay({ annotation, runtimeRef, viewOf = nul
   // A right or middle press is the view's: it goes on to the canvas as the press that orbits, and the
   // canvas takes the pointer from there.
   const handToView = event => {
-    const target = runtimeRef.current?.renderer?.domElement;
+    const target = viewElement();
     if (!target) return;
     event.preventDefault();
     target.dispatchEvent(new PointerEvent("pointerdown", { pointerId: event.pointerId, pointerType: event.pointerType, isPrimary: event.isPrimary,
@@ -243,7 +256,7 @@ export default function AnnotationOverlay({ annotation, runtimeRef, viewOf = nul
   const onKeyUp = event => { if (event.key === " ") setPassing(false); };
   // The wheel is the camera's, as it is outside Annotate.
   const onWheel = event => {
-    const target = runtimeRef.current?.renderer?.domElement;
+    const target = viewElement();
     target?.dispatchEvent(new WheelEvent("wheel", { deltaX: event.deltaX, deltaY: event.deltaY, deltaZ: event.deltaZ, deltaMode: event.deltaMode,
       clientX: event.clientX, clientY: event.clientY, ctrlKey: event.ctrlKey, shiftKey: event.shiftKey, metaKey: event.metaKey, bubbles: true, cancelable: true }));
   };

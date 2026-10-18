@@ -7,7 +7,7 @@ import {
 import { ToolbarButton } from '@text-to-cad/ui/primitives/toolbar-button';
 import { cn } from '@text-to-cad/ui/utils';
 import { FLOATING_SURFACE_CLASS } from '../lib/floatingSurface.js';
-import SubToolbar, { SubToolbarSeparator } from '../renderers/kit/tools/SubToolbar.jsx';
+import SubToolbar, { SUB_TOOLBAR_WIDTH_CLASS } from '../renderers/kit/tools/SubToolbar.jsx';
 import { ToolSettingsMenu } from '../renderers/kit/tools/ToolModeMenu.jsx';
 
 /**
@@ -234,24 +234,26 @@ const icon = Icon => <Icon className="size-3" strokeWidth={2} aria-hidden="true"
  * `colorScheme`, or any from the wheel), weight, line style and placement, each a dropdown — and
  * Undo, Redo (the annotation's history, `history`) and Clear, with no rule between them. In a view
  * too narrow for the row, the seven tools and the seven after them are two rows.
- * @param {{ annotation: import('./session.js').AnnotationSession, colorScheme?: 'light' | 'dark',
+ * A flat view, where ink has nowhere to lie but the sheet, has no placement to choose (`placements={false}`).
+ * @param {{ annotation: import('./session.js').AnnotationSession, colorScheme?: 'light' | 'dark', placements?: boolean,
  *   history: { canUndo: boolean, canRedo: boolean, undo(): void, redo(): void } }} props
  */
-export function AnnotationToolbar({ annotation, history, colorScheme = 'light' }) {
+export function AnnotationToolbar({ annotation, history, colorScheme = 'light', placements = true }) {
   const disabled = !annotation.ready;
   const toolButton = ({ id, label, Icon }) => <ToolbarButton key={id} tooltip={false} label={label} disabled={disabled}
     active={!disabled && annotation.tool === id} aria-pressed={!disabled && annotation.tool === id} onClick={() => annotation.selectTool(id)}>
     {icon(Icon)}
   </ToolbarButton>;
-  // Seven tools, then seven settings and actions: one row, or — in a view too narrow for it — the
-  // two halves as two rows of seven, one over the other, their buttons column for column.
+  // Seven tools, then seven settings and actions: two rows of seven, one over the other, their
+  // buttons column for column — the sub-toolbars' one width (`SUB_TOOLBAR_WIDTH_CLASS`), whatever
+  // the view's.
   return <SubToolbar label="Annotation controls" data-annotation-controls=""
-    className="text-to-cad-annotation-toolbar flex-nowrap @max-5xl/cad-viewport:flex-col @max-5xl/cad-viewport:items-stretch">
+    className={cn("text-to-cad-annotation-toolbar flex-col flex-nowrap items-stretch", SUB_TOOLBAR_WIDTH_CLASS)}>
     <div role="group" aria-label="Annotation tools" className="flex items-center gap-1">{[PEN, ...ANNOTATION_SHAPE_TOOLS, ERASER].map(toolButton)}</div>
-    <span className="contents @max-5xl/cad-viewport:hidden"><SubToolbarSeparator /></span>
+
     <div className="flex items-center gap-1">
       <AnnotationStylePickers label="Annotation style" className="contents" disabled={disabled} colors={annotationColors(colorScheme)}
-        color={annotation.color} width={annotation.strokeWidth ?? 2} dash={annotation.strokeStyle ?? 'solid'} placement={annotation.placement ?? 'surface'}
+        color={annotation.color} width={annotation.strokeWidth ?? 2} dash={annotation.strokeStyle ?? 'solid'} placement={placements ? annotation.placement ?? 'surface' : null}
         onColor={annotation.selectColor} onWidth={annotation.selectStrokeWidth} onDash={annotation.selectStrokeStyle} onPlacement={annotation.selectPlacement} />
       <div role="group" aria-label="Annotation history" className="contents">
         <ToolbarButton tooltip={false} label="Undo" disabled={disabled || !history.canUndo} onClick={() => history.undo()}>{icon(Undo2)}</ToolbarButton>
@@ -270,10 +272,11 @@ const keepOpen = event => event.preventDefault();
  * strip, as Select's filter is, and the menu it opens — the tools (choosing one takes Annotate up,
  * `onTakeUp`), then what is drawn next, its Colour, Stroke width, Line style and Placement each a
  * submenu, then Undo, Redo and Clear annotations. A choice of style or history keeps the menu open.
+ * A flat view has no Placement (`placements={false}`).
  * @param {{ annotation: import('./session.js').AnnotationSession, colorScheme?: 'light' | 'dark', onTakeUp?: () => void,
- *   history: { canUndo: boolean, canRedo: boolean, undo(): void, redo(): void } }} props
+ *   placements?: boolean, history: { canUndo: boolean, canRedo: boolean, undo(): void, redo(): void } }} props
  */
-export function AnnotationMenu({ annotation, history, colorScheme = 'light', onTakeUp }) {
+export function AnnotationMenu({ annotation, history, colorScheme = 'light', onTakeUp, placements = true }) {
   const ready = annotation.ready;
   const sub = (label, options, value, glyph, onChange) => <DropdownMenuSub>
     <DropdownMenuSubTrigger className="gap-2">{glyph(value)}{label}</DropdownMenuSubTrigger>
@@ -294,7 +297,7 @@ export function AnnotationMenu({ annotation, history, colorScheme = 'light', onT
     {sub('Color', colors, String(annotation.color).toLowerCase(), swatchGlyph, annotation.selectColor)}
     {sub('Stroke width', ANNOTATION_STROKE_WIDTHS, annotation.strokeWidth ?? 2, strokeGlyph, annotation.selectStrokeWidth)}
     {sub('Line style', ANNOTATION_STROKE_STYLES, annotation.strokeStyle ?? 'solid', styleGlyph, annotation.selectStrokeStyle)}
-    {sub('Placement', ANNOTATION_PLACEMENTS, annotation.placement ?? 'surface', placementGlyph, annotation.selectPlacement)}
+    {placements ? sub('Placement', ANNOTATION_PLACEMENTS, annotation.placement ?? 'surface', placementGlyph, annotation.selectPlacement) : null}
     <DropdownMenuSeparator />
     <DropdownMenuItem disabled={!ready || !history.canUndo} onSelect={event => { keepOpen(event); history.undo(); }}>{icon(Undo2)}Undo</DropdownMenuItem>
     <DropdownMenuItem disabled={!ready || !history.canRedo} onSelect={event => { keepOpen(event); history.redo(); }}>{icon(Redo2)}Redo</DropdownMenuItem>

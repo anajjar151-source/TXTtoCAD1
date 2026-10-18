@@ -86,8 +86,6 @@ async function open() {
   await page.waitForFunction(() => window.cadHarness.a.controller?.readState().loading === false);
   await pane.getByRole('group', { name: 'File sidebar' }).getByRole('button', { name: 'Model tree', exact: true }).click();
   await pane.getByRole('region', { name: 'Model tree', exact: true }).waitFor();
-  await page.evaluate(() => window.cadHarness.a.controller.setDisplaySettings({ modes: { solid: { axes: { enabled: false } } } }));
-  await page.waitForFunction(() => window.cadHarness.a.controller.readState().display.modes?.solid?.axes?.enabled === false);
   // The opening fit at rest, the same camera two frames running: `at` projects from it.
   await page.waitForFunction(() => {
     const camera = JSON.stringify(window.__cadCamera());

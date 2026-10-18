@@ -6,7 +6,7 @@ import { createViewUpdateCoordinator } from './viewUpdateCoordinator.js';
 import { afterViewPaint, viewPreparationKey } from './viewUpdatePlan.js';
 
 // A display, drawn in its mode or, with `render`, in Render (Preview's).
-const scene = (value, render = false) => resolveViewSceneSettings({ display: value, render, lightingQuality: "preview" });
+const scene = (value, preview = false, previewSettings = {}) => resolveViewSceneSettings({ display: value, preview, previewSettings, lightingQuality: "preview" });
 const tick = () => new Promise(resolve => setImmediate(resolve));
 function deferred() { let resolve, reject; const promise = new Promise((a,b) => { resolve=a; reject=b; }); return { promise, resolve, reject }; }
 function harness(options = {}) {
@@ -52,7 +52,7 @@ test('a superseded reconciliation is restored without presenting the stale recip
 
 test('live edits skip preparation and capture waits for the actual presented frame', async () => {
   const frame = deferred(), h = harness({ present: () => frame.promise });
-  h.request(scene({ modes: { solid: { grid: { enabled: true, color: '#ffffff' } } }, clip: { enabled: false } }));
+  h.request(scene({ grid: true, clip: { enabled: false } }));
   let ready = false; const capture = h.whenReady().then(() => { ready = true; });
   await tick(); assert.equal(ready, false);
   assert.deepEqual(h.calls.map(c => c[0]), ['apply']);
@@ -79,13 +79,14 @@ test('unmount aborts preparation and rejects pending captures', async () => {
 
 test('only resource boundaries prepare; clip motion, exposure, rotation and color stay live', () => {
   const render = scene({ clip: { enabled: true } }, true);
-  for (const patch of [
-    { modes: { render: { lighting: { exposure: 1, rotation: 35 } } } }, { clip: { enabled: true, at: 0.7 } },
-    { modes: { render: { floor: { color: '#abcabc', opacity: 0.7 } } } }, { modes: { render: { parts: { color: '#abcdef' } } } },
-    { camera: { projection: 'orthographic' } },
-  ]) assert.equal(viewPreparationKey(scene({ clip: { enabled: true }, ...patch }, true)), viewPreparationKey(render));
-  for (const patch of [ { clip: { enabled: false } }, { modes: { render: { lighting: { quality: 'final' } } } }, { modes: { render: { lighting: { size: 2 } } } } ]) {
-    assert.notEqual(viewPreparationKey(scene({ clip: { enabled: true }, ...patch }, true)), viewPreparationKey(render));
+  const key = (display, previewSettings = {}) => viewPreparationKey(scene({ clip: { enabled: true }, ...display }, true, previewSettings));
+  for (const [display, previewSettings] of [
+    [{}, { lighting: { exposure: 1, rotation: 35 } }], [{ clip: { enabled: true, at: 0.7 } }],
+    [{}, { floor: { color: '#abcabc', opacity: 0.7 } }], [{}, { parts: { color: '#abcdef' } }],
+    [{ camera: { projection: 'orthographic' } }],
+  ]) assert.equal(key(display, previewSettings), viewPreparationKey(render));
+  for (const [display, previewSettings] of [[{ clip: { enabled: false } }], [{}, { lighting: { quality: 'final' } }], [{}, { lighting: { size: 2 } }]]) {
+    assert.notEqual(key(display, previewSettings), viewPreparationKey(render));
   }
 });
 

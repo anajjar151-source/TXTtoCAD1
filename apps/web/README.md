@@ -279,11 +279,12 @@ exposes no general write operations.
 The prompt destination is the clipboard, so Quick Edit offers Copy Prompt alone. Its
 text goes through the clipboard port's `writeText`, which takes pending text: a
 `ClipboardItem` holding the promise, so the write starts inside the gesture, or the
-text itself once it arrives where the browser takes no pending item. Its files — a
-picture of each view it carries, the views as a snapshot job and the annotations as an
-annotation file (`.annotation.json`) — are made by the server through the host's `promptFiles`
-(`createHttpPromptFiles`, over `/__cad/prompt-files`) and named in the text by their
-absolute paths.
+text itself once it arrives where the browser takes no pending item. At the press,
+the server prepares a packet through the host's `promptFiles` (`createHttpPromptFiles`,
+over `/__cad/prompt-files`), with shared annotation and measurements, the current
+view and distinct drawn views. Up to 1024 bytes of compact UTF-8 JSON goes directly
+into the prompt; larger packets are written as `.snapshot.json` and named by absolute path.
+No snapshot is written while drawing or typing, and no image is rendered.
 
 ### The home
 

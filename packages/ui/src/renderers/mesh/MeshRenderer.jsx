@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef } from "react";
 import { MousePointer2 } from "lucide-react";
-import { viewFeaturesForKind } from "@text-to-cad/core/common/viewSettings.js";
+import { scenePartCount, viewFeaturesForKind } from "@text-to-cad/core/common/viewSettings.js";
 import RendererShell from "../kit/shell/RendererShell.jsx";
 import { usePreviewState, useRendererShell } from "../kit/shell/useRendererShell.js";
 import { usePreviewScene } from "../kit/shell/usePreviewScene.js";
@@ -15,7 +15,6 @@ import { useMeshScene } from "./useMeshScene.js";
 
 const SELECT_ICON = <MousePointer2 className="size-3" strokeWidth={2} aria-hidden="true" />;
 const NO_REFERENCES = Object.freeze([]);
-const FEATURES = viewFeaturesForKind("3mf");
 
 function MeshSurface({ view, data }) {
   const document = useWorkspaceDocument({ view, data });
@@ -28,6 +27,8 @@ function MeshSurface({ view, data }) {
   // A 3MF has objects and a unit; an STL is one mesh in none.
   const parted = /\.3mf$/i.test(view.file.path);
   const toolModes = parted ? THREE_MF_TOOL_MODES : STL_TOOL_MODES;
+  // Parts where a 3MF has several objects to colour; an STL is one mesh.
+  const features = useMemo(() => viewFeaturesForKind(parted ? "3mf" : "stl", { parts: scenePartCount(scene) }), [parted, scene]);
 
   const shellRef = useRef(null);
   const sceneRef = useRef(scene);
@@ -61,7 +62,7 @@ function MeshSurface({ view, data }) {
 
   const shell = useRendererShell({
     view, services: document.services, resource: document.resource, modelKey: document.modelKey, revisionKey: loaded.revision,
-    features: FEATURES, toolModes, tool: tools.tool, previewable: true, preview, scene, sceneEffects: true,
+    features, toolModes, tool: tools.tool, previewable: true, preview, scene, sceneEffects: true,
     load: { busy: loaded.busy && !scene, updating: loaded.busy && Boolean(scene), progress: loaded.progress, alert: loadAlert },
     live, escape, measurements: tools.measurements, deleteSelection: measure.removeSelected,
     // A prompt's annotation is in the scene's coordinates: the file's own unit.
@@ -73,9 +74,10 @@ function MeshSurface({ view, data }) {
   const previewScene = usePreviewScene(scene, previewing);
   const previewView = useMemo(() => ({ scene: previewScene }), [previewScene]);
 
-  const sceneTools = useSceneTools({ shell, scene, features: FEATURES, state: tools, measurable: parted, clearParts: selection.clear });
+  const sceneTools = useSceneTools({ shell, scene, features, state: tools, measurable: parted, clearParts: selection.clear });
   const selectActive = parted && !previewing && Boolean(scene) && shell.toolMode === MESH_TOOL.SELECT;
-  const strip = [parted ? shell.tools.own({ id: MESH_TOOL.SELECT, label: "Select", icon: SELECT_ICON }) : null, ...sceneTools.tools].filter(Boolean);
+  // Select on every mesh file: an STL's picks nothing, the view's plain navigation.
+  const strip = [shell.tools.own({ id: MESH_TOOL.SELECT, label: "Select", icon: SELECT_ICON }), ...sceneTools.tools];
   // A 3MF's picked objects; an STL's Quick Edit carries the whole file and nothing picked in it.
   const { references, chips } = useSceneReferences({ scene: parted ? scene : null, selection, resource: shell.frame.resource });
   const resourcePath = shell.frame.resource?.path;

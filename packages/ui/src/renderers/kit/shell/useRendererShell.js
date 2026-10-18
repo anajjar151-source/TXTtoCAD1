@@ -14,7 +14,7 @@ import { CAD_ANNOTATION_DEFAULTS } from "../tools/annotate/AnnotationOverlay.jsx
 import { annotationDocumentOf } from "../tools/annotate/annotation3d.js";
 import { normalizeToolStack } from "../tools/toolStackLayout.js";
 import { normalizePlayback } from "../tools/playbar/playbackPreferences.js";
-import { DisplayModeSettings } from "../view-settings/DisplayModeSettings.jsx";
+import { PreviewRenderSettings } from "../view-settings/PreviewRenderSettings.jsx";
 import { useAppliedViewSettings } from "../view-settings/useAppliedViewSettings.js";
 import { useViewSettings } from "../view-settings/useViewSettings.js";
 import { cameraForViewSettings, viewerDisplaySettingsForCamera } from "../view-settings/viewerDisplaySettings.js";
@@ -238,10 +238,10 @@ export function useRendererShell({
   // A renderer whose own work needs the display settings BEFORE it can hand this hook a scene
   // — one that reads them while it is still deciding what to load — creates them itself and passes
   // them in. It is the same store either way; owning it here is a convenience, not a rule.
-  const { display: displaySettings, scene: desiredScene, store: viewSettingsStore } = useViewSettings(colorScheme, viewSettings);
+  const { display: displaySettings, preview: previewLook, scene: desiredScene, store: viewSettingsStore } = useViewSettings(colorScheme, viewSettings);
   useLayoutEffect(() => { viewSettingsStore.configure({ features }); }, [viewSettingsStore, features]);
   // Before the first paint, like every later edit: through the store, never around it.
-  useLayoutEffect(() => { viewSettingsStore.restore(restored.display); }, [viewSettingsStore, restored]);
+  useLayoutEffect(() => { viewSettingsStore.restore(restored.display, restored.preview); }, [viewSettingsStore, restored]);
   const ownViewerRef = useRef(null);
   const viewerRef = providedViewerRef || ownViewerRef;
   // Preview's viewport, while it is open (`PreviewView.jsx`), and the view on screen: what a live
@@ -293,6 +293,7 @@ export function useRendererShell({
     return writeFileView({
       camera: plainShellCamera(activePerspectiveRef.current),
       display: viewSettingsStore.getSnapshot().display,
+      preview: viewSettingsStore.getSnapshot().preview,
       playback,
       renderer: slices ? slices.read() : storedSlices.values,
       signatures: slices ? slices.signatures : storedSlices.signatures
@@ -323,7 +324,7 @@ export function useRendererShell({
   }, [flushSession]);
   // The display's and playback's every edit is saved soon after; the camera's on every move (below);
   // a renderer's slices when it says so. The tool in hand is not saved at all.
-  useEffect(() => { scheduleSessionSave(); }, [displaySettings, playback, scheduleSessionSave]);
+  useEffect(() => { scheduleSessionSave(); }, [displaySettings, previewLook, playback, scheduleSessionSave]);
 
   // Stable across renders: the viewport keeps it in a ref for the life of the runtime.
   const cameraSettledRef = useRef(onCameraSettled);
@@ -465,13 +466,16 @@ export function useRendererShell({
     } catch (error) { reportActionError(error); return false; }
   }, [host.clipboard, reportActionError]);
   // ---- a prompt's views and files ---------------------------------------------
-  // The view on screen as a prompt carries it: the camera and what places or hides the parts — the
-  // renderer's pose and visibility (`viewState`) — never how it looks (`annotation/views.js`).
+  // The view on screen as a prompt carries it: the camera, the mode on screen and the Grid switch, and
+  // what places or hides the parts — the renderer's pose and visibility (`viewState`) — (`annotation/views.js`).
   const viewStateRef = useRef(viewState);
   viewStateRef.current = viewState;
-  const currentView = useCallback(() => promptView(viewerRef.current?.promptCamera?.() ?? null, {
-    display: viewSettingsStore.getSnapshot().display, state: viewStateRef.current?.() ?? null
-  }), [viewSettingsStore]);
+  const currentView = useCallback(() => {
+    const { display, scene: shown } = viewSettingsStore.getSnapshot();
+    return promptView(viewerRef.current?.promptCamera?.() ?? null, {
+      display: { ...display, mode: shown.view.mode, grid: shown.view.grid.enabled }, state: viewStateRef.current?.() ?? null
+    });
+  }, [viewSettingsStore]);
   const annotationRef = useRef(annotation);
   annotationRef.current = annotation;
   // The annotation as an annotation file says it; none without ink.
@@ -483,8 +487,7 @@ export function useRendererShell({
     const shown = liveResourceRef.current?.() || resourceRef.current;
     return shown?.kind === "workspace-file" ? shown.path : null;
   }, []);
-  // What a Quick Edit carries besides its words: the views (the one on screen as it goes, and each
-  // the annotation was drawn in), and their files, made by the host at the press.
+  // Quick Edit captures the current view and annotation views; the host prepares JSON at the press.
   const measurementsRef = useRef(measurements);
   measurementsRef.current = measurements;
   const quickEditPrompt = useMemo(() => ({
@@ -497,11 +500,6 @@ export function useRendererShell({
         ...(marks.length ? { measurements: marks } : {}) });
     },
     read: path => host.promptFiles.read(path),
-    annotation: annotationNow,
-    // A chip's copy as a file (the annotation's annotation, one measurement), its path what the chip copies;
-    // null where the host keeps no prompt files, and the chip copies the JSON itself.
-    save: host.promptFiles?.save ? (kind, data) => host.promptFiles.save({
-      name: (promptFile() || "").split("/").pop() || kind, kind, data }) : null,
   }), [host.promptFiles, currentView, annotationNow, promptFile]);
   // The view as it is on screen, the annotation's ink in it: the annotation's Copy.
   const captureView = useCallback(() => {
@@ -626,20 +624,24 @@ export function useRendererShell({
   }, [liveBinding, commandNames, whenSettled]);
 
   // ---- what the frame and the renderer read ---------------------------------
-  // The mode on screen and each mode's own settings; editing another mode leaves this one selected.
+  // The mode on screen, chosen from the modes the file offers, and the Grid switch, which every mode draws.
   const offeredModes = normalizeViewFeatures(features).modes;
   const displayMode = {
     value: desiredScene.view.mode,
     options: DISPLAY_MODE_OPTIONS.filter(option => offeredModes.includes(option.value)),
     onChange: viewSettingsStore.selectMode,
   };
+  const grid = { value: desiredScene.view.grid.enabled, onChange: viewSettingsStore.setGrid };
   // The scene Preview's own view draws (`PreviewView.jsx`): Render over the file's settings as they stand.
+  // Keyed on the store's resolved scene, not the colour scheme: the store takes a new scheme (its
+  // `configure`) after this render, and only its scene says the appearance has arrived — keyed on
+  // the scheme, Preview kept the old look until a setting changed.
   const previewDesiredScene = useMemo(() => previewViewScene(viewSettingsStore.renderScene()),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [viewSettingsStore, displaySettings, colorScheme, features]);
-  const display = mode => <DisplayModeSettings mode={mode} features={features} display={displaySettings}
-    appearance={colorScheme} lightingQuality="preview" onPatch={patch => viewSettingsStore.patchMode(mode, patch)}
-    onReset={() => viewSettingsStore.resetMode(mode)} />;
+    [viewSettingsStore, desiredScene, displaySettings, previewLook, features]);
+  // Preview's own settings, its panel's (`PreviewSettings.jsx`): Render's lighting, background, floor and part colours.
+  const previewSettings = <PreviewRenderSettings settings={previewLook} display={displaySettings}
+    appearance={colorScheme} lightingQuality="preview" onPatch={viewSettingsStore.patchPreview} onReset={viewSettingsStore.resetPreview} />;
   const projection = {
     value: desiredScene.view.camera.projection,
     onChange: value => viewSettingsStore.patch({ camera: { projection: value } }),
@@ -691,7 +693,7 @@ export function useRendererShell({
       resource, captureView, escape: escapeView, currentView, quickEditPrompt,
       // Select is the tool in hand (the default one), where a press on ink picks it before a part.
       selecting: !previewing && Boolean(toolModes) && toolMode === toolModes.defaultMode,
-      annotateToolActive, annotation, history, deletePicked, measurements, animation, display, displayMode, projection, sceneEffects,
+      annotateToolActive, annotation, history, deletePicked, measurements, animation, previewSettings, displayMode, grid, projection, sceneEffects,
       previewDesiredScene
     }
   };

@@ -65,12 +65,13 @@ protocol relationship never imports Python or discovers an interpreter.
   reports a typed miss before tessellation starts rather than turning a cheap
   decoded-mesh request into unbudgeted surface tessellation. Mechanism:
   [docs/resource-ownership.md](docs/resource-ownership.md) §5.
-- **One per-mode view state**: `common/viewSettings.js` validates Solid, X-ray,
-  Hidden line and Wireframe and each mode's own settings, and Render's, which is
-  no mode but the photographic look asked for on its own (`render`). Appearance,
-  camera, clipping and explode are shared; selecting or resetting a mode keeps
-  them and the other modes' settings. `resolveViewSceneSettings()` maps the active
-  mode, or Render, into renderer groups, preserving the Viewer/snapshot policy boundary.
+- **One view state, a mode and a grid**: `common/viewSettings.js` validates the
+  display: a mode (Solid, Shaded, Parts, X-ray, Hidden line, Wireframe), each a look
+  at its own defaults with nothing to set, the Grid switch, and what modes share
+  (appearance, camera, clipping, explode). Preview's own settings are kept apart
+  from it, and Preview's look (Render) is no mode but asked for on its own
+  (`preview`). `resolveViewSceneSettings()` maps the mode, or Render, into renderer
+  groups, preserving the Viewer/snapshot policy boundary.
   Format capabilities are injected. There are no legacy display aliases or
   saved-shape migrations. The contract and rendering mechanism:
   [docs/render-pipeline.md](docs/render-pipeline.md).
@@ -241,8 +242,11 @@ source or starts a source build.
 
 `createHttpPromptFiles({ origin, fetch })` is the viewer server's maker of a Quick
 Edit's files: `create(request)` posts its views and annotation to `POST /__cad/prompt-files`,
-asks again until the server has rendered them, and answers where the views job, the
-annotation and each view's picture are; `read(path)` fetches one. The annotation format, and
+validates the packet without rendering and answers `{ inline: compactJson }` up to
+1024 UTF-8 bytes, otherwise writes one `.snapshot.json` and answers `{ snapshot: absolutePath }`.
+The client sends `acceptInline: true`; without this capability the server always saves
+and returns a path for compatibility with already-open viewers;
+`read(path)` fetches a JSON file. The annotation format, and
 the code that draws an annotation in a scene for the viewer and for a snapshot alike, is
 `common/annotation.js`.
 

@@ -46,7 +46,7 @@ export function quickEditReferenceIds(selection) {
  * stroke once the pen lifts — never for an agent's selection.
  *
  * Under its header, what goes with the note is chips: first "Annotation" while Annotate has ink (`annotation`:
- * a click copies the annotation as an annotation file's JSON, its X wipes the ink), then each measurement
+ * its X wipes the ink), then each measurement
  * (`measurements.chips`: its colour's ruler and its reading; its X deletes it, resting on it lights
  * it; the note's views carry them all, drawn over each picture), then the selected references,
  * as the renderer describes them (`chips`,
@@ -60,8 +60,8 @@ export function quickEditReferenceIds(selection) {
  * host can carry out, the rightmost primary and pressed by Enter (Shift+Enter is a new line): Copy
  * Prompt always — the note as text to paste into an agent's prompt box, its references by their
  * files' absolute paths, and the files the host makes for it (`prompt`, `host.promptFiles`) by
- * theirs: a picture of each view it carries — the one on screen as it goes, and each the annotation
- * was drawn in — those views as a snapshot job file, and the annotation as an annotation file. Every way
+ * theirs: one .snapshot.json containing the drawn views and shared inline annotation and
+ * measurements, written only when Copy, Queue or Send is pressed, without rendering. Every way
  * it goes carries the same; Queue where the destination is a composer (the host's context for the next
  * message); Send where the host can post a message now (`promptContext.send`). Queue and Send
  * clear and close the box once the note has gone; Copy Prompt keeps it all (nothing has gone yet),
@@ -241,7 +241,7 @@ export default function QuickEdit({ resource, references = EMPTY, chips = null, 
       const views = prompt?.views() ?? [];
       const files = views.length ? prompt.files(views) : null;
       void files?.catch(() => {});
-      const context = createQuickEditContext({ resource, references: selection, text, views, files, read: prompt?.read, annotation: annotated });
+      const context = createQuickEditContext({ resource, references: selection, text, views, files, read: prompt?.read });
       if (action === "send") outcome = host.promptContext.send(context);
       else if (action === "queue") outcome = host.promptContext.deliver(context);
       else outcome = host.clipboard.writeText(copiedQuickEdit(context)).then(() => ({ status: "copied" }));
@@ -370,15 +370,13 @@ export default function QuickEdit({ resource, references = EMPTY, chips = null, 
     handle.addEventListener("pointercancel", end);
   };
 
-  // Chips name the references; with none described, the header counts them. The annotation is a chip of
-  // its own, first: "Annotation", copied by a click as its annotation file's path (its JSON where the host keeps
-  // no prompt files), wiped by its X.
+  // Annotation and measurement chips describe the prompt's data; only selection chips copy references.
   const referenceCount = chips ? 0 : referenceIds.length;
-  const annotationOf = prompt?.annotation, wipe = annotation?.clear, saveFile = prompt?.save;
+  const wipe = annotation?.clear;
   const annotationChip = useMemo(() => (annotated ? {
     key: "annotation", label: "Annotation", glyph: "pencil",
-    ...(annotationOf ? { copy: () => (saveFile ? saveFile("annotation", annotationOf()) : JSON.stringify(annotationOf(), null, 2)) } : {}), ...(wipe ? { onRemove: wipe } : {})
-  } : null), [annotated, annotationOf, wipe, saveFile]);
+    ...(wipe ? { onRemove: wipe } : {})
+  } : null), [annotated, wipe]);
   // A chip for each measurement too, in its colour (`measurements`: the renderer's). They stand in the
   // order they came — picked, drawn or measured — whatever their kind: each keeps the place it first
   // took, and one that goes and comes back takes a new one at the end.

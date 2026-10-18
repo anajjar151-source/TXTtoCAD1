@@ -245,12 +245,16 @@ test("snapshot scene policy composes display Render quality with technical quali
   assert.equal(normal.displaySettings.guides.grid.enabled, false, "snapshot inherits the Solid preset, which draws no grid");
   assert.equal(normal.displaySettings.guides.axis.enabled, false, "and no axes");
   assert.equal(normal.sceneSettings.appearance, "light", "in light, the CLI's default");
-  const gridded = renderJobContext(twoPartMeshData(), { display: { modes: { solid: { grid: { enabled: true }, axes: { enabled: true } } } } });
-  assert.equal(gridded.displaySettings.guides.grid.enabled, true, "Solid draws its enabled grid");
-  assert.equal(gridded.displaySettings.guides.grid.density, 2, "twice as fine");
-  assert.equal(gridded.displaySettings.guides.axis.enabled, true, "with the axes");
+  for (const mode of ["solid", "xray", "wireframe"]) {
+    const gridded = renderJobContext(twoPartMeshData(), { kind: "step", display: { mode, grid: true } });
+    assert.equal(gridded.displaySettings.guides.grid.enabled, true, `${mode} draws the grid switched on`);
+    assert.equal(gridded.displaySettings.guides.grid.density, 1);
+    assert.equal(gridded.displaySettings.guides.axis.enabled, false, "and no axes");
+  }
+  assert.equal(renderJobContext(twoPartMeshData(), { preview: true, display: { grid: true } }).displaySettings.guides.grid.enabled, false,
+    "Preview draws no grid");
 
-  const rendered = renderJobContext(twoPartMeshData(), { render: true });
+  const rendered = renderJobContext(twoPartMeshData(), { preview: true });
   assert.equal(rendered.sceneSettings.render.enabled, true);
   assert.equal(rendered.quality.id, "high");
   assert.equal(rendered.projection, "perspective");
@@ -258,11 +262,10 @@ test("snapshot scene policy composes display Render quality with technical quali
   assert.equal(rendered.sharedRenderOptions.renderScale, 2);
 
   const explicitScale = renderJobContext(twoPartMeshData(), {
-    render: true,
-    display: { modes: { render: { lighting: { quality: "preview" } } } },
+    preview: true,
     output: { renderScale: 3 }
   });
-  assert.equal(explicitScale.quality.id, "standard");
+  assert.equal(explicitScale.quality.id, "high");
   assert.equal(explicitScale.sharedRenderOptions.renderScale, 3);
 });
 
@@ -276,11 +279,11 @@ test("per-output views inherit the photographic lens without inheriting a confli
   });
 });
 
-test("render display retains CAD runtimes and animation", () => {
+test("Preview retains CAD runtimes and animation", () => {
   const stepAnimation = resolveAnimationFrame(SLIDE_CLIPS, { clip: "slide", time: 1.5 });
   const job = {
     kind: "step",
-    render: true,
+    preview: true,
     selectorRuntime: {},
     displayEdgeRuntime: {},
     stepAnimation
@@ -301,12 +304,12 @@ test("render display retains CAD runtimes and animation", () => {
   model.dispose();
 });
 
-test("photographic Render is its own request, never a display mode, and rejects list mode", () => {
+test("Preview's photographic look is its own request, never a display mode, and rejects list mode", () => {
   for (const mode of ["list"]) {
-    assert.throws(() => renderJobContext(twoPartMeshData(), { mode, render: true }), /Render supports only view mode/);
+    assert.throws(() => renderJobContext(twoPartMeshData(), { mode, preview: true }), /Preview supports only view mode/);
   }
   assert.throws(() => renderJobContext(twoPartMeshData(), { display: { mode: "render" } }), /display\.mode must be one of/);
-  assert.throws(() => renderJobContext(twoPartMeshData(), { render: "true" }), /render must be a boolean/);
+  assert.throws(() => renderJobContext(twoPartMeshData(), { preview: "true" }), /preview must be a boolean/);
 });
 
 test("snapshot scene disposal releases owned stage resources without touching model resources", () => {
@@ -413,7 +416,7 @@ test("the still frame rides the effects-pass channel the viewer and docs hero us
     null
   );
   assert.equal(options.receiveShadows, false, "normal CAD snapshots keep the inspection shadow policy");
-  const renderJob = { render: true, outputs: [{ path: "render.png" }] };
+  const renderJob = { preview: true, outputs: [{ path: "render.png" }] };
   assert.equal(
     modelOptionsForRenderJob(renderJobContext(twoPartMeshData(), renderJob), renderJob).receiveShadows,
     true,
@@ -471,12 +474,12 @@ test("a snapshot frame layers over the kinematics pose in the viewer's order", (
   }
 });
 
-test("photographic Render applies a non-rest kinematics transform", () => {
+test("Preview applies a non-rest kinematics transform", () => {
   const stepParameters = liftRuntime(4);
   const job = {
     mode: "view",
     kind: "step",
-    render: true,
+    preview: true,
     outputs: [{ path: "render-pose.png" }],
     stepParameters
   };
@@ -490,16 +493,16 @@ test("photographic Render applies a non-rest kinematics transform", () => {
   }
 });
 
-test("render display accepts common camera, selection, clipping, and quality controls", () => {
+test("Preview accepts common camera, selection, clipping, and quality controls", () => {
   const context = renderJobContext(twoPartMeshData(), {
     kind: "step",
     camera: { preset: "front" },
-    render: true,
+    preview: true,
     display: {
+      mode: "parts",
       camera: { projection: "orthographic" },
       clip: { enabled: true, axis: "x", at: 0.5 },
-      exploded: { enabled: true, amount: 0.5 },
-      modes: { render: { parts: { colorMode: "single", color: "#123456" } } }
+      exploded: { enabled: true, amount: 0.5 }
     },
     selection: { hiddenPartIds: ["right"], selectedPartIds: ["left"] },
     quality: { tessellation: { chordTolerance: 0.001 } }
@@ -508,8 +511,7 @@ test("render display accepts common camera, selection, clipping, and quality con
   assert.equal(context.sharedRenderOptions.clip.enabled, true);
   const options = modelOptionsForRenderJob(context, { selection: { hiddenPartIds: ["right"] } });
   assert.deepEqual(options.selection.hiddenPartIds, ["right"]);
-  assert.equal(options.materialSettings.overrideSourceColors, true);
-  assert.equal(options.materialSettings.defaultColor, "#123456");
+  assert.equal(context.sceneSettings.view.surfaces.colorMode, "original", "Preview's own part colours, not the display mode's");
 });
 
 test("only a STEP job has edges; Clip cuts every 3D file and Explode a STEP or a GLB of several parts", () => {
@@ -647,7 +649,7 @@ test("a snapshot fits its camera's depth range in every preset, as the viewer fi
 
 test("an exploded Render snapshot keeps its floor and floor shadow on the rest placement, as the viewer does", async () => {
   const job = { mode: "view", kind: "step",
-    render: true, display: { modes: { render: { lighting: { quality: "preview" } } }, exploded: { enabled: true, amount: 1 } },
+    preview: true, display: { exploded: { enabled: true, amount: 1 } },
     outputs: [{ path: "exploded.png", width: 64, height: 64, camera: "iso" }] };
   const meshData = wideTwoPartMeshData();
   const context = renderJobContext(meshData, job);
@@ -684,7 +686,7 @@ test("an exploded Render snapshot keeps its floor and floor shadow on the rest p
 test("a snapshot drawn at a render scale above 1 spreads its floor's dither by it", async () => {
   // Final draws twice the pixels it keeps: each kept pixel averages four, and the dither
   // must be drawn twice as wide to survive that, or the dark floor's bands come back.
-  const job = { mode: "view", kind: "step", render: true, display: { modes: { render: { lighting: { quality: "final" } } } },
+  const job = { mode: "view", kind: "step", preview: true,
     outputs: [{ path: "final.png", width: 64, height: 64, camera: "iso" }] };
   const meshData = wideTwoPartMeshData();
   const context = renderJobContext(meshData, job);

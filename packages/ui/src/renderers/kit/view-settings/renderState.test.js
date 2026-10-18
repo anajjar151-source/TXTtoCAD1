@@ -65,10 +65,9 @@ test("Inspect edge visibility does not revive legacy custom outline styling", ()
 
 test("grouped View passes independent surface and edge choices through to the renderer", async () => {
   const { resolveViewSceneSettings } = await import('@text-to-cad/core/common/sceneSettings.js');
-  // Each mode, and Render over the file's settings (`render`).
-  for (const [mode, render] of [['solid'], ['xray'], ['hidden-line'], ['wireframe'], ['solid', true]]) {
-    const resolved = resolveViewSceneSettings({ render, display: { mode,
-      modes: { solid: { edges: { enabled: false, color: '#bada55' } }, xray: { opacity: 0.4 } } } });
+  // Each mode, and Preview's look over the file's display (`preview`).
+  for (const [mode, preview] of [['solid'], ['shaded'], ['parts'], ['xray'], ['hidden-line'], ['wireframe'], ['solid', true]]) {
+    const resolved = resolveViewSceneSettings({ preview, display: { mode, grid: true } });
     const normalized = normalizeViewerRenderState({ themeSettings: resolved.theme, displaySettings: resolved.display });
     assert.deepEqual(normalized.displaySettings.surfaces, resolved.view.surfaces);
     assert.equal(normalized.edgeSettings.enabled, resolved.view.edges.enabled);
@@ -85,17 +84,18 @@ test("the viewport and the snapshot CLI resolve one surface look from one settin
   const { resolveSceneSurfaceLook, resolveViewSceneSettings } = await import('@text-to-cad/core/common/sceneSettings.js');
   const { headlessSceneDress } = await import('@text-to-cad/core/common/headlessScene.js');
   const { EDGELESS_VIEW_FEATURES } = await import('@text-to-cad/core/common/viewSettings.js');
-  // Solid, or Render (asked for on its own, `render`), each with its own parts.
+  // Solid and Parts, or Preview (asked for on its own, `preview`) with its own part colours.
+  const features = { ...EDGELESS_VIEW_FEATURES, modes: ['solid', 'parts'] };
   const looks = [];
-  for (const render of [false, true]) for (const appearance of ['light', 'dark']) {
+  for (const appearance of ['light', 'dark']) {
+    for (const mode of ['solid', 'parts']) looks.push({ preview: false, display: { appearance, mode } });
     for (const parts of [undefined, { colorMode: 'by-part' }, { colorMode: 'single', color: '#ff8800' }]) {
-      looks.push({ render, display: { appearance, ...(parts ? { modes: { [render ? 'render' : 'solid']: { parts } } } : {}) } });
+      looks.push({ preview: true, display: { appearance }, previewSettings: parts ? { parts } : {} });
     }
   }
-  looks.push({ render: false, display: { mode: 'solid', modes: { solid: { flat: true } } } },
-    { render: true, display: { modes: { render: { floor: { enabled: false } } } } });
-  for (const { render, display } of looks) {
-    const scene = resolveViewSceneSettings({ display, render, features: EDGELESS_VIEW_FEATURES });
+  looks.push({ preview: true, display: {}, previewSettings: { floor: { enabled: false } } });
+  for (const { preview, display, previewSettings } of looks) {
+    const scene = resolveViewSceneSettings({ display, preview, previewSettings, features });
     const viewport = normalizeViewerRenderState({ themeSettings: scene.theme, displaySettings: scene.display });
     const look = resolveSceneSurfaceLook({ themeSettings: viewport.themeSettings, displaySettings: viewport.displaySettings,
       renderMode: scene.render.enabled, renderConfiguration: scene.render.configuration });
