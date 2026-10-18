@@ -34,10 +34,6 @@ export function useHostContext(bridge: Pick<Bridge, 'hostContext' | 'onHostConte
   return useSyncExternalStore(listener => bridge.onHostContext(listener), () => bridge.hostContext, () => bridge.hostContext);
 }
 
-// Codex's sidebar page has its own chat's button floating in its bottom-right corner, where the
-// viewer's cube sits: the cube is lifted this far clear of it (`--cad-viewport-corner-bottom`).
-const SIDEBAR_CORNER_BOTTOM = '52px';
-
 // What to do once this view's server has gone: the host started it, and only the host starts it again.
 const LOST: Record<Presentation, string> = {
   tabs: 'The CAD plugin stopped responding in this thread. Restart Codex to reconnect it.',
@@ -55,13 +51,13 @@ export function inlineHeight(width: number, maxHeight?: number): number {
  * Room for what the host draws over the page (`insets`). Inline, a card whose height the host is
  * told. The one element either way, so going full size keeps the view (and its model) as it is.
  */
-function Frame({ bridge, context, insets, inline = false, floatingComposer = false, cornerBottom, overlay = null, children }: { bridge: Bridge; context: HostContext; insets: NonNullable<HostContext['safeAreaInsets']>; inline?: boolean; floatingComposer?: boolean; cornerBottom?: string; overlay?: ReactNode; children: ReactNode }) {
+function Frame({ bridge, context, insets, inline = false, floatingComposer = false, overlay = null, children }: { bridge: Bridge; context: HostContext; insets: NonNullable<HostContext['safeAreaInsets']>; inline?: boolean; floatingComposer?: boolean; overlay?: ReactNode; children: ReactNode }) {
   // Where the host's composer floats over the page instead of taking room from it: the room it
-  // covers, which lists scroll clear of; and the room a control of the host's takes from the
-  // bottom-right corner, which the cube keeps clear of.
+  // covers, which lists scroll clear of. Keep the cube in the opposite corner so a tab's
+  // composer or sidebar chat button never covers it.
   const floating = {
-    ...(floatingComposer ? { '--cad-host-bottom-inset': `${context.safeAreaInsets?.bottom || 0}px` } : {}),
-    ...(cornerBottom ? { '--cad-viewport-corner-bottom': cornerBottom } : {}),
+    ...(floatingComposer ? { '--cad-host-bottom-inset': `${context.safeAreaInsets?.bottom || 0}px`,
+      '--cad-viewport-corner-left': '2px', '--cad-viewport-corner-right': 'auto' } : {}),
   } as CSSProperties;
   const [width, setWidth] = useState(() => window.innerWidth);
   useEffect(() => {
@@ -136,7 +132,6 @@ export default function App({ bridge, server, launch: initial, presentation = 't
   const insets = presentation === 'inline' ? context.safeAreaInsets || {} : { ...context.safeAreaInsets, bottom: 0 };
   const chat = useMemo(() => chatReach(bridge.hostCapabilities, presentation), [bridge, presentation]);
   const floatingComposer = presentation === 'tabs';
-  const cornerBottom = presentation === 'tabs' && surface === 'sidebar' ? SIDEBAR_CORNER_BOTTOM : undefined;
   // Once a newer view of this chat is up: this one's last frame (or null), and nothing else.
   const [still, setStill] = useState<string | null | undefined>(undefined);
   const superseded = still !== undefined;
@@ -221,9 +216,9 @@ export default function App({ bridge, server, launch: initial, presentation = 't
     [bridge]);
   const { launch } = showing;
   if (superseded) {
-    return <Frame bridge={bridge} context={context} insets={insets} inline={inline} floatingComposer={floatingComposer} cornerBottom={cornerBottom}><Superseded still={still} /></Frame>;
+    return <Frame bridge={bridge} context={context} insets={insets} inline={inline} floatingComposer={floatingComposer}><Superseded still={still} /></Frame>;
   }
-  return <Frame bridge={bridge} context={context} insets={insets} inline={inline} floatingComposer={floatingComposer} cornerBottom={cornerBottom}
+  return <Frame bridge={bridge} context={context} insets={insets} inline={inline} floatingComposer={floatingComposer}
     overlay={lost ? <Banner message={LOST[presentation]} /> : null}>
     <ModelView launch={launch} sequence={showing.sequence} alone={alone} bridge={bridge} client={client} tunnel={tunnel}
       tabStore={tabStore} live={live} links={links} appSettings={appSettings}

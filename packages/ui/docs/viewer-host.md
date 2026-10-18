@@ -519,8 +519,11 @@ Nothing of the viewer sits at the bottom centre. A host whose own control floats
 that edge (a chat's composer) sets `--cad-host-bottom-inset` on an ancestor to the height it
 covers: the model library scrolls its last rows clear of it. A host whose own control
 floats over the view's bottom-right corner sets `--cad-viewport-corner-bottom` to the room
-it takes from the bottom edge, and the view cube sits that much higher. Both are
-lengths, like any design token, and say nothing about which host it is.
+it takes from the bottom edge, and the view cube sits that much higher. To choose the
+opposite corner instead, set `--cad-viewport-corner-left: 2px` and
+`--cad-viewport-corner-right: auto`; their defaults are `auto` and the cube's right inset.
+Codex's tab presentation uses the left corner across sidebar, thread and file views.
+The shared viewer consumes these layout values without identifying the host.
 
 A renderer's update status is its own: the CAD renderers show it centred under the tool
 strip and its sub-toolbar. The navbar carries none.

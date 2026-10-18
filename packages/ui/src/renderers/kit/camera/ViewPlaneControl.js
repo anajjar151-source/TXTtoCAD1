@@ -286,7 +286,8 @@ function ViewPlaneControl({
   return (
     <div
       className="pointer-events-none absolute z-30 flex flex-col items-center gap-0"
-      style={{ ...(viewPlaneOffsetLeft != null ? { left: `${viewPlaneOffsetLeft}px` } : { right: `${viewPlaneOffsetRight}px` }),
+      style={{ ...(viewPlaneOffsetLeft != null ? { left: `${viewPlaneOffsetLeft}px` } : {
+        left: "var(--cad-viewport-corner-left, auto)", right: `var(--cad-viewport-corner-right, ${viewPlaneOffsetRight}px)` }),
         ...(viewPlaneOffsetTop != null ? { top: viewPlaneOffsetTop } : { bottom }) }}
     >
       {viewPlaneHeader ? (

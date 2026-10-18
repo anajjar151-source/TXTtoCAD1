@@ -244,10 +244,11 @@ host creates again (its frame re-created) starts afresh: nothing names a view ac
 frames, so there is nothing to keep its record under. `App.tsx` frames it (full page, or
 an inline card whose height the host is told; its Full size is the last of the navbar's
 controls). In a tab, Codex's composer floats over the page, and the
-home's list scrolls clear of it (`--cad-host-bottom-inset`). On Codex's sidebar page (tabs,
-surface `sidebar`) the page's own chat button floats in the bottom-right corner, where the
-view cube sits: `App.tsx` sets `--cad-viewport-corner-bottom` to 52px, and the cube sits that
-far higher.
+home's list scrolls clear of it (`--cad-host-bottom-inset`). The cube sits at bottom-left
+in this tab presentation, across sidebar, thread and file views, so the composer and
+sidebar chat button can occupy bottom-right. `App.tsx` supplies
+`--cad-viewport-corner-left: 2px` and `--cad-viewport-corner-right: auto`;
+inline hosts (including full-size cards) retain the default bottom-right placement.
 
 ## Develop
 

@@ -140,7 +140,10 @@ none.
   drawn in its lower corner never touch the edge (`VIEWPORT_CUBE_BOTTOM`), in a 6rem area:
   enlarged face/edge/corner hit areas and neutral hover and XYZ guides. A host whose own
   control floats over that corner lifts it clear with `--cad-viewport-corner-bottom`, the
-  room that control takes from the bottom edge. Preview omits it, and so does a phone.
+  room that control takes from the bottom edge. A host can instead anchor it at bottom-left
+  with `--cad-viewport-corner-left: 2px` and `--cad-viewport-corner-right: auto`.
+  Codex's tab presentation uses this for all its views to avoid the floating composer.
+  Preview omits it, and so does a phone.
 - **Display and Preview** end the navbar, for a 3D file (`data-view-controls`, the box
   FileViewer hands the renderer as `navbarSlot`): **Display** (the active mode's sphere: see
   [Display settings](#display-settings-and-section-primitives)) and **Preview** (a play
