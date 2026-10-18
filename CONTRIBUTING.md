@@ -250,7 +250,7 @@ configuration uses the [basic preset](https://pyrefly.org/en/docs/configuration/
 over `packages/cadgen/src`. It checks a limited set of diagnostics, including
 undefined names in annotations, and skips unannotated function bodies and broader
 argument and assignment checks. Tests, scripts and skill helpers are outside this
-check's scope. Both cadgen CI jobs run it before the package suite
+check's scope. Both cadgen CI jobs run it before the package suite.
 
 ### CI
 
