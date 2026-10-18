@@ -277,7 +277,8 @@ thin rule. It stays up for as long as its tool does, and has no heading: the too
 button above names it. Explode's and Clip's are one shape — what leads
 the slider, the slider, its value right beside it and only as wide as
 its text, the tool's actions, then Reset, last, at the same spot in both, with no rules —
-and one width (`SLIDER_SUB_TOOLBAR_CLASS`, `w-56`). The slider takes the rest of the row.
+and a shared base width (`SLIDER_SUB_TOOLBAR_CLASS`). Clip uses 320px to fit
+its Part colors checkbox; the slider takes the rest of the row.
 
 **Annotate.** Its sub-toolbar, "Annotation controls", while Annotate is up
 (`annotation/toolbar.jsx`'s `AnnotationToolbar`): **Annotation tools**, a button each — Pen,
@@ -320,7 +321,14 @@ every other tool; a press on Measure while it is up does nothing.
 Explode's: its slider, the amount (a percentage), **Reset explode**. Clip's: its axis — a
 borderless button reading the axis in hand, "X ⌄", whose dropdown lists X, Y and Z — its
 slider, the amount, **Flip clip** (which side of the plane is cut away, the cut keeping its
-share; disabled while nothing is cut), **Reset clip**. Explode opens at 0%, Clip at no
+share; disabled while nothing is cut), **Reset clip**. A compact **Part colors**
+checkbox follows the slider in the same row, checked by default. Checked section
+caps use normal part colors without hover/selection tints; unchecked caps use
+uniform amber. Both stay opaque, including caps of transparent parts. Changing
+only this choice never applies or moves a cut. The choice follows the existing
+Clip state across tool changes; **Reset clip**, reopening an unset Clip and
+changing files restore the checked default. Clip's row is 320px wide to keep
+room for its slider and checkbox; other slider toolbars keep their existing width. Explode opens at 0%, Clip at no
 cut; an edit applies the effect, and the slider back at zero removes it. An axis alone is not
 an effect. The view settings own both effects, so a mode reset preserves them and a restored
 effect reappears on the model. Clip's slider, left to right, cuts deeper through the original

@@ -8,7 +8,7 @@ import { Slider } from "@text-to-cad/ui/primitives/slider";
 import { ToolbarButton } from "@text-to-cad/ui/primitives/toolbar-button";
 import { cn } from "@text-to-cad/ui/utils";
 import { FLOATING_SURFACE_CLASS } from "../../../../lib/floatingSurface.js";
-import { FILE_SHEET_PRECISION_SLIDER_CLASSES } from "../../inspector/FileSheet.js";
+import { FILE_SHEET_PRECISION_SLIDER_CLASSES, FileSheetCheckboxRow } from "../../inspector/FileSheet.js";
 
 const AXES = Object.freeze(["x", "y", "z"]);
 
@@ -20,8 +20,7 @@ function formatNumber(value, digits = 2) {
 // These controls read the resolved scene's Clip and Explode groups. Public display
 // validation belongs to the settings store; resolved scene groups are not a saved display.
 // Persistent model effects are separate from Display and its presets. Clip and Explode are drawn
-// alike: the amount in the panel's heading, one row for a body — Explode's a slider, Clip's the
-// axis it cuts along and then its slider.
+// alike: one compact row for axis/amount, with a Part colors checkbox on Clip.
 //
 // Clip's view holds where its plane stands (`at`, millimetres); the panel shows the share of the
 // model it cuts away, measured on `bounds` — the model at rest, the box the plane is placed in.
@@ -89,6 +88,8 @@ export function CrossSectionControls({ viewSettings, onViewSettingsPatch, bounds
         enabled: value > 0, at: clipAtForAmount(clip, bounds, value / 100)
       } })}
       className={sliderClassName} />
+    <FileSheetCheckboxRow label="Part colors" checked={clip.partColors} className="shrink-0 px-1"
+      onCheckedChange={partColors => onViewSettingsPatch({ clip: { partColors } })} />
   </div>;
 }
 
