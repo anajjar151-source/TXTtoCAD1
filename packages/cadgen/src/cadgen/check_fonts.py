@@ -24,9 +24,9 @@ def _font_paths(directory: str) -> list[str]:
     """The files build123d's ``register_folder`` would open.
 
     Listed with ``os.listdir`` and NOT ``glob.glob``, which is the whole point: cadgen
-    installs a guard over ``glob.glob`` that hides unparseable fonts so build123d can
-    import. A checker built on the filtered listing would report a clean folder on
-    precisely the machine it exists to diagnose.
+    installs a guard over ``glob.glob`` that hides the fonts build123d cannot register,
+    so it can import. A checker built on the filtered listing would report a clean
+    folder on precisely the machine it exists to diagnose.
     """
     try:
         names = os.listdir(os.path.normpath(directory))

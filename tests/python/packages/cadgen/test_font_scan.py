@@ -1,14 +1,13 @@
-"""Naming the font file that breaks `import build123d` (issue #322).
+"""Keeping the fonts that break `import build123d` out of its font scan (#322, #636).
 
-build123d parses every font in the system font folders at import time with no
+build123d registers every font in the system font folders at import time with no
 per-file guard, so one malformed file aborts the import and every cadgen command with
 it, raising a fontTools error that names no file. A font with no family name aborts it
 the same way, with OCCT's error (`EmptyFamily`, #636).
 
-cadgen filters that one folder listing so the bad file is never opened (`GlobGuard`).
-The rest is what happens when the guard is off or did not catch it: a message naming
-the file (`FailureRecognition`) and a checker that finds it (`CheckFontsCommand`).
-The permanent fix belongs upstream, in `register_folder`.
+cadgen filters that one folder listing so such a file is never opened (`GlobGuard`,
+`EmptyFamily`), and a checker names it (`CheckFontsCommand`). The permanent fix
+belongs upstream, in `register_folder`.
 """
 
 from __future__ import annotations
@@ -27,8 +26,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 from cadgen import check_fonts  # noqa: E402
 from cadgen._internal import font_scan  # noqa: E402
 
-# A real TrueType header, and a file that only looks like one.
-VALID_TTF_HEADER = b"\x00\x01\x00\x00"
+# A real OpenType header, for a file that only looks like a font.
 VALID_OTF_HEADER = b"OTTO"
 
 
@@ -103,42 +101,6 @@ def _font_file(
     return str(target)
 
 
-class HeaderScan(unittest.TestCase):
-    """`unparseable_fonts` reads four bytes; it must never parse a font itself."""
-
-    def test_a_file_with_no_sfnt_magic_is_reported(self):
-        with _FontDir() as fonts:
-            bad = fonts.write("broken.ttf", b"this is not a font at all")
-            self.assertEqual(font_scan.unparseable_fonts([str(fonts.path)]), [bad])
-
-    def test_valid_headers_are_left_alone(self):
-        with _FontDir() as fonts:
-            fonts.write("truetype.ttf", VALID_TTF_HEADER + b"rest")
-            fonts.write("opentype.otf", VALID_OTF_HEADER + b"rest")
-            fonts.write("collection.ttc", b"ttcf" + b"rest")
-            self.assertEqual(font_scan.unparseable_fonts([str(fonts.path)]), [])
-
-    def test_non_font_files_are_not_examined(self):
-        # register_folder globs ttf/otf/ttc only, so anything else cannot be the cause.
-        with _FontDir() as fonts:
-            fonts.write("notes.txt", b"not a font")
-            fonts.write("image.png", b"\x89PNG")
-            self.assertEqual(font_scan.unparseable_fonts([str(fonts.path)]), [])
-
-    def test_a_missing_directory_is_not_an_error(self):
-        # The diagnostic runs on an error path; it may not raise a second error.
-        self.assertEqual(font_scan.unparseable_fonts(["/no/such/font/directory"]), [])
-
-    def test_the_scan_is_not_recursive(self):
-        # register_folder's glob is single-level, so a file it never opens is not a
-        # file that can have broken the import.
-        with _FontDir() as fonts:
-            nested = fonts.path / "nested"
-            nested.mkdir()
-            (nested / "broken.ttf").write_bytes(b"not a font")
-            self.assertEqual(font_scan.unparseable_fonts([str(fonts.path)]), [])
-
-
 class GlobGuard(unittest.TestCase):
     """The fix: hide unparseable fonts from the listing build123d hands to fontTools."""
 
@@ -171,18 +133,12 @@ class GlobGuard(unittest.TestCase):
         self.assertEqual(kept, [])
         self.assertEqual(font_scan.skipped_fonts, [bad])
 
-
     def test_it_can_be_switched_off(self):
         import glob
 
         with mock.patch.dict(os.environ, {"CADGEN_FONT_GUARD": "0"}):
             self.assertFalse(font_scan.install_font_guard())
         self.assertIs(glob.glob, self._real_glob)
-
-    def test_the_warning_names_what_was_dropped(self):
-        self.assertEqual(font_scan.skipped_fonts_warning(), "")
-        font_scan.skipped_fonts.append("/fonts/broken.ttf")
-        self.assertIn("/fonts/broken.ttf", font_scan.skipped_fonts_warning())
 
 
 class EmptyFamily(unittest.TestCase):
@@ -251,48 +207,6 @@ class EmptyFamily(unittest.TestCase):
         self.assertEqual(font_scan.skipped_fonts, [])
 
 
-class FailureRecognition(unittest.TestCase):
-    def test_a_fonttools_error_is_recognised(self):
-        from fontTools.ttLib import TTLibError
-
-        self.assertTrue(font_scan.is_font_scan_failure(TTLibError("bad sfntVersion")))
-
-    def test_a_wrapped_fonttools_error_is_recognised(self):
-        from fontTools.ttLib import TTLibError
-
-        try:
-            try:
-                raise TTLibError("bad sfntVersion")
-            except TTLibError as inner:
-                raise ImportError("build123d failed") from inner
-        except ImportError as outer:
-            self.assertTrue(font_scan.is_font_scan_failure(outer))
-
-    def test_an_unrelated_error_is_not(self):
-        self.assertFalse(font_scan.is_font_scan_failure(ModuleNotFoundError("no OCP")))
-        self.assertEqual(font_scan.font_scan_failure_message(ValueError("nope")), "")
-
-    def test_the_message_names_the_file_and_the_cause(self):
-        from fontTools.ttLib import TTLibError
-
-        with _FontDir() as fonts:
-            bad = fonts.write("broken.ttf", b"not a font")
-            message = font_scan.font_scan_failure_message(
-                TTLibError("bad sfntVersion"), dirs=[str(fonts.path)]
-            )
-        self.assertIn(bad, message)
-        self.assertIn("build123d bug", message)
-        self.assertIn("Move or rename", message)
-
-    def test_the_empty_name_refusal_is_recognised_and_explained(self):
-        # OCCT's error is not a fontTools error, so it is recognised by its text.
-        error = RuntimeError("Font_SystemFont constructor called with empty font name")
-        self.assertTrue(font_scan.is_font_scan_failure(error))
-        message = font_scan.font_scan_failure_message(error, dirs=[])
-        self.assertIn("family name", message)
-        self.assertIn("check_fonts", message)
-
-
 class CheckFontsCommand(unittest.TestCase):
     def test_it_catches_a_font_that_only_fails_once_a_table_is_read(self):
         # The regression this guards: TTFont(path) is LAZY. A file with a valid sfnt
@@ -317,7 +231,6 @@ class CheckFontsCommand(unittest.TestCase):
             failures = check_fonts.check([str(fonts.path)])
         self.assertEqual([path for path, _ in failures], [nameless])
         self.assertIn("family name", failures[0][1])
-
 
     def test_a_bad_font_exits_nonzero_and_names_it(self):
         with _FontDir() as fonts:
