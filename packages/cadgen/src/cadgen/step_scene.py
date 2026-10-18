@@ -160,30 +160,38 @@ class StepScene:
         """Placed geometry occurrences; a leaf may contain several solids."""
         return iter(self._leaves)
 
-    def resolve(self, ref: str) -> Selection:
-        """Resolve one numeric ref, exact label alias, or file-prefixed ref.
+    def resolve(self, ref: str) -> tuple[Selection, ...]:
+        """Resolve a reference line: one selection per ref in it, in order.
 
+        A line holds one ref, or several comma-separated behind one file prefix
+        as the viewer copies a multi-selection (``part.step#o1.f1,o1.f2``). Each
+        ref is numeric or an exact label alias; a bare entity after an occurrence
+        or label belongs to it (``#o1.2.f3,f4`` is ``o1.2.f3`` and ``o1.2.f4``).
         A file prefix -- the path under the viewer's root, or an absolute path --
         must name this scene's document as a path does (links resolved, a relative
         one read from the working directory, else matched against the end of the
         document's path).
-        Ambiguous labels raise with numbered candidates. A bare entity ID
-        (e.g. #f1) requires exactly one leaf. No fuzzy matching or first match.
-        A comma list names several refs: resolve it with ``resolve_all``.
+        Every ref must resolve, or this raises. Ambiguous labels raise with
+        numbered candidates. A bare entity ID (e.g. #f1) requires exactly one
+        leaf. No fuzzy matching or first match.
         """
-        from cadgen.cad_ref_syntax import parse_selector, split_cad_ref
-        from cadgen.label_refs import resolve_label_selectors
+        from cadgen.cad_ref_syntax import parse_selector_list, ref_prefix_names, split_cad_ref
 
         prefix, text = split_cad_ref(ref)
-        self._require_prefix_names_document(prefix)
-        parsed = parse_selector(text)
-        if parsed is None or parsed.selector_type == "opaque":
-            if "," in text:
-                raise ValueError(f"{ref!r} names several refs; resolve_all() returns a selection for each")
-            raise ValueError(f"invalid reference: {ref!r}; pass one occurrence or entity ref")
+        if prefix and not ref_prefix_names(prefix, str(self._loaded.step_path)):
+            raise ValueError(f"reference names {prefix!r}, but this scene is {str(self._loaded.step_path)!r}")
+        parsed_list = parse_selector_list(text)
+        if any(parsed is None or parsed.selector_type == "opaque" for parsed in parsed_list):
+            raise ValueError(f"invalid reference: {ref!r}; pass occurrence or entity refs separated by commas")
+        return tuple(self._resolve_one(parsed) for parsed in parsed_list)
+
+    def _resolve_one(self, parsed) -> Selection:
+        from cadgen.cad_ref_syntax import parse_selector
+        from cadgen.label_refs import resolve_label_selectors
+
+        ref = "#" + parsed.canonical
         if parsed.label:
-            text = resolve_label_selectors([text], self._aliases)[0]
-            parsed = parse_selector(text)
+            parsed = parse_selector(resolve_label_selectors([parsed.canonical], self._aliases)[0])
         oid = "#" + parsed.occurrence_id if parsed.occurrence_id else ""
         if not oid:
             if len(self._leaves) != 1:
@@ -203,30 +211,6 @@ class StepScene:
         if ordinal is None or not 1 <= ordinal <= size:
             raise ValueError(f"unknown {kind} reference: {ref!r} (available: 1..{size})")
         return Selection(self, oid, kind, ordinal)
-
-    def resolve_all(self, ref: str) -> tuple[Selection, ...]:
-        """Resolve a copied reference line, one selection per ref in it, in order.
-
-        The viewer copies a selection of several entities as one line, its refs
-        comma-separated behind one file prefix (``part.step#o1.f1,o1.f2``). A bare
-        entity after an occurrence or label belongs to it (``#o1.2.f3,f4`` is
-        ``o1.2.f3`` and ``o1.2.f4``). A line of one ref gives one selection. Every ref
-        must resolve as ``resolve`` would resolve it alone, or this raises.
-        """
-        from cadgen.cad_ref_syntax import parse_selector_list, split_cad_ref
-
-        prefix, text = split_cad_ref(ref)
-        self._require_prefix_names_document(prefix)
-        parsed_list = parse_selector_list(text)
-        if any(parsed is None or parsed.selector_type == "opaque" for parsed in parsed_list):
-            raise ValueError(f"invalid reference: {ref!r}; pass occurrence or entity refs separated by commas")
-        return tuple(self.resolve(parsed.canonical) for parsed in parsed_list)
-
-    def _require_prefix_names_document(self, prefix: str) -> None:
-        from cadgen.cad_ref_syntax import ref_prefix_names
-
-        if prefix and not ref_prefix_names(prefix, str(self._loaded.step_path)):
-            raise ValueError(f"reference names {prefix!r}, but this scene is {str(self._loaded.step_path)!r}")
 
     def _table(self, occurrence, kind):
         from cadgen._internal.entity_ordinals import entity_map, shape_entities

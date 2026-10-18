@@ -18,7 +18,7 @@ Read only the references needed for the request.
 | **Create or edit a part or assembly** | Find the existing Python model, or create a decorated model below; edit source and run `python <model>.py`. | [Model contract](references/step-generation.md), [shape construction](references/build123d-modeling.md); [positioning](references/positioning.md) for assemblies |
 | **Organize a CAD project** | Follow its existing layout; for a new multi-model project use `src/`, format output folders, and a model catalog. | [Project layout](references/project-layout.md), [minimal starters](references/project-template.md) |
 | **Export STL, 3MF or GLB** | Add a mesh decorator for a maintained output, or run the format's `build INPUT.step OUT` command for a one-off export. | [Mesh exports](references/supported-exports.md) |
-| **Resolve a reference from a prompt** | Identify its saved STEP/STP document, open it with `read_scene`, and call `scene.resolve_all(ref)` as shown below. | [Reference syntax and inspection](references/inspection-and-validation.md#reference-syntax) |
+| **Resolve a reference from a prompt** | Identify its saved STEP/STP document, open it with `read_scene`, and call `scene.resolve(ref)` as shown below. | [Reference syntax and inspection](references/inspection-and-validation.md#reference-syntax) |
 | **Measure or check geometry** | Write a Python check using native build123d geometry and, where useful, `cadgen.geometry`. | [Inspection and validation](references/inspection-and-validation.md) |
 | **Model from an image or drawing** | Extract the specified dimensions and record meaningful assumptions. | [Interpreting the request](references/cad-brief.md) |
 | **Open an existing STEP/STP, STL, 3MF or GLB** | Show it to the user. | [Show the model](#show-the-model) |
@@ -127,16 +127,18 @@ in a particular saved document. Its file part is the document's absolute path as
 the CAD viewer copied it, with the file's real name and extension (in quotes when it
 holds a space or `#`). A selection of several entities is copied as one line, its
 refs comma-separated (`/work/robot/STEP/assembly.step#o1.2.f7,o1.2.f8`). Open that
-path with `read_scene`, and pass the whole line to `resolve_all()`, which returns one
-selection per ref:
+path with `read_scene`, and pass the whole line to `resolve()`, which returns a tuple
+of one selection per ref, in order:
 
 ```python
 from cadgen import read_scene
 
 scene = read_scene("/work/robot/STEP/assembly.step")
-for selection in scene.resolve_all("/work/robot/STEP/assembly.step#o1.2.f7,o1.2.f8"):
+for selection in scene.resolve("/work/robot/STEP/assembly.step#o1.2.f7,o1.2.f8"):
     face = selection.shape()  # owned native geometry, in document world coordinates
     print(selection.ref, face.area)
+
+(selection,) = scene.resolve("/work/robot/STEP/assembly.step#o1.2.f7")  # one ref
 ```
 
 A Quick Edit prompt names its document under `File:`, selected entities under
