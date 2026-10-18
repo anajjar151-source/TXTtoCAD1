@@ -11,6 +11,7 @@ import { cn } from "@text-to-cad/ui/utils";
 
 import { FLOATING_SURFACE_CLASS } from "../../lib/floatingSurface.js";
 
+import { useViewerMobile } from "../responsive.js";
 import { DiscordMark, GitHubMark } from "./brandMarks.jsx";
 import { feedbackUrl, MadeBy, useFollow } from "./NavbarLinks.jsx";
 
@@ -20,6 +21,16 @@ const SETTING_ROW_CLASS = "flex min-h-8 items-center justify-between gap-2 py-0.
 const COLOR_SCHEMES = Object.freeze([["system", Monitor], ["light", Sun], ["dark", Moon]]);
 // AUTOMATIC is the Language submenu's value for "no choice": the context decides.
 const AUTOMATIC = "automatic";
+
+/** Language's choices: Automatic, naming what the context infers, then each language under its own name. */
+const languageOptions = (language, t) => [
+  <DropdownMenuRadioItem key={AUTOMATIC} value={AUTOMATIC} onSelect={event => event.preventDefault()} data-language-option={AUTOMATIC}>
+    {t("menu.languageAutomatic", { language: t(`language.${language.inferred}`) })}
+  </DropdownMenuRadioItem>,
+  ...LOCALES.map(id => <DropdownMenuRadioItem key={id} value={id} lang={id} onSelect={event => event.preventDefault()} data-language-option={id}>
+    {t(`language.${id}`)}
+  </DropdownMenuRadioItem>),
+];
 
 /**
  * The app's menu, from the navbar's logo over every file and over the host's home: what is the
@@ -40,6 +51,7 @@ const AUTOMATIC = "automatic";
  */
 export function AppMenu({ trigger, onHome, links, appSettings = NONE, colorScheme, language, platform }) {
   const { t } = useI18n();
+  const mobile = useViewerMobile();
   const follow = useFollow(links);
   const feedback = links ? feedbackUrl(links, platform) : "";
   const outward = [
@@ -65,20 +77,22 @@ export function AppMenu({ trigger, onHome, links, appSettings = NONE, colorSchem
         </MenuPrimitive.RadioGroup>
       </div>] : []),
       // Language: the language in force at the row's end; its submenu, Automatic (what the context infers,
-      // named) then each language under its own name, whatever the menu is reading in.
-      ...(language ? [<DropdownMenuSub key="language">
-        <DropdownMenuSubTrigger className={cn(SETTING_ROW_CLASS, "pr-1.5")} data-menu-language="">
-          <span className="min-w-0">{t("menu.language")}</span>
-          <span className="ml-auto truncate text-muted-foreground" lang={language.locale}>{t(`language.${language.locale}`)}</span>
+      // named) then each language under its own name, whatever the menu is reading in. A phone has no
+      // room beside the menu for a submenu, so there the choices follow the row, in the menu itself.
+      ...(language && mobile ? [<div key="language" className={SETTING_ROW_CLASS} data-menu-language="">
+        <span className="min-w-0">{t("menu.language")}</span>
+      </div>, <DropdownMenuRadioGroup key="language-options" aria-label={t("menu.language")} value={language.choice ?? AUTOMATIC}
+        onValueChange={value => language.onChoiceChange(value === AUTOMATIC ? null : value)}>{languageOptions(language, t)}</DropdownMenuRadioGroup>] : []),
+      ...(language && !mobile ? [<DropdownMenuSub key="language">
+        {/* The chevron's 16px box is centred where the checkbox's and Theme's last segment are (16px in
+            from the row's end), and the row keeps the setting rows' text colour while its submenu is open. */}
+        <DropdownMenuSubTrigger className={cn(SETTING_ROW_CLASS, "pr-2 focus:text-foreground data-[state=open]:text-foreground")} data-menu-language="">
+          <span className="min-w-0 flex-1">{t("menu.language")}</span>
+          <span className="shrink-0 text-muted-foreground" lang={language.locale}>{t(`language.${language.locale}`)}</span>
         </DropdownMenuSubTrigger>
         <DropdownMenuSubContent className={cn(FLOATING_SURFACE_CLASS, "min-w-40")} aria-label={t("menu.language")}>
           <DropdownMenuRadioGroup value={language.choice ?? AUTOMATIC} onValueChange={value => language.onChoiceChange(value === AUTOMATIC ? null : value)}>
-            <DropdownMenuRadioItem value={AUTOMATIC} onSelect={event => event.preventDefault()} data-language-option={AUTOMATIC}>
-              {t("menu.languageAutomatic", { language: t(`language.${language.inferred}`) })}
-            </DropdownMenuRadioItem>
-            {LOCALES.map(id => <DropdownMenuRadioItem key={id} value={id} lang={id} onSelect={event => event.preventDefault()} data-language-option={id}>
-              {t(`language.${id}`)}
-            </DropdownMenuRadioItem>)}
+            {languageOptions(language, t)}
           </DropdownMenuRadioGroup>
         </DropdownMenuSubContent>
       </DropdownMenuSub>] : []),

@@ -591,7 +591,11 @@ what the host supplies:
 - **Language**, where the host hands the person's language (`language`, both apps): one row,
   its name and then the language in force, whose submenu offers **Automatic (<the inferred
   language>)** and then each language under its own name — English, 简体中文, 繁體中文, 日本語,
-  한국어 — whatever the menu is reading in; a press changes it without closing the menu.
+  한국어 — whatever the menu is reading in; a press changes it without closing the menu. The
+  row is a setting row like Theme: its name, then the language in force, muted, right-aligned
+  before the chevron, centred on the column Theme's last segment and the checkboxes share. A
+  phone has no room beside the menu for a submenu: there the choices follow the row, in the
+  menu itself.
   Automatic is the default: the web infers the language from the browser's languages, the CAD
   app from its host's locale (then the frame's browser languages); Simplified script or
   mainland China and Singapore read 简体中文, Traditional script or Taiwan, Hong Kong and Macau
