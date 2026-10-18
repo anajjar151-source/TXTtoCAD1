@@ -47,7 +47,7 @@ export function useModelTools({ view, features, store, mesh, disabled, selectedT
         className="flex min-w-0 flex-1 items-center gap-1" sliderClassName={SUB_TOOLBAR_SLIDER_CLASS} />,
       actions: <ClipFlipButton viewSettings={view} onViewSettingsPatch={store.patch} bounds={clipBounds} /> }
   ].filter(tool => features.settings.includes(tool.id));
-  const neutral = id => id === "exploded" ? { exploded: { enabled: false, amount: 0 } } : { clip: { enabled: false, axis: "x", invert: false } };
+  const neutral = id => id === "exploded" ? { exploded: { enabled: false, amount: 0 } } : { clip: { enabled: false, axis: "x", invert: false, partColors: true } };
   const tool = definitions.find(value => value.id === selectedTool);
   return {
     tools: definitions.map(({ id, label, Icon }) => ({
@@ -64,7 +64,7 @@ export function useModelTools({ view, features, store, mesh, disabled, selectedT
     // strip above it: what leads it (Explode's name; Clip's axis), its slider, the amount beside the slider,
     // then its actions (Clip's Flip) and Reset, which takes the effect away (the tool stays up) —
     // always there, idle while there is nothing to take away.
-    subToolbar: tool ? <SubToolbar key={tool.id} label={`${tool.label} controls`} className={SLIDER_SUB_TOOLBAR_CLASS} data-model-tool={tool.id}>
+    subToolbar: tool ? <SubToolbar key={tool.id} label={`${tool.label} controls`} className={`${SLIDER_SUB_TOOLBAR_CLASS} ${tool.id === "clip" ? "w-80" : ""}`} data-model-tool={tool.id}>
       {tool.lead || null}
       {tool.controls}
       <SubToolbarValue data-model-tool-amount="">{tool.summary}</SubToolbarValue>

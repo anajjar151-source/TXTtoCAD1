@@ -190,7 +190,8 @@ export default function StepSceneLayers({ viewport, stepScene, policy, props: su
     normalizedClipSettings.axis,
     normalizedClipSettings.enabled,
     normalizedClipSettings.invert,
-    normalizedClipSettings.offset
+    normalizedClipSettings.at,
+    normalizedClipSettings.partColors
   ]);
 
   const refs = {

@@ -194,7 +194,7 @@ it('Explode and Clip open neutral, each one row under the strip with its amount 
   // Only the tool in hand is lit, and has its row: the applied Explode stays on the model.
   expect([pressed(), subRows(), viewSettings.exploded.enabled]).toEqual([['Clip'], ['Clip controls'], true]);
   const clip = row('Clip controls')!;
-  expect([viewSettings.clip.enabled, reads('Clip controls'), resettable('Clip controls', 'clip')]).toEqual([false, ['Clip axis: X', '0%', 'Flip clip', 'Reset clip'], false]);
+  expect([viewSettings.clip.enabled, reads('Clip controls'), resettable('Clip controls', 'clip')]).toEqual([false, ['Clip axis: X', 'Part colors', '0%', 'Flip clip', 'Reset clip'], false]);
   expect(clip.querySelector('[role=separator]')).toBeNull();
   // Its axis, a dropdown, ONE slider (no typed value), its value, and Flip, idle with no cut to flip.
   // Changing the axis stays neutral.

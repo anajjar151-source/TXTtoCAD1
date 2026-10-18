@@ -80,6 +80,15 @@ edits.
 Clip keeps coordinates below its plane by default (`invert: false`); Flip keeps
 coordinates above it. `clip.at` is the plane's coordinate on its axis in millimetres;
 omitting it cuts through the middle of the authored bounds. A disabled clip cuts nothing.
+`clip.partColors` defaults to true. Caps use each part's normal base material color,
+without selection/hover tints or opacity; false uses uniform amber (`0xe9a451`).
+Caps stay opaque even for transparent parts, and outer materials are unchanged.
+Each intersected part has a winding pair and an opaque fill followed by a stencil
+clear, so holes remain empty. Cap geometry/materials are owned by Clip; stencil
+geometry is borrowed from the display meshes. Generic scene looks preserve
+`mesh.userData.cadBaseColor` before highlight ink; STEP records use `baseColor`
+and normal effect colors. A mesh with several materials uses its first material
+as its cap color; texture and vertex-color variation are not sampled.
 
 `resolveViewSceneSettings({display, preview, previewSettings, camera, appearance, quality})` is the public
 Viewer/snapshot scene-policy boundary (`preview`: Render over the display, as above). Its `view` is the full grouped state;

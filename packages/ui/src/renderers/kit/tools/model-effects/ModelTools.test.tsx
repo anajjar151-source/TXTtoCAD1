@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState, useSyncExternalStore } from 'react';
+import { createViewSettingsStore } from '../../../../../dist/renderers/kit/view-settings/viewSettingsStore.js';
 import { resolveViewSettings } from '@text-to-cad/core/common/viewSettings.js';
-import { act, cleanup, render, renderHook } from '@testing-library/react';
+import { act, cleanup, render, renderHook, screen, fireEvent } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { useModelTools } from '../../../../../dist/renderers/kit/tools/model-effects/ModelTools.js';
 
@@ -58,4 +59,33 @@ it('offers Explode and Clip on every STEP, a single part too, and idles them whi
   expect(offered()).toEqual(['exploded:false', 'clip:false']);
   rerender({ ...props, disabled: false, mesh: { parts: [part('a'), part('b')] } });
   expect(offered()).toEqual(['exploded:false', 'clip:false']);
+});
+
+it('Part colors stays with an applied cut across tools; Reset and an unset reopen restore the default', () => {
+  const store=createViewSettingsStore();
+  function Harness() {
+    const snapshot=useSyncExternalStore(store.subscribe,store.getSnapshot);
+    const [selectedTool,onSelect]=useState('references');
+    const tools=useModelTools({view:snapshot.scene.view,features:{settings:['clip']},store,
+      mesh:{bounds:{min:[0,0,0],max:[10,10,10]}},disabled:false,selectedTool,onSelect});
+    return <><button onClick={()=>onSelect('references')}>Select</button>
+      {tools.tools.map(tool=><button key={tool.id} onClick={tool.onSelect}>{tool.label}</button>)}{tools.subToolbar}</>;
+  }
+  render(<Harness />);
+  const open=()=>fireEvent.click(screen.getByRole('button',{name:'Clip',exact:true}));
+  const box=()=>screen.getByRole('checkbox',{name:'Part colors'});
+  open(); expect(box().getAttribute('aria-checked')).toBe('true');
+  fireEvent.click(box());
+  expect(store.getSnapshot().scene.view.clip.enabled).toBe(false);
+  fireEvent.click(screen.getByRole('button',{name:'Select',exact:true}));
+  open(); expect(box().getAttribute('aria-checked')).toBe('true');
+  act(()=>store.patch({clip:{at:4}}));
+  fireEvent.click(box());
+  fireEvent.click(screen.getByRole('button',{name:'Select',exact:true}));
+  open(); expect(box().getAttribute('aria-checked')).toBe('false');
+  expect(store.getSnapshot().scene.view.clip.at).toBe(4);
+  fireEvent.click(screen.getByRole('button',{name:'Reset clip'}));
+  expect(box().getAttribute('aria-checked')).toBe('true');
+  expect(store.getSnapshot().scene.view.clip.enabled).toBe(false);
+  expect(createViewSettingsStore().getSnapshot().scene.view.clip.partColors).toBe(true);
 });
