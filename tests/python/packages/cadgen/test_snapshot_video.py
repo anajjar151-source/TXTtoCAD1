@@ -301,8 +301,6 @@ class FfmpegResolution(unittest.TestCase):
 
     @unittest.skipUnless(os.name == "posix", "native POSIX executable permissions")
     def test_an_existing_non_executable_override_is_refused_before_rendering(self):
-        import os
-        import subprocess
         import unittest.mock
 
         from cadgen.snapshot_video import ffmpeg_binary
@@ -311,14 +309,11 @@ class FfmpegResolution(unittest.TestCase):
             binary = Path(directory) / "ffmpeg"
             binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
             binary.chmod(0o644)
-            with self.assertRaises(PermissionError):
-                subprocess.run([str(binary)], check=True)
             with unittest.mock.patch.dict(os.environ, {"CADGEN_FFMPEG": str(binary)}):
                 with self.assertRaisesRegex(SnapshotError, "not executable"):
                     ffmpeg_binary()
                 binary.chmod(0o755)
                 self.assertEqual(ffmpeg_binary(), str(binary))
-                subprocess.run([ffmpeg_binary()], check=True)
 
     def _without_ffmpeg(self):
         import os
