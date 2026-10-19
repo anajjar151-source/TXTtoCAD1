@@ -138,6 +138,13 @@ test("only complete exact display publications are admitted; pending work and ru
   assert.equal(cache.set(root, a.entry, a.context), false, "unexpected mutable runtime objects do not enter display data");
 });
 
+test("a load that deferred a component to a placeholder is never cached as complete", () => {
+  const cache = createCompletedPackageCache(), a = model();
+  a.context.componentMeshDataByCid.c0.placeholder = true;
+  assert.equal(cache.set(root, a.entry, a.context), false, "a reopen or Retry loads the deferred component again");
+  assert.equal(cache.get(root, a.entry), null);
+});
+
 test("byte and entry limits account for full backing allocations and evict least-recently-used packages", () => {
   const a = model("a.step"), b = model("b.step"), c = model("c.step");
   const packed = new ArrayBuffer(64 * 1024);

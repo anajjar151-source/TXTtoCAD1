@@ -36,13 +36,16 @@ import {
 } from "./packageDescriptorCache.js";
 import {
   createProgressivePackageLoader,
+  deferredComponentsOf,
   orderComponentsForProgressiveLoad,
+  placeholderComponentMeshData,
   PROGRESSIVE_LOAD_MAX_INFLIGHT_BYTES,
   progressiveLoadProgress,
   publishMeshCostAccounting,
   awaitingSameFileRevision,
   meshStateAfterCancelledLoad,
-  shouldRetainCompleteSameFileMesh
+  shouldRetainCompleteSameFileMesh,
+  surfIndexBounds
 } from "./packageProgressiveLoad.js";
 import { createInitialDisplayPlans, initialDisplayLodPlan, probeInitialDisplayLod } from "../../../render/initialDisplayLod.js";
 import { createSurfaceTicketBatches, createTessellationBodyBatches } from "./packageBatchReads.js";
@@ -104,6 +107,9 @@ const REFERENCE_PRIORITY_NEW_PARTS = 8;
 
 const GPU_BUFFER_ESTIMATE_MULTIPLIER = 1.15;
 const SURF_WORKER_TEMP_ESTIMATE_MULTIPLIER = 2;
+// Reading a deferred component's SURF index for its placeholder box holds the bytes, their
+// decoded text and the parsed JSON at once: charged at this multiple of the SURF's length.
+const SURF_INDEX_PARSE_ESTIMATE_MULTIPLIER = 6;
 
 function syncAssetCacheMemory(excludeBuffers = []) {
   const caches = renderAssetCacheStatsWithPackages({ excludeBuffers: lodStagingBuffers(excludeBuffers) });
@@ -222,6 +228,7 @@ function detailSwapMeshState(current, entry, meshData) {
     assemblyInteractionReady: current.assemblyInteractionReady !== false,
     assemblyBackgroundError: current.assemblyBackgroundError || "",
     assemblyBackgroundErrorMeshHash: current.assemblyBackgroundErrorMeshHash || "",
+    ...(current.assemblyDeferredComponents ? { assemblyDeferredComponents: current.assemblyDeferredComponents } : {}),
   };
 }
 
@@ -399,7 +406,9 @@ export function useCadAssets({
       .map(([cid, component]) => {
         const bounds = componentMeshDataByCid[cid]?.bounds;
         const identity = componentIdentityByCid[cid] || component;
-        if (!bounds?.min || !bounds?.max || !identity?.surfaceObject) {
+        // A deferred component's placeholder is no detail level to refine from: the memory
+        // envelope refused its decode, and only a reload asks for it again.
+        if (!bounds?.min || !bounds?.max || !identity?.surfaceObject || componentMeshDataByCid[cid]?.placeholder) {
           return null;
         }
         const center = [
@@ -1061,6 +1070,29 @@ export function useCadAssets({
             return released;
           },
           onMemoryLimitation: publishMemoryLimitation,
+          // One component the envelope cannot reserve, even alone after recovery, no longer
+          // fails the file: it is deferred and its siblings load. A staged replacement is the
+          // exception -- the complete model on screen is kept rather than replaced by a
+          // degraded revision, so the refusal stays fatal to that revision.
+          deferUnadmittable: !stageWholeReplacement,
+          // The deferred component's box, from its SURF index: a bounded read charged to the
+          // envelope, skipped (no placeholder) when the envelope cannot take even that.
+          placeholderComponent: async (cid, component) => {
+            const surfUrl = componentIdentityByCid.get(cid)?.surfUrl || staticSurfUrl(component);
+            const surfBytes = surfUrl ? await surfContentLength(surfUrl, controller.signal, resources) : null;
+            if (!(surfBytes > 0)) return null;
+            const reservation = viewerMemoryPolicy.reserve({
+              category: "workerInFlight", bytes: surfBytes * SURF_INDEX_PARSE_ESTIMATE_MULTIPLIER,
+              label: `${cid} placeholder`, kind: "allocate", recordLimitation: false,
+            });
+            if (!reservation.ok) return null;
+            try {
+              const bytes = await resources.readBytes(surfUrl, { signal: controller.signal, maxBytes: surfBytes });
+              return placeholderComponentMeshData(cid, surfIndexBounds(bytes));
+            } finally {
+              viewerMemoryPolicy.release(reservation.token);
+            }
+          },
           // Revision replacement is a transaction: loaded component arrays
           // are accounted beside the current complete scene, but only the
           // final composition is published.
@@ -1090,7 +1122,7 @@ export function useCadAssets({
           swappedComponents: () => (
             lodPackageRef.current?.requestId === requestId ? publishedLodContext(lodPackageRef.current).componentMeshDataByCid : null
           ),
-          onPublish: ({ meshData, componentMeshDataByCid, loaded, total, final, publishCount }) => {
+          onPublish: ({ meshData, componentMeshDataByCid, loaded, total, final, publishCount, deferred = [] }) => {
             if (final) viewerMemoryPolicy.clearLimitation();
 
             // window.__cadMeshCost for the headless memory harness; not React state.
@@ -1100,6 +1132,8 @@ export function useCadAssets({
             // interaction-ready: the workspace keeps the "loading" overlay
             // with the per-batch count until the final publish flips it.
             nextState.assemblyInteractionReady = final;
+            // The components left undecoded, named for the alert beside the model.
+            if (deferred.length) nextState.assemblyDeferredComponents = deferredComponentsOf(meshData, deferred, packageDescriptor);
             const ctx = lodPackageRef.current;
             const componentLodLevelByCid = Object.fromEntries(
               Object.entries(componentMeshDataByCid).map(([cid, componentMeshData]) => [

@@ -161,11 +161,122 @@ export function meshStateAfterCancelledLoad(current, cancelledFile) {
   return current && current.file === cancelledFile && !meshStateIsComplete(current) ? null : current;
 }
 
+// The components a load deferred (`deferUnadmittable`), as the viewer names them: the display
+// name of the component's first drawn occurrence (its placeholder), else the descriptor's name
+// for its first occurrence, and whether a placeholder stands in for it.
+export function deferredComponentsOf(meshData, deferred = [], descriptor = null) {
+  const names = new Map();
+  for (const part of Array.isArray(meshData?.parts) ? meshData.parts : []) {
+    const cid = String(part?.componentId || "");
+    if (cid && !names.has(cid) && part.name) names.set(cid, String(part.name));
+  }
+  for (const occurrence of Array.isArray(descriptor?.occurrences) ? descriptor.occurrences : []) {
+    const cid = String(occurrence?.component || "");
+    if (cid && !names.has(cid) && occurrence.name) names.set(cid, String(occurrence.name));
+  }
+  return deferred.map(({ cid, placeholder, detail }) => ({
+    cid, name: names.get(cid) || "", placeholder: !!placeholder,
+    requestedBytes: Number(detail?.requestedBytes) || 0,
+    availableBytes: Number(detail?.availableBytes) || 0,
+  }));
+}
+
+// A model whose load deferred components the memory envelope refused: its final publish stood
+// placeholders in for them (or left them out), so not every component is real geometry. The
+// record rides on the mesh state, so a detail swap's recomposition keeps it.
+export function meshStateHasDeferredComponents(meshState) {
+  const deferred = meshState?.assemblyDeferredComponents ?? meshState?.meshData?.deferredComponentIds;
+  return Array.isArray(deferred) && deferred.length > 0;
+}
+
+// A component's local bounds from its SURF container, without tessellating it: the union of the
+// per-face boxes in the JSON index (`[minX, minY, minZ, maxX, maxY, maxZ]`). Null for anything
+// that is not a readable SURF or carries no face box.
+const SURF_MAGIC = 0x46525553;
+
+export function surfIndexBounds(arrayBuffer) {
+  try {
+    const header = new DataView(arrayBuffer, 0, 12);
+    if (header.getUint32(0, true) !== SURF_MAGIC) return null;
+    const jsonLength = header.getUint32(8, true);
+    const index = JSON.parse(new TextDecoder().decode(new Uint8Array(arrayBuffer, 12, jsonLength)));
+    const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+    for (const face of Array.isArray(index?.faces) ? index.faces : []) {
+      const box = face?.bbox;
+      if (!Array.isArray(box) || box.length < 6 || !box.slice(0, 6).every(Number.isFinite)) continue;
+      for (let axis = 0; axis < 3; axis += 1) {
+        min[axis] = Math.min(min[axis], box[axis]);
+        max[axis] = Math.max(max[axis], box[axis + 3]);
+      }
+    }
+    return min.every(Number.isFinite) && max.every(Number.isFinite) ? { min, max } : null;
+  } catch {
+    return null;
+  }
+}
+
+// A degraded model is not one to keep on screen through its next revision: the revision loads
+// progressively and may defer again, rather than failing whole to preserve a placeholder.
 export function shouldRetainCompleteSameFileMesh(current, entry, targetMeshHash) {
   return String(entry?.kind || "") === "assembly" &&
     String(current?.file || "") === String(entry?.file || "") &&
     String(current?.meshHash || "") !== String(targetMeshHash || "") &&
-    meshStateIsComplete(current);
+    meshStateIsComplete(current) &&
+    !meshStateHasDeferredComponents(current);
+}
+
+// Placeholder geometry for a component the viewer would not decode: a closed box over `bounds`
+// (component-local, CAD units), flat-shaded, drawn translucent so it reads as a stand-in. It
+// carries no topology (no faces to pick) and no LOD level, and `placeholder: true` keeps the LOD
+// scheduler, the same-file revision reuse and the completed-package cache from treating it as the
+// component's geometry.
+const PLACEHOLDER_OPACITY = 0.35;
+const BOX_FACES = [
+  // [normal axis, sign, the two in-plane axes]
+  [0, -1, 1, 2], [0, 1, 1, 2],
+  [1, -1, 0, 2], [1, 1, 0, 2],
+  [2, -1, 0, 1], [2, 1, 0, 1],
+];
+
+export function placeholderComponentMeshData(cid, bounds) {
+  const min = bounds?.min, max = bounds?.max;
+  if (!Array.isArray(min) || !Array.isArray(max) || min.length < 3 || max.length < 3) return null;
+  const lo = min.map(Number), hi = max.map(Number);
+  if (![...lo, ...hi].every(Number.isFinite) || lo.some((value, axis) => value > hi[axis])) return null;
+  const vertices = new Float32Array(BOX_FACES.length * 4 * 3);
+  const normals = new Float32Array(vertices.length);
+  const indices = new Uint32Array(BOX_FACES.length * 6);
+  BOX_FACES.forEach(([axis, sign, u, v], face) => {
+    const corners = [[lo[u], lo[v]], [hi[u], lo[v]], [hi[u], hi[v]], [lo[u], hi[v]]];
+    corners.forEach(([cu, cv], corner) => {
+      const at = (face * 4 + corner) * 3;
+      vertices[at + axis] = sign < 0 ? lo[axis] : hi[axis];
+      vertices[at + u] = cu;
+      vertices[at + v] = cv;
+      normals[at + axis] = sign;
+    });
+    // The corners run counter-clockwise in (u, v), so [0, 1, 2] faces along u x v: +x, -y
+    // and +z for the three planes. Wind each face counter-clockwise seen from outside.
+    const base = face * 4;
+    const uCrossV = axis === 1 ? -1 : 1;
+    const quad = uCrossV === sign ? [0, 1, 2, 0, 2, 3] : [0, 2, 1, 0, 3, 2];
+    quad.forEach((offset, i) => { indices[face * 6 + i] = base + offset; });
+  });
+  return {
+    cid,
+    placeholder: true,
+    vertices,
+    normals,
+    colors: new Float32Array(0),
+    indices,
+    edge_indices: new Uint32Array(0),
+    parts: [{
+      id: `${cid}:placeholder`, occurrenceId: `${cid}:placeholder`, primitiveIndex: 0,
+      vertexOffset: 0, vertexCount: vertices.length / 3, triangleOffset: 0, triangleCount: indices.length / 3,
+      opacity: PLACEHOLDER_OPACITY,
+    }],
+    bounds: { min: lo, max: hi },
+  };
 }
 
 // A clip's model handle for a PARTIAL composition. The runtime's m.get() throws
@@ -338,9 +449,12 @@ export function orderComponentsForProgressiveLoad(descriptor) {
  *   reserveLoad?({ cid, estimatedBytes }) -> { ok, token?, detail? },
  *   releaseLoad?(token), onMemoryLimitation?(detail),
  *   recoverMemoryPressure?(detail),    // one bounded reclaim attempt after admitted work drains
+ *   deferUnadmittable?,                // a component refused at admission is deferred, not fatal
+ *   placeholderComponent?(cid, component, detail), // -> Promise<meshData|null> standing in for it
+ *   onComponentDeferred?({ cid, component, detail, error, placeholder }),
  *   onRetainedChange?({ loaded, total, retainedBytes }), // every unique component completion
  *   swappedComponents?(),              // the live LOD working set (cid -> meshData) or null
- *   onPublish({ meshData, componentMeshDataByCid, loaded, total, final, composeMs, publishCount }),
+ *   onPublish({ meshData, componentMeshDataByCid, loaded, total, final, composeMs, publishCount, deferred }),
  *   maxComponents?, maxBytes?
  * }).run() -> Promise<{ loaded, total, publishes }>
  *
@@ -348,7 +462,13 @@ export function orderComponentsForProgressiveLoad(descriptor) {
  * fewer than `concurrency` are in flight and the estimated decoded bytes in
  * flight (createDecodeSizeEstimator over the sizeHint) fit `maxInFlightBytes`.
  * With `allowOversizedSingle`, one larger estimate may run alone after
- * `reserveLoad` accepts it. Every publish re-checks isCurrent() first; a superseded or aborted load
+ * `reserveLoad` accepts it. With `deferUnadmittable`, a component the envelope still refuses
+ * once nothing else is in flight and recovery has run is DEFERRED instead of failing the load: it
+ * is never decoded, its siblings keep loading, and `placeholderComponent` may supply geometry
+ * that stands in for it (meshData.deferredComponentIds names every deferred cid). A load that
+ * defers every component and has no placeholder to draw still fails with the refusal. A decode
+ * that outgrows its admitted estimate is measured memory, not an estimate, and stays fatal.
+ * Every publish re-checks isCurrent() first; a superseded or aborted load
  * publishes nothing further, drops its references to every component it
  * loaded (retainedComponentCount() -> 0) and rejects with an AbortError.
  * Composition is `{ ...loadedSoFar, ...swappedComponents() }`, so a viewport
@@ -371,6 +491,9 @@ export function createProgressivePackageLoader({
   reserveLoad = null,
   releaseLoad = null,
   recoverMemoryPressure = null,
+  deferUnadmittable = false,
+  placeholderComponent = null,
+  onComponentDeferred = null,
   onMemoryLimitation = null,
   onRetainedChange = null,
   swappedComponents = () => null,
@@ -384,6 +507,11 @@ export function createProgressivePackageLoader({
   const componentEntries = orderComponentsForProgressiveLoad(descriptor);
   const total = componentEntries.length;
   const loadedByCid = {};
+  // Components refused at admission (`deferUnadmittable`): cid -> refusal detail, and the
+  // placeholder geometry standing in for those that have one.
+  const deferredByCid = {};
+  const placeholderByCid = {};
+  let firstDeferral = null;
   let loaded = 0;
   let pendingComponents = 0;
   let pendingBytes = 0;
@@ -392,14 +520,23 @@ export function createProgressivePackageLoader({
   let retainedBytes = 0;
   let previousComposition = initialComposition;
 
+  // Progress counts every component the load is done with, deferred ones included.
+  function settled() {
+    return loaded + Object.keys(deferredByCid).length;
+  }
+
+  function composable() {
+    return loaded + Object.keys(placeholderByCid).length > 0;
+  }
+
   function notifyRetained() {
-    onRetainedChange?.({ loaded, total, retainedBytes });
+    onRetainedChange?.({ loaded: settled(), total, retainedBytes });
   }
 
   function release() {
     previousComposition = null;
-    for (const cid of Object.keys(loadedByCid)) {
-      delete loadedByCid[cid];
+    for (const byCid of [loadedByCid, placeholderByCid]) {
+      for (const cid of Object.keys(byCid)) delete byCid[cid];
     }
     retainedBytes = 0;
     notifyRetained();
@@ -419,17 +556,26 @@ export function createProgressivePackageLoader({
     }
     const swapped = swappedComponents?.();
     const componentMeshDataByCid = swapped && typeof swapped === "object"
-      ? { ...loadedByCid, ...swapped }
-      : { ...loadedByCid };
+      ? { ...placeholderByCid, ...loadedByCid, ...swapped }
+      : { ...placeholderByCid, ...loadedByCid };
     const startedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
     const meshData = buildComposedPackageMeshData(descriptor, componentMeshDataByCid, { previous: previousComposition });
+    const deferredComponentIds = Object.keys(deferredByCid);
+    if (deferredComponentIds.length) meshData.deferredComponentIds = deferredComponentIds;
     previousComposition = meshData;
     const composeMs = (typeof performance !== "undefined" ? performance.now() : Date.now()) - startedAt;
     pendingComponents = 0;
     pendingBytes = 0;
     publishes += 1;
     publishedFinal = publishedFinal || final;
-    onPublish?.({ meshData, componentMeshDataByCid, loaded, total, final, composeMs, publishCount: publishes });
+    onPublish?.({ meshData, componentMeshDataByCid, loaded: settled(), total, final, composeMs, publishCount: publishes,
+      deferred: deferredComponentIds.map((cid) => ({ cid, detail: deferredByCid[cid], placeholder: !!placeholderByCid[cid] })) });
+  }
+
+  // A refusal at admission: fatal, or with `deferUnadmittable` marked for loadOne to defer.
+  function refusal(error) {
+    if (deferUnadmittable === true) error.deferrable = true;
+    return error;
   }
 
   // Coarse and canonical tessellations have different expansion curves. Keep
@@ -508,10 +654,10 @@ export function createProgressivePackageLoader({
             preservingCurrentView: true,
           };
           onMemoryLimitation?.(detail);
-          throw new ViewerMemoryLimitError(
+          throw refusal(new ViewerMemoryLimitError(
             `Component ${cid} needs an estimated ${Math.ceil(estimate / (1024 * 1024))} MiB decode, above the viewer's ${Math.floor(maxInFlightBytes / (1024 * 1024))} MiB in-flight limit. The current view was kept.`,
             detail
-          );
+          ));
         }
         await new Promise((resolve) => waiters.push(resolve));
         continue;
@@ -554,10 +700,10 @@ export function createProgressivePackageLoader({
         preservingCurrentView: true,
       };
       onMemoryLimitation?.(detail);
-      throw new ViewerMemoryLimitError(
+      throw refusal(new ViewerMemoryLimitError(
         `Loading component ${cid} would exceed the viewer memory envelope. The current view was kept.`,
         detail
-      );
+      ));
     }
   }
 
@@ -567,6 +713,35 @@ export function createProgressivePackageLoader({
     releaseLoad?.(reservation, { estimatedBytes: estimate });
     releaseProgressEpoch += 1;
     wakeWaiters();
+  }
+
+  function publishIfDue() {
+    const final = settled() === total;
+    if (!composable()) return;
+    if (final || (publishIntermediate && progressivePublishDue(
+      { pendingComponents, pendingBytes, publishCount: publishes },
+      { firstComponents, firstBytes, maxComponents, maxBytes }
+    ))) {
+      publish(final);
+    }
+  }
+
+  // Never decoded: siblings keep loading, and the placeholder, if the caller has one, stands in.
+  async function defer(cid, component, error) {
+    deferredByCid[cid] = error.detail || {};
+    firstDeferral = firstDeferral || error;
+    let placeholder = null;
+    try {
+      placeholder = await placeholderComponent?.(cid, component, error.detail) || null;
+    } catch {
+      placeholder = null;
+    }
+    if (!active()) stop();
+    if (placeholder) placeholderByCid[cid] = placeholder;
+    onComponentDeferred?.({ cid, component, detail: error.detail, error, placeholder: !!placeholder });
+    notifyRetained();
+    pendingComponents += 1;
+    publishIfDue();
   }
 
   async function loadOne([cid, component]) {
@@ -579,13 +754,7 @@ export function createProgressivePackageLoader({
       loaded += 1;
       notifyRetained();
       pendingComponents += 1;
-      const final = loaded === total;
-      if (final || (publishIntermediate && progressivePublishDue(
-        { pendingComponents, pendingBytes, publishCount: publishes },
-        { firstComponents, firstBytes, maxComponents, maxBytes }
-      ))) {
-        publish(final);
-      }
+      publishIfDue();
       return;
     }
     const rejectedCacheObjects = new Set();
@@ -612,7 +781,15 @@ export function createProgressivePackageLoader({
         }
       }
       if (!active()) stop();
-      admission = await admit(hint, cid, component);
+      try {
+        admission = await admit(hint, cid, component);
+      } catch (error) {
+        if (error?.deferrable === true && active()) {
+          await defer(cid, component, error);
+          return;
+        }
+        throw error;
+      }
       try {
         if (!active()) stop();
         meshData = await loadComponent(cid, component, {
@@ -664,13 +841,7 @@ export function createProgressivePackageLoader({
     notifyRetained();
     pendingComponents += 1;
     pendingBytes += decodedBytes;
-    const final = loaded === total;
-    if (final || (publishIntermediate && progressivePublishDue(
-      { pendingComponents, pendingBytes, publishCount: publishes },
-      { firstComponents, firstBytes, maxComponents, maxBytes }
-    ))) {
-      publish(final);
-    }
+    publishIfDue();
   }
 
   async function run() {
@@ -698,6 +869,11 @@ export function createProgressivePackageLoader({
       if (!active()) {
         stop();
       }
+      // Every component deferred and none with a placeholder: nothing to draw, so the
+      // refusal is the load's outcome, as it was before deferral existed.
+      if (firstDeferral && !composable()) {
+        throw firstDeferral;
+      }
       if (!publishedFinal) {
         // No components at all: compose anyway so the descriptor's own error
         // ("matched no renderable component GLBs") surfaces exactly as before.
@@ -711,7 +887,7 @@ export function createProgressivePackageLoader({
       release();
       throw error;
     }
-    return { loaded, total, publishes };
+    return { loaded, total, publishes, deferred: Object.keys(deferredByCid) };
   }
 
   return {
@@ -719,7 +895,7 @@ export function createProgressivePackageLoader({
     total,
     // Diagnostics: how many loaded components this loader still references,
     // and the most decodes it ever had in flight at once.
-    retainedComponentCount: () => Object.keys(loadedByCid).length,
+    retainedComponentCount: () => Object.keys(loadedByCid).length + Object.keys(placeholderByCid).length,
     peakInFlight: () => peakInFlight
   };
 }

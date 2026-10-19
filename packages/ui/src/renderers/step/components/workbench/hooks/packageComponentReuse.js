@@ -29,8 +29,9 @@ export function retainedComponentMeshesForRevision({
     const oldComponent = previous.descriptor.components?.[cid];
     const oldIdentity = previous.componentIdentityByCid?.[cid] || oldComponent;
     const meshData = previous.componentMeshDataByCid?.[cid];
+    // A placeholder stood in for a component that was never decoded: nothing to carry over.
     if (!oldComponent?.surfaceInput || oldComponent.surfaceInput !== component?.surfaceInput
-        || !oldIdentity?.surfaceObject || !meshData) continue;
+        || !oldIdentity?.surfaceObject || !meshData || meshData.placeholder) continue;
     const level = normalizeLodLevel(
       previous.componentLodLevelByCid?.[cid] ?? meshData.lodLevel,
     );

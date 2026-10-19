@@ -750,11 +750,14 @@ function StepSurfaceBody({ view, data }) {
         !editingBuildActive(editingPreview.state) &&
         ["network", "timeout", "status"].includes(selectedArtifact.failure?.kind)
         ? null : selectedArtifact,
-      { partial: selectedMeshPartial }
+      { partial: selectedMeshPartial,
+        deferredComponents: selectedMeshMatches ? meshState?.assemblyDeferredComponents : null }
     );
     return meshAlert || viewerRuntimeAlert;
   }, [
     editingPreview.state,
+    meshState?.assemblyDeferredComponents,
+    selectedMeshMatches,
     catalogError,
     error,
     meshState?.assemblyBackgroundError,

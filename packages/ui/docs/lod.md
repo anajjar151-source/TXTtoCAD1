@@ -38,6 +38,28 @@ oversized component may start coarse. A component above the concurrent decode
 cap runs alone only when the shared Viewer memory envelope can reserve its
 complete estimate.
 
+**One component never fails the file.** A component the envelope still refuses
+once nothing else is in flight and recovery has run is deferred
+(`deferUnadmittable`, `packageProgressiveLoad.js`): it is never decoded, every
+other component loads, and a translucent box over its bounds stands in for each
+of its occurrences. The box comes from the face boxes in its SURF index
+(`surfIndexBounds`), a read charged to the envelope and skipped when even that
+does not fit, in which case the component is left out. A warning beside the
+model names the part and asks to free memory and Retry; the degraded model is
+never cached as complete, so Retry and a reopen ask for the part again. Only a
+load that defers every component, with nothing to draw, still fails. A staged
+same-file replacement is the exception: it keeps the complete model on screen
+rather than replace it with a degraded revision, so there the refusal fails the
+revision and the current view is kept.
+
+Decode estimates scale the SURF's byte length by a fixed expansion ratio (32x
+coarse, 64x standard), and the cold reservation doubles that for worker scratch.
+Topology-heavy parts sit far below that ratio: most of their SURF is the JSON
+selector index, not geometry. A PCB with 2,500 drilled holes has a 7.8 MB SURF
+(6.9 MB of it index) that decodes to about 16 MB, roughly 2x; at a 20 MB SURF
+the 32x estimate already asks the envelope for more than it has. Such a part
+is deferred, not decoded, until the estimate learns that.
+
 Coarse geometry is a temporary preview: visible components automatically reach
 at least the standard level, preserving its angular smoothness even when
 projected chord error alone would permit a coarser mesh. Close inspection can
@@ -99,8 +121,9 @@ backing allocation, including unused sections of packed buffers. GPU charges
 use uploaded view sizes; CPU-only edge inputs and picking allocations are
 accounted for separately.
 
-A component that cannot fit even at the coarse level reports a limitation and
-preserves the current view. **Estimates and sampled resource totals are a soft
+A component that cannot fit even at the coarse level reports a limitation; a
+progressive load defers it behind a placeholder (section 1), and a refinement
+or staged replacement preserves the current view. **Estimates and sampled resource totals are a soft
 budget, not a hard browser RSS limit.**
 
 ## 4. The replacement batch

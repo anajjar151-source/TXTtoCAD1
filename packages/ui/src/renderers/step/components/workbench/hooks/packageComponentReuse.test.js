@@ -37,6 +37,21 @@ test("an unchanged concrete surface stays retained across a tree revision", () =
   assert.equal(retained[CID], meshData);
 });
 
+test("a deferred component's placeholder is never carried into the next revision", () => {
+  const placeholder = { placeholder: true, vertices: new Float32Array(72) };
+  const retained = retainedComponentMeshesForRevision({
+    previous: {
+      descriptor: descriptor(),
+      componentIdentityByCid: { [CID]: descriptor().components[CID] },
+      meshUrl: meshUrl(HASH_A),
+      componentMeshDataByCid: { [CID]: placeholder },
+    },
+    descriptor: descriptor(),
+    meshUrl: meshUrl(HASH_B),
+  });
+  assert.deepEqual(retained, {}, "the revision asks for the real component again");
+});
+
 test("reuse rejects changed surface outputs, inputs and exact levels", () => {
   const meshData = { lodLevel: 0 };
   const previous = {
