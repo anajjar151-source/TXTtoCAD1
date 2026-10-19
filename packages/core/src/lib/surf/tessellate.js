@@ -598,6 +598,7 @@ function gridTriangulate(face, floats, loops, chordLimit, angleLimit = Infinity,
       }
     }
   }
+  const segmentIndex = buildSegmentIndex(segments, segmentsByCell, { minU, maxU, minV, maxV, du, dv, stepsU, stepsV, cellOf });
 
   const uvVerts = [];
   const vertexIds = new Map();
@@ -727,7 +728,77 @@ function gridTriangulate(face, floats, loops, chordLimit, angleLimit = Infinity,
     uvVerts,
     triangles,
     vertexIds,
-    segmentIndex: { segments, segmentsByCell, cellOf, stepsV },
+    segmentIndex,
+  };
+}
+
+// The tessellation grid follows curvature, so a plane is ONE cell: its bucket
+// holds every trim segment, and each lookup — one per boundary vertex when
+// pinning, one per boundary mesh edge when attributing — scanned them all. A
+// board with thousands of holes made that quadratic (minutes per face). Each
+// grid cell is therefore split again into a sub-grid sized by its segment
+// count, used only for lookups; the grid and its crossed cells are untouched.
+//
+// A sub-cell lists the segments of its grid cell whose bounding box, padded by
+// `pad`, touches it. Every consumer only accepts a segment within `reach` of
+// the query point, so for reach well under the pad the sub-cell's list is the
+// grid cell's list minus segments that could never match, in the same order:
+// first-match and best-match results are identical. A larger reach falls back
+// to the grid cell's list.
+const SEGMENT_SUBGRID_MAX = 256;
+
+function buildSegmentIndex(segments, segmentsByCell, grid) {
+  const { minU, maxU, minV, maxV, du, dv, stepsU, stepsV, cellOf } = grid;
+  const coarse = (u, v) => {
+    const [cu, cv] = cellOf(u, v);
+    return segmentsByCell.get(cu * stepsV + cv);
+  };
+  const perCell = segments.length / (stepsU * stepsV);
+  const clampSub = (n) => Math.min(SEGMENT_SUBGRID_MAX, Math.max(1, Math.ceil(n)));
+  const subU = clampSub(Math.sqrt(perCell * (du / dv)));
+  const subV = clampSub(Math.sqrt(perCell * (dv / du)));
+  if (!(perCell > 16) || subU * subV < 4) return { segments, candidatesAt: coarse };
+
+  const pad = Math.max(Math.abs(minU), Math.abs(maxU), Math.abs(minV), Math.abs(maxV), 1) * 16e-7;
+  // Monotone in u for a fixed grid column, so a point inside a padded box
+  // always lands in one of the box's sub-columns.
+  const subOfU = (u, cu) => Math.min(subU - 1, Math.max(0, Math.floor(((u - minU) / du - cu) * subU)));
+  const subOfV = (v, cv) => Math.min(subV - 1, Math.max(0, Math.floor(((v - minV) / dv - cv) * subV)));
+  const subCells = subU * subV;
+  const fine = new Map();
+  for (let segIndex = 0; segIndex < segments.length; segIndex += 1) {
+    const [x0, y0, x1, y1] = segments[segIndex];
+    const lowU = Math.min(x0, x1);
+    const highU = Math.max(x0, x1);
+    const lowV = Math.min(y0, y1);
+    const highV = Math.max(y0, y1);
+    const [ca0, cb0] = cellOf(lowU, lowV);
+    const [ca1, cb1] = cellOf(highU, highV);
+    for (let cu = ca0; cu <= ca1; cu += 1) {
+      const su0 = subOfU(lowU - pad, cu);
+      const su1 = subOfU(highU + pad, cu);
+      for (let cv = cb0; cv <= cb1; cv += 1) {
+        const sv0 = subOfV(lowV - pad, cv);
+        const sv1 = subOfV(highV + pad, cv);
+        const base = (cu * stepsV + cv) * subCells;
+        for (let su = su0; su <= su1; su += 1) {
+          for (let sv = sv0; sv <= sv1; sv += 1) {
+            const key = base + su * subV + sv;
+            let list = fine.get(key);
+            if (!list) fine.set(key, (list = []));
+            list.push(segIndex);
+          }
+        }
+      }
+    }
+  }
+  return {
+    segments,
+    candidatesAt(u, v, reach) {
+      if (!(reach * 2 <= pad)) return coarse(u, v);
+      const [cu, cv] = cellOf(u, v);
+      return fine.get((cu * stepsV + cv) * subCells + subOfU(u, cu) * subV + subOfV(v, cv));
+    },
   };
 }
 
@@ -917,7 +988,7 @@ function attributeBoundaryEdges(triangles, uvVerts, segmentIndex, epsilon) {
       counts.set(key, (counts.get(key) || 0) + 1);
     }
   }
-  const { segments, segmentsByCell, cellOf, stepsV } = segmentIndex;
+  const { segments, candidatesAt } = segmentIndex;
   const epsilonSq = epsilon * epsilon;
   const ordCache = new Map();
   const ordOfMeshEdge = (p, q) => {
@@ -928,8 +999,7 @@ function attributeBoundaryEdges(triangles, uvVerts, segmentIndex, epsilon) {
     ord = 0;
     const [pu, pv] = uvVerts[p];
     const [qu, qv] = uvVerts[q];
-    const [cu, cv] = cellOf((pu + qu) / 2, (pv + qv) / 2);
-    const candidates = segmentsByCell.get(cu * stepsV + cv) || [];
+    const candidates = candidatesAt((pu + qu) / 2, (pv + qv) / 2, epsilon) || [];
     for (const segIdx of candidates) {
       const [x0, y0, x1, y1, segOrd] = segments[segIdx];
       if (!segOrd) continue;
@@ -1212,11 +1282,11 @@ function tessellateFaceRaw(face, floats, scale, options = {}, sharedEdges = null
       spanVPin = Math.max(spanVPin, Math.abs(v));
     }
     const eps = Math.max(spanUPin, spanVPin, 1) * 1e-7;
-    const { segments, segmentsByCell, cellOf, stepsV } = segmentIndex;
+    const { segments, candidatesAt } = segmentIndex;
     for (let i = 0; i < uvVerts.length; i += 1) {
       const [u, v] = uvVerts[i];
-      const [cu, cv] = cellOf(u, v);
-      const candidates = segmentsByCell.get(cu * stepsV + cv);
+      // Reach: the corner fallback below accepts an endpoint within 4 eps.
+      const candidates = candidatesAt(u, v, eps * 4);
       if (!candidates) continue;
       // A vertex can lie on SEVERAL model edges (a corner lies on both of the
       // edges that meet there); keep the best match PER EDGE, or conformity
