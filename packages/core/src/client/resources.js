@@ -57,6 +57,27 @@ async function responseBytes(response, maxBytes = Infinity) {
   return bytes.buffer;
 }
 
+/** The first `length` bytes of a body, then the rest is cancelled unread. */
+async function responsePrefix(response, length) {
+  if (!response.body?.getReader) return (await response.arrayBuffer()).slice(0, length);
+  const reader = response.body.getReader();
+  const prefix = new Uint8Array(length);
+  let size = 0;
+  try {
+    while (size < length) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const take = Math.min(value.byteLength, length - size);
+      prefix.set(value.subarray(0, take), size);
+      size += take;
+    }
+  } finally {
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
+  return prefix.buffer.slice(0, size);
+}
+
 /**
  * Explicit HTTP composition for one root, or a static docs/snapshot consumer.
  * A custom fetch stays on its owning thread; default HTTP keeps worker URL reads.
@@ -79,10 +100,11 @@ export function createHttpCadResourceProvider({ origin = '', fetch: fetchImpl = 
     const own = new URL(providerOrigin).origin;
     return new URL(resolved, own).origin === own ? requestHeaders : {};
   };
-  async function request(url, { signal, method = 'GET' } = {}) {
+  async function request(url, { signal, method = 'GET', headers: extraHeaders = null } = {}) {
     aborted(signal); aborted(lifetimeSignal);
     const combined = signal && lifetimeSignal ? AbortSignal.any([signal, lifetimeSignal]) : signal || lifetimeSignal;
-    const response = await fetchImpl(resourceUrl(url), { signal: combined, method, headers: headersFor(url), ...(cache ? { cache } : {}) });
+    const headers = extraHeaders ? { ...headersFor(url), ...extraHeaders } : headersFor(url);
+    const response = await fetchImpl(resourceUrl(url), { signal: combined, method, headers, ...(cache ? { cache } : {}) });
     aborted(combined);
     if (!response.ok) throw method === 'HEAD' ? failure(url, response) : await failureWithDetail(url, response);
     return response;
@@ -97,6 +119,19 @@ export function createHttpCadResourceProvider({ origin = '', fetch: fetchImpl = 
       const response = await request(url, { ...options, method: 'HEAD' });
       const value = Number(response.headers.get('content-length'));
       return Number.isSafeInteger(value) && value > 0 ? value : null;
+    },
+    // A ranged GET: a 206 names the whole length in its content-range. A server that ignores the
+    // range answers 200 with the whole body, whose content-length is the length and whose body
+    // past the prefix is cancelled unread.
+    async readPrefix(url, { length, ...options } = {}) {
+      const want = Math.max(1, Math.trunc(Number(length)) || 0);
+      const response = await request(url, { ...options, headers: { range: `bytes=0-${want - 1}` } });
+      const whole = response.status === 206
+        ? Number(/\/(\d+)\s*$/.exec(response.headers.get('content-range') || '')?.[1])
+        : Number(response.headers.get('content-length'));
+      const bytes = await responsePrefix(response, want);
+      aborted(options.signal); aborted(lifetimeSignal);
+      return { bytes, byteLength: Number.isSafeInteger(whole) && whole > 0 ? whole : null };
     },
     resolveDependency(source, reference, { kind = 'relative' } = {}) {
       if (kind === 'package') {
@@ -146,7 +181,8 @@ export function scopeCadResources(provider, signal) {
     resolveDependency(...args) { aborted(signal); return provider.resolveDependency(...args); },
     invalidate() { active.abort(); active = new AbortController(); generation += 1; currentSignal = generationSignal(); },
   };
-  for (const method of ['readJson', 'readText', 'readBytes', 'byteLength', 'workerTicket']) {
+  for (const method of ['readJson', 'readText', 'readBytes', 'byteLength', 'workerTicket', 'readPrefix']) {
+    if (method === 'readPrefix' && typeof provider.readPrefix !== 'function') continue;
     scoped[method] = async (url, options = {}) => {
       aborted(signal); aborted(options.signal);
       const combined = AbortSignal.any([currentSignal, ...(options.signal ? [options.signal] : [])]);

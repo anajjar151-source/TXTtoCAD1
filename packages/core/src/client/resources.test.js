@@ -166,3 +166,38 @@ test('a failed read carries the viewer\'s own reason, with its status', async ()
   const plain = createHttpCadResourceProvider({ fetch: async () => new Response('nope', { status: 404, statusText: 'Not Found' }) });
   await assert.rejects(plain.readJson('/missing'), error => /404 Not Found/.test(error.message) && error.status === 404);
 });
+
+test('a prefix read is one ranged GET whether or not the server honours the range', async () => {
+  const body = new Uint8Array(4096).map((_, i) => i & 0xff);
+  const requests = [];
+  let cancelled = false;
+  const resources = ranged => createHttpCadResourceProvider({headers:{'x-resource':'scoped'}, fetch: async (url, options) => {
+    requests.push(options);
+    if (ranged) {
+      return new Response(body.slice(0, 12), {status:206, headers:{'content-range':`bytes 0-11/${body.length}`}});
+    }
+    // A server that ignores Range: the whole body, of which only the prefix may be read.
+    const stream = new ReadableStream({
+      pull(controller) { controller.enqueue(body.slice(0, 1024)); },
+      cancel() { cancelled = true; },
+    });
+    return new Response(stream, {status:200, headers:{'content-length':String(body.length)}});
+  }});
+  for (const ranged of [true, false]) {
+    const {bytes, byteLength} = await resources(ranged).readPrefix('/part.surf', {length:12});
+    assert.deepEqual([...new Uint8Array(bytes)], [...body.slice(0, 12)]);
+    assert.equal(byteLength, body.length);
+  }
+  assert.equal(cancelled, true, 'the unranged body past the prefix is cancelled');
+  assert.deepEqual(requests.map(options => [options.method, options.headers]),
+    [['GET', {'x-resource':'scoped', range:'bytes=0-11'}], ['GET', {'x-resource':'scoped', range:'bytes=0-11'}]]);
+});
+
+test('a scoped workspace offers a prefix read only when its provider has one', async () => {
+  const {scopeCadResources} = await import('./resources.js');
+  const controller = new AbortController();
+  const http = createHttpCadResourceProvider({fetch: async () => new Response(new Uint8Array(12), {status:206, headers:{'content-range':'bytes 0-11/99'}})});
+  assert.equal((await scopeCadResources(http, controller.signal).readPrefix('/a.surf', {length:12})).byteLength, 99);
+  const { readPrefix: _omitted, ...plain } = http;
+  assert.equal(scopeCadResources(plain, controller.signal).readPrefix, undefined);
+});

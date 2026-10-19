@@ -4,7 +4,16 @@ import { TESS_PROBE_MAX_KEYS } from "@text-to-cad/core/lib/surf/tessellationCach
 export const LARGE_ASSEMBLY_INITIAL_COARSE_COMPONENTS = 64;
 export const DEFAULT_SURF_DECODE_EXPANSION_ESTIMATE = 64;
 export const COARSE_SURF_DECODE_EXPANSION_ESTIMATE = 32;
+// A SURF's JSON index (face/edge selectors, analytic surface parameters) decodes to far less per
+// byte than its float payload: it is parsed once and tessellated a face at a time, where the floats
+// are NURBS poles and knots. Calibrated on 188 SURFs from the repo models (see docs/lod.md); the
+// worst index-heavy part needed 5x coarse and 22x standard to cover its worker peak at twice the estimate.
+export const DEFAULT_SURF_INDEX_DECODE_EXPANSION_ESTIMATE = 32;
+export const COARSE_SURF_INDEX_DECODE_EXPANSION_ESTIMATE = 8;
 export const INITIAL_DECODE_ESTIMATE_FLOOR_BYTES = 64 * 1024 * 1024;
+// `SURF` magic, u32 version, u32 JSON index length (`core/lib/surf/container.js`).
+export const SURF_HEADER_BYTES = 12;
+const SURF_MAGIC = 0x46525553;
 // The tiers a component may open at, in the order they are tried.
 const INITIAL_LEVELS = Object.freeze([LOD_DEFAULT_LEVEL, 0]);
 // The first probe of a package covers the loader's first publish (`PROGRESSIVE_PUBLISH_FIRST_COMPONENTS`).
@@ -129,16 +138,52 @@ export function createInitialDisplayPlans({
   };
 }
 
+// The JSON index length a SURF's first bytes declare; null when they are not a SURF header or
+// declare more index than a `surfBytes`-long SURF holds.
+export function surfIndexBytesFromHeader(prefix, surfBytes = null) {
+  try {
+    if (!(prefix instanceof ArrayBuffer) || prefix.byteLength < SURF_HEADER_BYTES) return null;
+    const header = new DataView(prefix, 0, SURF_HEADER_BYTES);
+    if (header.getUint32(0, true) !== SURF_MAGIC) return null;
+    const indexBytes = header.getUint32(8, true);
+    const total = Number(surfBytes);
+    if (Number.isFinite(total) && total > 0 && SURF_HEADER_BYTES + indexBytes > total) return null;
+    return indexBytes;
+  } catch {
+    return null;
+  }
+}
+
+// The bytes the tier's expansion ratio applies to: a SURF's float payload plus its JSON index
+// weighted down to the index's own multiple, so that `sourceBytes × sourceExpansionRatio` is the
+// split estimate. Without a usable index length, the whole SURF at the tier ratio, as before.
+export function surfDecodeSourceBytes(surfBytes, {
+  indexBytes = null,
+  sourceExpansionRatio = DEFAULT_SURF_DECODE_EXPANSION_ESTIMATE,
+  indexExpansionRatio = DEFAULT_SURF_INDEX_DECODE_EXPANSION_ESTIMATE,
+} = {}) {
+  const bytes = Number(surfBytes);
+  if (!Number.isFinite(bytes) || bytes <= 0) return null;
+  const index = Number(indexBytes);
+  if (indexBytes === null || !Number.isSafeInteger(index) || index < 0
+      || SURF_HEADER_BYTES + index > bytes) return bytes;
+  const ratio = Math.max(1, Number(sourceExpansionRatio) || 1);
+  const indexRatio = Math.min(ratio, Math.max(0, Number(indexExpansionRatio) || 0));
+  return (bytes - SURF_HEADER_BYTES - index) + index * indexRatio / ratio;
+}
+
 export function estimateInitialSurfDecodeBytes(
   surfBytes,
   sourceExpansionRatio,
-  { floorBytes = INITIAL_DECODE_ESTIMATE_FLOOR_BYTES } = {},
+  { floorBytes = INITIAL_DECODE_ESTIMATE_FLOOR_BYTES, indexBytes = null, indexExpansionRatio } = {},
 ) {
-  const bytes = Number(surfBytes);
-  const expanded = Number.isFinite(bytes) && bytes > 0
-    ? bytes * Math.max(1, Number(sourceExpansionRatio) || 1)
-    : 0;
-  return Math.max(floorBytes, expanded);
+  const ratio = Math.max(1, Number(sourceExpansionRatio) || 1);
+  const bytes = surfDecodeSourceBytes(surfBytes, {
+    indexBytes,
+    sourceExpansionRatio: ratio,
+    ...(indexExpansionRatio === undefined ? {} : { indexExpansionRatio }),
+  });
+  return Math.max(floorBytes, bytes ? bytes * ratio : 0);
 }
 
 // Pure per-component initial display decision. Large assemblies take the
@@ -146,10 +191,13 @@ export function estimateInitialSurfDecodeBytes(
 // takes that tier when its conservative default estimate cannot be admitted.
 // The caller still applies the independent memory reservation; an unfit coarse
 // estimate can run only through the caller's serial, globally reserved
-// oversized-component path.
+// oversized-component path. With the SURF's `indexBytes` (its header's JSON
+// length), the index is charged at its own multiple and only the float payload
+// at the tier ratio; `sourceBytes` is what the loader's estimator scales.
 export function initialDisplayLodPlan({
   componentCount,
   surfBytes = null,
+  indexBytes = null,
   maxInFlightBytes,
 } = {}) {
   const count = Math.max(0, Math.trunc(Number(componentCount) || 0));
@@ -157,16 +205,22 @@ export function initialDisplayLodPlan({
   const defaultEstimate = estimateInitialSurfDecodeBytes(
     surfBytes,
     DEFAULT_SURF_DECODE_EXPANSION_ESTIMATE,
+    { indexBytes, indexExpansionRatio: DEFAULT_SURF_INDEX_DECODE_EXPANSION_ESTIMATE },
   );
   const coarse = count >= LARGE_ASSEMBLY_INITIAL_COARSE_COMPONENTS
     || defaultEstimate > cap;
   const sourceExpansionRatio = coarse
     ? COARSE_SURF_DECODE_EXPANSION_ESTIMATE
     : DEFAULT_SURF_DECODE_EXPANSION_ESTIMATE;
-  const estimatedBytes = estimateInitialSurfDecodeBytes(surfBytes, sourceExpansionRatio);
+  const indexExpansionRatio = coarse
+    ? COARSE_SURF_INDEX_DECODE_EXPANSION_ESTIMATE
+    : DEFAULT_SURF_INDEX_DECODE_EXPANSION_ESTIMATE;
+  const estimatedBytes = estimateInitialSurfDecodeBytes(surfBytes, sourceExpansionRatio,
+    { indexBytes, indexExpansionRatio });
   return {
     level: coarse ? 0 : LOD_DEFAULT_LEVEL,
     sourceExpansionRatio,
+    sourceBytes: surfDecodeSourceBytes(surfBytes, { indexBytes, sourceExpansionRatio, indexExpansionRatio }),
     estimatedBytes,
     fitsDecodeCap: estimatedBytes <= cap,
     reason: count >= LARGE_ASSEMBLY_INITIAL_COARSE_COMPONENTS

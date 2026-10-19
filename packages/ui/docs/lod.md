@@ -52,13 +52,27 @@ same-file replacement is the exception: it keeps the complete model on screen
 rather than replace it with a degraded revision, so there the refusal fails the
 revision and the current view is kept.
 
-Decode estimates scale the SURF's byte length by a fixed expansion ratio (32x
-coarse, 64x standard), and the cold reservation doubles that for worker scratch.
-Topology-heavy parts sit far below that ratio: most of their SURF is the JSON
-selector index, not geometry. A PCB with 2,500 drilled holes has a 7.8 MB SURF
-(6.9 MB of it index) that decodes to about 16 MB, roughly 2x; at a 20 MB SURF
-the 32x estimate already asks the envelope for more than it has. Such a part
-is deferred, not decoded, until the estimate learns that.
+A cold component's decode estimate splits its SURF in two (`initialDisplayLodPlan`,
+`initialDisplayLod.js`). The float payload (NURBS poles, knots) is charged at the
+tier's expansion ratio, 32x coarse and 64x standard; the JSON index (selectors and
+analytic surface parameters) at its own, 8x coarse and 32x standard. The cold
+reservation doubles the estimate for worker scratch. The index length comes from
+the SURF's 12-byte header, read with one ranged GET that also answers the SURF's
+length (`surfSizeHint`, `useCadAssets.js`; `readPrefix`, `core/client/resources.js`).
+A server that ignores Range answers 200, and the body past the header is
+cancelled unread. The header is read only for a SURF whose whole-file estimate
+clears the 64 MiB floor. A provider without `readPrefix`, or a failed or malformed
+read, falls back to a HEAD and charges the whole SURF at the tier ratio.
+
+The index multiples come from 188 SURFs: the repo models' sources (whole parts
+and their solids), the SURF fixtures, and the dense PCB boards. They are the
+smallest that keep every part over 100 KB at 1.25x its decoded bytes and its
+doubled estimate above its worker peak (SURF, parsed index, decoded mesh twice,
+cache entry), rounded up about 1.5x. An analytic-heavy part sets them: a
+retaining ring, 94% index, decodes 14x its index at the standard tier. Charging
+the whole SURF overestimated index-heavy parts several-fold. PCBs are about 88%
+index; the 85x85-hole board's 22.6 MB SURF asked for 690 MiB coarse, reserved
+twice over the envelope, and is now charged 235 MiB, inside the in-flight cap.
 
 Coarse geometry is a temporary preview: visible components automatically reach
 at least the standard level, preserving its angular smoothness even when
