@@ -269,6 +269,22 @@ connected edges with a picked edge), shown while edges are picked, and **Group f
 smoothly joined faces with a picked face), shown while faces are; a hidden one keeps its choice
 for when it shows again.
 
+Above the modes, in their own section headed "Tool", Select's menu chooses how a pick is made,
+apart from what it takes: **Select** (the pointer, the default) or **Box select** (lucide's
+square mouse pointer). Choosing one puts the menu away, takes Select up, and puts its glyph on
+Select's button (named "Box select" while it is chosen), still badged with the mode. Under Box
+select a drag over the model draws a box, and what is *visible* in it joins the selection:
+anything the box touches, even where only part of it lies inside, whichever way it was drawn.
+Hidden faces, parts behind others and clipped geometry never do. It takes what a click would
+under the mode chosen: under All, the faces and edges of the parts whose topology is open (a
+part file's once its row is expanded, an assembly part's once it is isolated or expanded in
+the model tree) and every other part whole; under Parts, the parts; under Faces or Edges,
+those alone, on the parts whose topology is open (a box loads none). Group faces and Group
+edges grow it as they grow a click. The annotations and measurements are never boxed. Shift
+adds to the selection; otherwise the box replaces it. A tap still picks, Ctrl/Cmd/Alt drags
+and other buttons still turn the camera, a second finger or Escape lets the box go, and Quick
+Edit, Copy Reference and `cad_view` see the selection as any other. Box select is a STEP's.
+
 The geometry chosen is picked as one mode (`step/workbench/selectionFilter.js`'s
 `selectGeometryMode`): All, a press takes the face or edge it lands on where the part's
 topology can be picked, and the part elsewhere; Parts, the part; Faces or Edges, that topology

@@ -269,6 +269,11 @@ function StepSurfaceBody({ view, data }) {
   // and Faces, every kind when a file opens.
   const [measureFilter, setMeasureFilter] = useState(MEASURE_FILTER_DEFAULT);
   const [connectedSelection, setConnectedSelection] = useState(NO_CONNECTED_SELECTION);
+  // Select's tool, the top of its menu: "select", or "box", where a drag over the view selects what
+  // is visible in the box it draws rather than turning the camera (`kit/tools/select/boxSelect.js`).
+  // Select when a file opens.
+  const [selectTool, setSelectTool] = useState("select");
+  const boxSelect = selectTool === "box";
   // A press under a face or edge filter on an assembly part whose faces are not loaded yet:
   // `{ partId, clientX, clientY, pointerType, multiSelect }`, replayed once they can be picked.
   const [pendingTopologyPick, setPendingTopologyPick] = useState(null);
@@ -808,6 +813,8 @@ function StepSurfaceBody({ view, data }) {
   const pickAtRef = useRef(null);
   const topologyAtRef = useRef(null);
   const measureAtRef = useRef(null);
+  // What a box holds, from the layers' picking (`useStepPicking`'s `boxPickRef`).
+  const boxPickRef = useRef(null);
   const lodSelectedPartIdsRef = useRef(EMPTY_LIST);
   // Declared here, above the LOD scheduler that is handed it: it reads only refs, so it is
   // safe this early, and a `const` read before its declaration is a TDZ crash, not undefined.
@@ -3199,6 +3206,53 @@ function StepSurfaceBody({ view, data }) {
     });
   }, [knobsShown, stepPoseDefinition, selectedStepParameterRuntime, stepPoseFeatures, motion.onParameterChange]);
 
+  // ---- Box select ----------------------------------------------------------------------------
+  // A box takes what a click would pick at each point of it that it touches, as long as it is
+  // visible there: under All the faces and edges of the parts whose topology is open (a part file's
+  // once its row is expanded, an assembly part's once it is isolated or expanded in the model tree),
+  // and every other part whole, as the node a click on it picks; under Parts the parts; under
+  // Faces or Edges those alone, of the parts whose topology is open — a box loads none. Group faces
+  // and Group edges grow what it takes as they grow a click's pick. Shift adds to the selection;
+  // without it the box replaces it, as a press does. It feeds the one selection, so Quick Edit,
+  // Copy References and the live surface carry it as they carry a click's picks. The annotations
+  // and measurements are no part of it: a box drawn to reference geometry never sweeps up the
+  // marks over it.
+  const handleBoxSelect = (box) => {
+    if (stepInteractionBlocked || selectionFilter === "none") return;
+    const { additive } = box;
+    const union = (current, next) => uniqueStringList([...current, ...next]);
+    const takeParts = selectionFilter === "parts" || selectionFilter === "all";
+    const takeTopology = selectionFilter !== "parts";
+    const picked = boxPickRef.current?.(box, {
+      parts: takeParts,
+      faces: takeTopology && selectFilter.includes("faces"),
+      edges: takeTopology && selectFilter.includes("edges")
+    }) || { partIds: [], referenceIds: [] };
+    // Under All a part whose faces and edges can be picked gives them, not itself, as a click does.
+    const hasTopology = (renderPartId) => selectionFilter === "all" &&
+      (isAssemblyView ? pickableTopologyPartIds.has(renderPartId) : hasViewerPickableTopology);
+    const renderPartIds = new Map();
+    for (const renderPartId of picked.partIds) {
+      if (hasTopology(renderPartId)) continue;
+      const partId = isAssemblyView ? resolvePickedAssemblyPartId(renderPartId) : STEP_MODEL_ROOT_ID;
+      if (!partId || (isAssemblyView && !viewerSelectableAssemblyNodeIdSet.has(partId)) || renderPartIds.has(partId)) continue;
+      renderPartIds.set(partId, renderPartId);
+    }
+    const referenceIds = uniqueStringList(picked.referenceIds.flatMap((id) => {
+      const type = effectiveActiveReferenceMap.get(id)?.selectorType;
+      if (tangentFacesActive && type === "face") return connectedReferenceIds(tangentFaces, id);
+      if (edgeChainActive && type === "edge") return connectedReferenceIds(edgeChains, id);
+      return [id];
+    }));
+    const nextPartIds = additive ? union(selectedPartIdsRef.current, [...renderPartIds.keys()]) : [...renderPartIds.keys()];
+    setSelectedPartIds(nextPartIds);
+    setSelectedRenderPartIdByAssemblyPartId((current) => Object.fromEntries(nextPartIds
+      .map((partId) => [partId, renderPartIdForAssemblySelection(partId, renderPartIds.get(partId) || current[partId])])
+      .filter(([, renderPartId]) => renderPartId)));
+    setSelectedReferenceIds(additive ? union(selectedReferenceIdsRef.current, referenceIds) : referenceIds);
+    setActiveTreeNodeScrollKey("");
+  };
+
   // ---- the viewport ---------------------------------------------------------------------------
   // What the viewport is ALLOWED to show and pick just now: nothing of the model under Pose
   // or in preview; no topology while a previous mesh is held over an update.
@@ -3272,7 +3326,10 @@ function StepSurfaceBody({ view, data }) {
     deferActivation: !selectionToolActive,
     pickAtRef,
     topologyAtRef,
-    measureAtRef
+    measureAtRef,
+    boxPickRef,
+    // Under Box select, a drag draws a box (`useBoxSelectGesture`); null otherwise.
+    onBoxSelect: boxSelect && selectionToolActive && !watching && !retainingPreviousStepMesh ? handleBoxSelect : null
   };
   const viewPolicyResolved = useStepViewPolicy({
     meshData: selectedDisplayMeshData, themeSettings: resolvedThemeSettings, displaySettings: resolvedScene.display,
@@ -3298,8 +3355,9 @@ function StepSurfaceBody({ view, data }) {
   // tool up as it changes the filter. One element until what it shows changes.
   const selectModeMenu = useMemo(() => <SelectModeMenu value={selectFilter} assembly={isAssemblyView} posable={poseAvailable} disabled={selectDisabled}
     onChange={value => { changeSelectFilter(value); handleSelectTabToolMode(TAB_TOOL_MODE.REFERENCES); }}
-    connected={connectedSelection} onConnectedChange={(id, checked) => setConnectedSelection(current => ({ ...current, [id]: checked }))} />,
-  [selectFilter, isAssemblyView, poseAvailable, selectDisabled, connectedSelection, changeSelectFilter, handleSelectTabToolMode]);
+    connected={connectedSelection} onConnectedChange={(id, checked) => setConnectedSelection(current => ({ ...current, [id]: checked }))}
+    tool={selectTool} onToolChange={tool => { setSelectTool(tool); handleSelectTabToolMode(TAB_TOOL_MODE.REFERENCES); }} />,
+  [selectFilter, isAssemblyView, poseAvailable, selectDisabled, connectedSelection, selectTool, changeSelectFilter, handleSelectTabToolMode]);
   // What Measure snaps to: its chevron's filter, whose change takes Measure up, as Select's does Select.
   const measureFilterMenu = useMemo(() => <MeasureFilterMenu value={measureFilter} disabled={measureToolDisabled}
     onChange={value => { setMeasureFilter(value); handleSelectTabToolMode(TAB_TOOL_MODE.MEASURE); }} />,
@@ -3307,9 +3365,10 @@ function StepSurfaceBody({ view, data }) {
   const tools = [
     shell.tools.own({
       id: TAB_TOOL_MODE.REFERENCES,
-      label: referenceSelectionPending ? "Preparing selection" : "Select", shortcut: TOOL_SHORTCUTS.select,
-      // The pointer, badged with what it picks alone (its chevron's menu), none for All.
-      icon: <SelectIcon mode={pickModeOf(selectFilter, stepSelectModes({ assembly: isAssemblyView, posable: poseAvailable })).id} className="size-3.5" aria-hidden="true" />,
+      label: referenceSelectionPending ? "Preparing selection" : boxSelect ? "Box select" : "Select", shortcut: TOOL_SHORTCUTS.select,
+      // The tool chosen (the pointer, or Box select's), badged with what it picks alone (its
+      // chevron's menu), none for All.
+      icon: <SelectIcon tool={selectTool} mode={pickModeOf(selectFilter, stepSelectModes({ assembly: isAssemblyView, posable: poseAvailable })).id} className="size-3.5" aria-hidden="true" />,
       active: !topologySelectionDeferred && selectionToolActive, disabled: selectDisabled,
       menu: selectModeMenu,
       onSelect: () => handleSelectTabToolMode(TAB_TOOL_MODE.REFERENCES),
