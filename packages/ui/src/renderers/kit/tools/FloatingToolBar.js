@@ -21,6 +21,8 @@ export { STRIP_BUTTON_CLASS, StripTouchProvider, TOUCH_STRIP_BUTTON_CLASS, useSt
  * @typedef {object} ViewportTool
  * @property {string} id
  * @property {string} label  The button's accessible name and tooltip.
+ * @property {string} [tooltip]  Its tooltip where it says more than its name (a drawing tool's, what it draws with now).
+ * @property {string} [shortcut]  Its key (`toolShortcuts.js`), shown after the name in its tooltip.
  * @property {import("react").ReactNode} icon
  * @property {boolean} [active]
  * @property {boolean} [disabled]
@@ -29,11 +31,11 @@ export { STRIP_BUTTON_CLASS, StripTouchProvider, TOUCH_STRIP_BUTTON_CLASS, useSt
  * @property {import("react").ReactNode} [menu]  Its modes: the chevron after its button, and the menu it opens.
  * @property {boolean} [changed]  What it sets is off its default (an effect on the model): a dot in its tile's corner.
  * @property {string} [group]  The strip's group it is in: a thin rule parts it from the tool before it when that
- *   tool's group is another (the tools that pick — Select, Annotate, Measure — then the model's effects, "model").
+ *   tool's group is another (the tools that pick — Select, Pencil, Shapes, Measure — then the model's effects, "model").
  */
 
 /**
- * One of the view's controls after the strip's rule (Projection, Display, Preview): its tile as drawn on the
+ * One of the view's controls at the strip's end (Projection, Display, Preview): its tile as drawn on the
  * strip (`tile`), and what it is as a row of the touch strip's More menu, when there is no room for
  * it: `onSelect` for a press, or `popover` for a control whose tile opens a popover, which then
  * opens from More itself (`anchor`, the More button's ref).
@@ -54,7 +56,7 @@ export { STRIP_BUTTON_CLASS, StripTouchProvider, TOUCH_STRIP_BUTTON_CLASS, useSt
 // A tool with a menu is ONE control (Select, Measure): its button, then its menu's small chevron
 // (`ToolSettingsMenu`'s "chevron" trigger), touching, under one rounded fill. The fill lights the pair
 // on hover, while the tool is in hand and while its menu is open; the chevron's half only brightens,
-// on its own hover and while its menu is open, behind a hairline (`CHEVRON_CLASS`), so the two never
+// on its own hover and while its menu is open (`CHEVRON_CLASS`), with no line between them, so the two never
 // read as two buttons side by side.
 const SPLIT_CLASS = "group/split inline-flex items-center rounded-sm transition hover:bg-sidebar-accent data-[active]:bg-sidebar-accent has-[[aria-expanded=true]]:bg-sidebar-accent";
 const SPLIT_BUTTON_CLASS = "rounded-r-none hover:bg-transparent data-[variant=secondary]:bg-transparent data-[variant=secondary]:hover:bg-transparent group-hover/split:text-sidebar-accent-foreground";
@@ -62,7 +64,7 @@ const SPLIT_BUTTON_CLASS = "rounded-r-none hover:bg-transparent data-[variant=se
 // A plain function, not a component: the strip's own output is the buttons.
 function toolButton(tool, className = STRIP_BUTTON_CLASS, touch = false) {
   const active = tool.active === true;
-  const button = <ToolbarButton tooltipSide="top" label={tool.label} active={active} disabled={tool.disabled}
+  const button = <ToolbarButton tooltipSide="top" label={tool.label} tooltip={tool.tooltip ?? true} shortcut={tool.shortcut} active={active} disabled={tool.disabled}
     className={cn(className, tool.changed && "relative", tool.menu && SPLIT_BUTTON_CLASS)} aria-pressed={active} aria-description={tool.description} onClick={() => tool.onSelect()}
     data-changed={tool.changed ? "" : undefined}>
     {tool.icon}
@@ -81,8 +83,9 @@ const rule = <span role="separator" aria-orientation="vertical" className="mx-0.
 
 /**
  * The interaction tools: a dumb strip positioned by the viewport shell. It renders the
- * tools it is handed, left to right, then, after a thin rule, the view's own controls (`views`:
- * a 3D view's Display and Preview), which are no tools: pressing one leaves the tool in hand as it
+ * tools it is handed, left to right, then the view's own controls (`views`:
+ * a 3D view's Display and Preview), which are no tools and sit in the last section the tools have, parted from
+ * the tools before by no rule of their own (only when the tools are one group do they get a rule): pressing one leaves the tool in hand as it
  * is. It holds no state and knows no tool by name. On a phone (`touch`) it is one row of
  * touch-sized tiles, the tools, with the view's controls (and any tool that does not fit) in a More
  * menu (`TouchStrip`).
@@ -93,13 +96,16 @@ export default function FloatingToolBar({ tools = [], views = [], touch = false 
   // Nothing to hold, no strip: an empty bar is never drawn.
   if (!tools.length && !views.length) return null;
   if (touch) return <TouchStrip tools={tools} views={views} />;
+  // Two sections at most, parted by one thin rule: the tools of the first group, then the rest. The view's
+  // controls end the last section the tools have; with one section only, they are the second.
+  const sectioned = tools.some((tool, index) => index > 0 && (tool.group || "") !== (tools[index - 1].group || ""));
   return (<div className="relative z-20 flex max-w-full shrink-0 flex-col items-end gap-1" data-cad-toolbar="tools">
       <div role="group" aria-label="Interaction tools" className={cn(GROUP_CLASS, "flex-wrap")}>
         {tools.map((tool, index) => <Fragment key={tool.id}>
           {index > 0 && (tool.group || "") !== (tools[index - 1].group || "") ? rule : null}
           {toolButton(tool)}
         </Fragment>)}
-        {tools.length && views.length ? rule : null}
+        {tools.length && views.length && !sectioned ? rule : null}
         {views.length ? <span className="inline-flex items-center gap-1" data-view-controls="">
           {views.map(view => <Fragment key={view.id}>{view.tile}</Fragment>)}
         </span> : null}

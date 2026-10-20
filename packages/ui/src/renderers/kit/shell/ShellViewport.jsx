@@ -116,8 +116,8 @@ const ShellViewport = forwardRef(function ShellViewport({
   hoveredAnnotation = null,
   // The view on screen as a prompt carries it (`annotation/views.js`), for each mark Annotate puts down.
   annotationView = null,
-  // What the model is under a point of the view, for what each mark touches (`RendererShell`'s `inkTopology`).
-  annotationTopology = null,
+  // What the model is under a point of the view, for what each mark touches (`RendererShell`'s `inkTouches`).
+  annotationTouches = null,
   onPerspectiveChange = null,
   onPresentationChange = null,
   onViewerAlertChange = null,
@@ -1168,7 +1168,7 @@ const ShellViewport = forwardRef(function ShellViewport({
           />
         </div>
       ) : null}
-      {annotationOverlayActive ? <AnnotationOverlay annotation={annotation} runtimeRef={runtimeRef} viewOf={annotationView} topologyAt={annotationTopology} /> : null}
+      {annotationOverlayActive ? <AnnotationOverlay annotation={annotation} runtimeRef={runtimeRef} viewOf={annotationView} touchesAt={annotationTouches} /> : null}
       {overlay}
       {/* The cube is the tools view's: preview has no cube to draw or keep in step with the orbit,
           a model still loading has none to orient, and a compact view (`viewCube`) has no room. */}

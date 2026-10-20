@@ -28,6 +28,8 @@ const MODE_GLYPHS = Object.freeze({
   groupFaces: weight => <>{faintCube(weight)}<path d="M12 2.5 20.5 7.25 12 12 3.5 7.25Z M3.5 7.25 12 12v9.5l-8.5-4.75Z" fill="currentColor" strokeWidth={2 * weight} /></>,
   groupEdges: weight => <>{faintCube(weight)}<path d="M12 2.5 20.5 7.25 12 12 3.5 7.25Z" strokeWidth={3 * weight} /></>,
   points: weight => <><circle cx="12" cy="12" r="8.5" strokeWidth={1.5 * weight} strokeOpacity="0.45" /><circle cx="12" cy="12" r="4" fill="currentColor" stroke="none" /></>,
+  // Position's knobs: lucide's Spline, turned as `PositionIcon` is.
+  position: weight => <g transform="rotate(90 12 12)" strokeWidth={2 * weight}><circle cx="19" cy="5" r="2" /><circle cx="5" cy="19" r="2" /><path d="M5 17A12 12 0 0 1 17 5" /></g>,
 });
 const SVG = { viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round" };
 // Where the badge sits: the mode's glyph at 0.44 of its size, centred on (18.5, 5.5).

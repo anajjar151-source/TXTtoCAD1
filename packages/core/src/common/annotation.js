@@ -12,7 +12,7 @@ import { createScreenSpaceLineStrip } from "./renderEdges.js";
  * @typedef {{
  *   id: string, kind: AnnotationMarkKind, view?: string,
  *   points: ArrayLike<number>, color: string, opacity?: number,
- *   width?: number, widths?: ArrayLike<number>, dash?: "solid" | "dashed" | "dotted", closed?: boolean, group?: string,
+ *   width?: number, widths?: ArrayLike<number>, closed?: boolean, group?: string,
  *   outline?: number, triangles?: ArrayLike<number>,
  *   text?: string, fontPx?: number,
  *   touches?: { part: string, ref?: string }[]
@@ -27,7 +27,6 @@ import { createScreenSpaceLineStrip } from "./renderEdges.js";
  */
 
 export const ANNOTATION_MARK_KINDS = Object.freeze(["stroke", "area", "text"]);
-const DASHES = new Set(["solid", "dashed", "dotted"]);
 const COLOR = /^#[0-9a-f]{6}$/i;
 // A capture's ink is as heavy against its height as it was on a viewer this tall.
 export const ANNOTATION_REFERENCE_HEIGHT_PX = 900;
@@ -61,7 +60,7 @@ export function normalizeAnnotation(raw) {
     const at = `marks[${index}]`;
     if (!mark || typeof mark !== "object") fail(`${at} must be an object`);
     for (const key of Object.keys(mark)) {
-      if (!["id", "kind", "view", "points", "color", "opacity", "width", "widths", "dash", "closed", "group",
+      if (!["id", "kind", "view", "points", "color", "opacity", "width", "widths", "closed", "group",
         "outline", "triangles", "text", "fontPx", "touches"].includes(key)) fail(`${at}: unknown field "${key}"`);
     }
     const id = String(mark.id ?? "");
@@ -85,8 +84,6 @@ export function normalizeAnnotation(raw) {
         out.widths = numbers(mark.widths, `${at}.widths`);
         if (out.widths.length !== count) fail(`${at}.widths must have one value per point`);
       }
-      out.dash = mark.dash ?? "solid";
-      if (!DASHES.has(out.dash)) fail(`${at}.dash must be solid, dashed or dotted`);
       out.closed = Boolean(mark.closed);
       if (count < 2) fail(`${at}: a stroke has at least two points`);
     } else if (mark.kind === "area") {
@@ -149,6 +146,16 @@ function taperedWidths(baseCompile) {
   };
 }
 let taperedCompile = null;
+// A once-only stroke's feather and cap rim (under half its coverage) is left undrawn, so the pixels it would
+// write into the stencil never shut out the body of the segment beside it.
+function withoutRim(baseCompile) {
+  return function inkOnceOnlyLine(shader, renderer) {
+    baseCompile?.call(this, shader, renderer);
+    shader.fragmentShader = shader.fragmentShader
+      .replace("gl_FragColor = vec4( diffuseColor.rgb, alpha );", "if ( alpha < opacity * 0.5 ) discard;\n\t\tgl_FragColor = vec4( diffuseColor.rgb, alpha );");
+  };
+}
+const rimless = new WeakMap();
 
 // A text mark's picture: its words as written, in the UI's face.
 function textCanvas(mark) {
@@ -170,16 +177,33 @@ function textCanvas(mark) {
   return canvas;
 }
 
+// A translucent stroke (the highlighter's) is drawn as overlapping round-capped segments, which would darken
+// where they meet. Each such stroke gets stencil references of its own (one for the stroke, one for its faint
+// hidden part) and draws only where its own reference is not yet written, so its pixels blend once; a
+// crossing stroke has another reference, and does blend with it. The references cycle through 1-251: odd for a stroke, even for its hidden part.
+let stencilRef = 0;
+function onceOnly(THREE, material, ref) {
+  const base = material.onBeforeCompile;
+  if (!rimless.has(base)) rimless.set(base, withoutRim(base));
+  material.onBeforeCompile = rimless.get(base);
+  material.stencilWrite = true;
+  material.stencilRef = ref;
+  material.stencilFunc = THREE.NotEqualStencilFunc;
+  material.stencilFail = THREE.KeepStencilOp;
+  material.stencilZFail = THREE.KeepStencilOp;
+  material.stencilZPass = THREE.ReplaceStencilOp;
+  material.needsUpdate = true;
+}
+
 /**
  * One mark's object: a stroke a screen-width line along its points, an area a flat mesh of its
  * triangles, a text mark its picture on a quad, where its points are: in model coordinates.
  *
  * @param {{ THREE: typeof import("three"), Line2: any, LineGeometry: any, LineMaterial: any }} context
  * @param {AnnotationMark} mark
- * @param {{ radius: number, lineScale: number }} options  `radius`: the model's, which dashes are
- *   sized from. `lineScale`: device pixels per screen pixel of `width`.
+ * @param {{ lineScale: number }} options  `lineScale`: device pixels per screen pixel of `width`.
  */
-export function annotationMarkObject(context, mark, { radius, lineScale }) {
+export function annotationMarkObject(context, mark, { lineScale }) {
   const { THREE } = context;
   const positions = mark.points instanceof Float32Array ? mark.points : new Float32Array(mark.points);
   let object;
@@ -193,13 +217,6 @@ export function annotationMarkObject(context, mark, { radius, lineScale }) {
       // One callback for every tapered line, so they share a program.
       taperedCompile ??= taperedWidths(object.material.onBeforeCompile);
       object.material.onBeforeCompile = taperedCompile;
-      object.material.needsUpdate = true;
-    }
-    if (object && mark.dash && mark.dash !== "solid") {
-      object.computeLineDistances();
-      object.material.dashed = true;
-      object.material.dashSize = mark.dash === "dotted" ? radius * 0.0025 : radius * 0.02;
-      object.material.gapSize = radius * 0.012;
       object.material.needsUpdate = true;
     }
   } else {
@@ -240,6 +257,11 @@ export function annotationMarkObject(context, mark, { radius, lineScale }) {
     hidden.material.transparent = true;
     hidden.material.opacity = (object.material.opacity ?? 1) * ANNOTATION_HIDDEN_OPACITY;
     hidden.renderOrder = object.renderOrder - 1;
+    if (mark.kind === "stroke" && (mark.opacity ?? 1) < 1 && THREE.NotEqualStencilFunc !== undefined) {
+      stencilRef = (stencilRef + 2) % 250;
+      onceOnly(THREE, object.material, stencilRef + 1);
+      onceOnly(THREE, hidden.material, stencilRef + 2);
+    }
     hidden.matrixWorld.identity();
     hidden.userData = { annotationHidden: true };
     object.add(hidden);
@@ -277,7 +299,7 @@ export function disposeAnnotationObject(object) {
  *
  * @param {object} context  `THREE` and the screen-space line classes (`annotationMarkObject`).
  * @param {Annotation} annotation  `normalizeAnnotation`'s.
- * @param {{ radius: number, lineScale: number }} options
+ * @param {{ lineScale: number }} options
  */
 export function createAnnotationLayer(context, annotation, options) {
   const { THREE } = context;

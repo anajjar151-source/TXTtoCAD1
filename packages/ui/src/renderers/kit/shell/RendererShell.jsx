@@ -20,7 +20,7 @@ import { OrthographicProjectionIcon, PerspectiveProjectionIcon } from "../camera
 import PreviewSettings from "./PreviewSettings.jsx";
 import { withGroups } from "../../../annotation/geometry.js";
 import FloatingToolBar, { StripTouchProvider, useStripButtonClass } from "../tools/FloatingToolBar.js";
-import { AnnotationMenu, AnnotationToolbar } from "../../../annotation/toolbar.jsx";
+import { AnnotationToolbar } from "../../../annotation/toolbar.jsx";
 import ToolStack from "../tools/ToolStack.jsx";
 import AnimationSection from "../tools/playbar/AnimationSection.jsx";
 import PreviewPlaybar from "../tools/playbar/PreviewPlaybar.jsx";
@@ -161,7 +161,7 @@ const DOUBLE_PRESS_MS = 600;
  *   down): the renderer lights its own overlay under it, and returns true when there is one.
  *   `selectsAnnotations`: whether Select picks the annotation's ink, as the renderer's Select filter says; the
  *   ink is drawn either way.
- *   `inkTopology`: what the model is under a point of the view, `(clientX, clientY) => [{ part, ref? }]` —
+ *   `inkTouches`: what the model is under a point of the view, `(clientX, clientY) => [{ part, ref? }]` —
  *   the part, with the face or edge there as a prompt reference where the renderer can name one: what
  *   Annotate records a mark as touching. Without it, a mark touches parts alone.
  *   `previewView`: Preview's own, while it is open (`shell.previewing`), for a 3D view: the scene the
@@ -173,9 +173,11 @@ const DOUBLE_PRESS_MS = 600;
  */
 export default function RendererShell({ shell, tools, toolPanels = null, subToolbar = null, sidebar = null, references = null, referenceChips = null, nameReference = null, onClearReferences = null, copySelection = null, contextMenuItems = null,
   onContextMenuOpenChange = null, viewportOverlay = null, previewView = null,
-  frameProvider = null, onCanvasPointerDown = null, onSelectPress = null, onSelectHover = null, selectsAnnotations = true, inkTopology = null }) {
+  frameProvider = null, onCanvasPointerDown = null, onSelectPress = null, onSelectHover = null, selectsAnnotations = true, inkTouches = null }) {
   const { t } = useI18n();
   const frame = shell.frame;
+  // What a tool's letter takes up (`useRendererShell`'s `onKey`): the strip as drawn now.
+  frame.toolKeys.current = tools;
   const mobile = useViewerMobile();
   const { view, resolvedScene, viewerLoading, scene } = frame;
   // The one presentation state: every gate — the viewport's, the renderer's — reads it.
@@ -325,14 +327,13 @@ export default function RendererShell({ shell, tools, toolPanels = null, subTool
   const leavePreview = () => setPreviewing(false);
   // The view's controls (Display and Preview, or Preview's own) are the navbar's where there is one.
   const inNavbar = Boolean(view.navbarSlot);
-  // Annotate's sub-toolbar, one row under the strip while it is the tool: its tools, what the next mark
-  // looks like, and its Undo, Redo and Clear (`annotation/toolbar.jsx`). The annotation itself has no
+  // The drawing tools' sub-toolbar, one row under the strip while Pencil or Shapes is the tool: what it draws with, what the next mark
+  // looks like, and Undo, Redo and Clear (`annotation/toolbar.jsx`). The annotation itself has no
   // panel: it is Quick Edit's chip (its X clears it, a click copies it).
   const colorScheme = view.appearance?.colorScheme === "dark" ? "dark" : "light";
   // Otherwise the renderer supplies its active tool's row.
-  // On a phone Annotate's controls are its chevron's menu on the strip (`AnnotationMenu`), and it has no row.
   const toolRow = frame.annotateToolActive
-    ? mobile ? null : <AnnotationToolbar annotation={frame.annotation} history={frame.history} colorScheme={colorScheme} />
+    ? <AnnotationToolbar annotation={frame.annotation} colorScheme={colorScheme} />
     : subToolbar;
 
   const hasContent = Boolean(scene) && !viewerLoading;
@@ -353,9 +354,7 @@ export default function RendererShell({ shell, tools, toolPanels = null, subTool
   const toolsHidden = chromeHidden || compact;
   // Reserve the sidebar tile's room; the toolbar is centred on the viewport whenever it fits.
   const besideSidebarTile = mobile && !previewing && Boolean(sidebar || hasAnimation);
-  // On a phone Annotate's controls are its chevron's menu on the strip.
-  const stripTools = mobile ? tools.map(tool => tool.id === "annotate" ? { ...tool, menu: <AnnotationMenu annotation={frame.annotation} history={frame.history}
-    colorScheme={colorScheme} onTakeUp={() => { if (!tool.active) tool.onSelect(); }} /> } : tool) : tools;
+
   // The controls at the top — the strip, a wrapped one, and the tool's row under it — are measured
   // into variables, so a tool change or a resize moves what hangs below them without redrawing the
   // model or touching a saved size: on a desktop, the column's sides, which the sidebar's panel and the
@@ -426,7 +425,7 @@ export default function RendererShell({ shell, tools, toolPanels = null, subTool
   };
   frame.copyActionRef.current = copyAction;
   // Quick Edit's X: nothing picked and nothing drawn, as the person would clear each.
-  const clearQuickEdit = () => { onClearReferences?.(); if (frame.annotation.hasAnnotation) frame.annotation.forget(); frame.measurements?.clear?.(); };
+  const clearQuickEdit = () => { onClearReferences?.(); if (frame.annotation.hasAnnotation) frame.annotation.forget(); };
   const forgetAnnotation = frame.annotation.forget;
   // Quick Edit's annotation: while Annotate is up or there is ink. The annotation goes with a note whenever
   // there is one (its views and annotation file, `frame.quickEditPrompt`); its Annotation chip's X wipes it.
@@ -450,7 +449,7 @@ export default function RendererShell({ shell, tools, toolPanels = null, subTool
       className="rounded-md bg-background/95 px-1 py-0.5 shadow-sm" />
   </div>;
   const quickEdit = references ? <QuickEdit key={frame.modelKey} className="self-stretch" hidden={chromeHidden} docked={mobile}
-    resource={frame.resource} references={references} chips={referenceChips} nameReference={nameReference} annotation={annotation} measurements={frame.measurements} prompt={frame.quickEditPrompt}
+    resource={frame.resource} references={references} chips={referenceChips} nameReference={nameReference} annotation={annotation} prompt={frame.quickEditPrompt}
     onCopy={copyAction} onEscape={frame.escape} onClear={clearQuickEdit} disabled={viewerLoading || !scene} /> : null;
   const body = (
     <div
@@ -547,7 +546,7 @@ export default function RendererShell({ shell, tools, toolPanels = null, subTool
                     annotation={frame.annotation}
                     hoveredAnnotation={hoveredAnnotation}
                     annotationView={frame.currentView}
-                    annotationTopology={inkTopology}
+                    annotationTouches={inkTouches}
                     onPerspectiveChange={frame.handlePerspectiveChange}
                     onPresentationChange={frame.handlePresentationChange}
                     onViewerAlertChange={frame.setRuntimeAlert}
@@ -595,7 +594,7 @@ export default function RendererShell({ shell, tools, toolPanels = null, subTool
                 {/* The view's controls end the strip, after a rule: Projection, Display, then Preview (on a
                     phone, always in its More menu). */}
                 <div ref={topControls} className="relative flex max-w-full shrink-0 flex-col items-center gap-2" data-cad-top-controls="">
-                  <FloatingToolBar tools={stripTools} touch={mobile} views={shell.previewable && !previewing ? [
+                  <FloatingToolBar tools={tools} touch={mobile} views={shell.previewable && !previewing ? [
                     { id: "projection", label: t("projection.label"), icon: <ProjectionIcon value={frame.projection.value} />, disabled: shell.idle,
                       tile: <ProjectionPopover disabled={shell.idle} boundary={frame.hostElement} projection={frame.projection} />,
                       // In a phone's More, a standard nested submenu of the two choices.

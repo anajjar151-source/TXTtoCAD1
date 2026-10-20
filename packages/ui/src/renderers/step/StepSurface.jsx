@@ -1,7 +1,8 @@
 import { buildEdgeChainGraph } from "./workbench/edgeChainSelection.js";
 "use client";
 
-import { MeasureIcon, SelectIcon, SelectModeMenu, STEP_SELECT_DEFAULT } from "./components/workbench/SelectionModes.jsx";
+import { MeasureIcon, SelectIcon, SelectModeMenu, STEP_SELECT_DEFAULT, stepSelectModes } from "./components/workbench/SelectionModes.jsx";
+import { pickModeOf } from "../kit/tools/select/selectFilter.js";
 import { selects } from "../kit/tools/select/selectFilter.js";
 import { NO_CONNECTED_SELECTION, connectedSelectionApplies, selectGeometryMode } from "./workbench/selectionFilter.js";
 import { positionValuesAreDefault } from "../kit/inspector/kinematicsControls.jsx";
@@ -43,7 +44,7 @@ import { useCadAssets } from "./components/workbench/hooks/useCadAssets.js";
 import { useEditingPreview } from "./components/workbench/hooks/useEditingPreview.js";
 import { useViewportQualityStatus } from "./components/workbench/hooks/useViewportQualityStatus.js";
 import { editingBuildActive } from "./workbench/editingPreview.js";
-import { useQuickEditMeasurements } from "../kit/tools/measure/measurementChips.jsx";
+import { MeasurementsBar } from "../kit/tools/measure/measurementChips.jsx";
 import { measureSelectHandlers } from "../kit/tools/measure/measureSelection.js";
 import { useCadWorkspaceSelection } from "./components/workbench/hooks/useCadWorkspaceSelection.js";
 import { useCadWorkspaceSelectors } from "./components/workbench/hooks/useCadWorkspaceSelectors.js";
@@ -86,7 +87,7 @@ import {
 } from "@text-to-cad/core/lib/render/meshCost.js";
 import { createAnimationClock, AnimationClockProvider } from "./workbench/animationClockStore.js";
 import { useMeasureSession } from "../kit/tools/measure/useMeasureSession.js";
-import MeasureFilterMenu from "../kit/tools/measure/MeasureFilterMenu.jsx";
+import MeasureFilterMenu, { MEASURE_MODES } from "../kit/tools/measure/MeasureFilterMenu.jsx";
 import { MEASURE_FILTER_DEFAULT } from "../kit/tools/measure/measureFilter.js";
 import { fileKey } from "./workbench/entryPaths.js";
 import {
@@ -204,6 +205,7 @@ import {
   copyableStepTreeNodeForWorkspace,
   findStepTreeTopologyNodeIdForReference
 } from "./file-view/stepTreeSelection.js";
+import { TOOL_SHORTCUTS } from "../kit/tools/toolShortcuts.js";
 
 /**
  * State whose current value event handlers read synchronously (a pick, then a menu built from
@@ -257,8 +259,8 @@ function StepSurfaceBody({ view, data }) {
     setModelPartId: setHoveredModelPartId,
     setListPartId: setHoveredListPartId
   } = hoverStore;
-  // What Select picks, its selection filter (`kit/tools/select/selectFilter.js`): Parts, Faces,
-  // Edges, Position's knobs, the annotations and measurements, each ticked on its own.
+  // What Select picks, its menu's mode (`kit/tools/select/selectFilter.js`): All (Parts, Faces,
+  // Edges, Position's knobs, the annotations and measurements), or one of them alone.
   // `selectionFilter` is how the geometry ticked is picked (`selectGeometryMode`); how a face or
   // edge pick grows (Group faces, Group edges) is independent of it.
   const [selectFilter, setSelectFilter] = useState(STEP_SELECT_DEFAULT);
@@ -270,6 +272,8 @@ function StepSurfaceBody({ view, data }) {
   // A press under a face or edge filter on an assembly part whose faces are not loaded yet:
   // `{ partId, clientX, clientY, pointerType, multiSelect }`, replayed once they can be picked.
   const [pendingTopologyPick, setPendingTopologyPick] = useState(null);
+  // Measure's press on an assembly part whose faces and edges were not loaded: pressed again there once they are.
+  const [pendingMeasurePick, setPendingMeasurePick] = useState(null);
   const [selectedPartIds, setSelectedPartIds, selectedPartIdsRef] = useSyncedState([]);
   const [selectedRenderPartIdByAssemblyPartId, setSelectedRenderPartIdByAssemblyPartId, selectedRenderPartIdByAssemblyPartIdRef] = useSyncedState({});
   const [expandedStepTreeNodeIds, setExpandedStepTreeNodeIds] = useState([]);
@@ -783,7 +787,6 @@ function StepSurfaceBody({ view, data }) {
     isAssemblyView &&
     viewerSelectableAssemblyNodeIds.length > 0;
   const viewerMode = viewerInAssemblyMode ? "assembly" : "part";
-  const annotateModeActive = tabToolMode === TAB_TOOL_MODE.ANNOTATE;
 
   // What the context menu's "Zoom to selection" frames, as it stands right now. It is
   // read when a menu descriptor is built — on the press, or when a tree row's menu
@@ -804,6 +807,7 @@ function StepSurfaceBody({ view, data }) {
   const layersApiRef = useRef(null);
   const pickAtRef = useRef(null);
   const topologyAtRef = useRef(null);
+  const measureAtRef = useRef(null);
   const lodSelectedPartIdsRef = useRef(EMPTY_LIST);
   // Declared here, above the LOD scheduler that is handed it: it reads only refs, so it is
   // safe this early, and a `const` read before its declaration is a TDZ crash, not undefined.
@@ -1552,7 +1556,6 @@ function StepSurfaceBody({ view, data }) {
   // and what this renderer's load IS depends on the resolved view above it. Nothing about
   // hook order says otherwise — there is one function, and no early return in it.
   // Measure's results, as Quick Edit's chips and the marks a note's views are drawn with.
-  const quickEditMeasurements = useQuickEditMeasurements(measure);
   const shell = useRendererShell({
     previewable: true, preview,
     view, services, resource: promptResource, modelKey: selectedKey, revisionKey: presentationRevisionKey,
@@ -1598,11 +1601,12 @@ function StepSurfaceBody({ view, data }) {
     onCameraSettled: () => onLodCameraMoved(),
     // Delete takes the measurements Select picked, beside the annotations the shell deletes.
     deleteSelection: measure.removeSelected,
-    measurements: quickEditMeasurements,
     preserveInteractionPixelRatio: viewPolicy.wireframeMode || viewPolicy.edgesVisible,
     runtimeLifecycle: stepRuntimeLifecycle,
     onRuntimeAlert: handleViewerAlertChange,
   });
+  // A measurement taken, deleted or cleared is a step of the view's one history, with the ink's.
+  measure.history.current = shell.frame.history;
   shellRef.current = shell;
   const reportActionError = shell.reportActionError;
 
@@ -1743,7 +1747,7 @@ function StepSurfaceBody({ view, data }) {
   }, [canonicalCopySelectionLines, stepInteractionBlocked, host.clipboard]);
   // What Annotate's ink touches at a point of the view: the part, with the face and the edge under
   // it as prompt references, as copying a selection of them writes them.
-  const inkTopology = useCallback((clientX, clientY) => {
+  const inkTouches = useCallback((clientX, clientY) => {
     const found = topologyAtRef.current?.(clientX, clientY);
     if (!found?.part) return [];
     const refOf = id => (id ? copyTextLines(selectionCopyPayload(copyContext, { referenceIds: [id], partIds: [] }).lines, fileRefPrefix)[0] || "" : "");
@@ -2651,6 +2655,30 @@ function StepSurfaceBody({ view, data }) {
   // A waiting press belongs to the filter, tool and file it was made under.
   useEffect(() => { setPendingTopologyPick(null); }, [selectionFilter, tabToolMode, selectedKey]);
 
+  // Measure takes the vertex, edge or face of any part, as a CAD tool does, not just of the parts
+  // the Model tree has open: a press on an assembly part whose topology is not loaded asks for that
+  // part's (as Select's face filter does) and presses again at the same point once it can be picked.
+  const handleMeasureWantsTopology = useCallback((partId, press) => {
+    if (!isAssemblyView || !loadableStepTreeTopologyNodeIdSet.has(partId) || pickableTopologyPartIds.has(partId)) return false;
+    setPendingMeasurePick({ partId, ...press });
+    loadInspectionTopology([partId]);
+    return true;
+  }, [isAssemblyView, loadableStepTreeTopologyNodeIdSet, pickableTopologyPartIds, loadInspectionTopology]);
+  // Any other press settles the waiting one: the newest wins.
+  const handleMeasurePick = useCallback((pick) => {
+    setPendingMeasurePick(null);
+    measure.onPick(pick);
+  }, [measure.onPick]);
+  useEffect(() => {
+    const pending = pendingMeasurePick;
+    if (!pending) return;
+    if (referenceStatus === REFERENCE_STATUS.ERROR) { setPendingMeasurePick(null); return; }
+    if (stepInteractionBlocked || !pickableTopologyPartIds.has(pending.partId)) return;
+    setPendingMeasurePick(null);
+    measureAtRef.current?.(pending.clientX, pending.clientY);
+  }, [pendingMeasurePick, referenceStatus, stepInteractionBlocked, pickableTopologyPartIds]);
+  useEffect(() => { setPendingMeasurePick(null); }, [tabToolMode, selectedKey]);
+
   // `activated`: the gesture's first click activated (its second never does), so the selection
   // that click found comes back first; the double-click then acts on it as it always has.
   const handleModelReferenceDoubleActivate = useCallback((referenceId, { activated = false } = {}) => {
@@ -3211,8 +3239,9 @@ function StepSurfaceBody({ view, data }) {
     onHoverReferenceChange: handleModelHoverChange,
     onActivateReference: handleModelReferenceActivate,
     onDoubleActivateReference: handleModelReferenceDoubleActivate,
-    onMeasurePick: measure.onPick,
-    onMeasureHoverPoint: measure.onHoverPoint
+    onMeasurePick: handleMeasurePick,
+    onMeasureHoverPoint: measure.onHoverPoint,
+    onMeasureWantsTopology: handleMeasureWantsTopology
   };
   const layerProps = {
     ...toolsWork,
@@ -3242,7 +3271,8 @@ function StepSurfaceBody({ view, data }) {
     // window first, so a double-click there isolates and leaves the tool as it was.
     deferActivation: !selectionToolActive,
     pickAtRef,
-    topologyAtRef
+    topologyAtRef,
+    measureAtRef
   };
   const viewPolicyResolved = useStepViewPolicy({
     meshData: selectedDisplayMeshData, themeSettings: resolvedThemeSettings, displaySettings: resolvedScene.display,
@@ -3277,16 +3307,16 @@ function StepSurfaceBody({ view, data }) {
   const tools = [
     shell.tools.own({
       id: TAB_TOOL_MODE.REFERENCES,
-      label: referenceSelectionPending ? "Preparing selection" : "Select",
-      // The pointer, whatever it picks: the filter is its chevron's menu.
-      icon: <SelectIcon className="size-3.5" aria-hidden="true" />,
+      label: referenceSelectionPending ? "Preparing selection" : "Select", shortcut: TOOL_SHORTCUTS.select,
+      // The pointer, badged with what it picks alone (its chevron's menu), none for All.
+      icon: <SelectIcon mode={pickModeOf(selectFilter, stepSelectModes({ assembly: isAssemblyView, posable: poseAvailable })).id} className="size-3.5" aria-hidden="true" />,
       active: !topologySelectionDeferred && selectionToolActive, disabled: selectDisabled,
       menu: selectModeMenu,
       onSelect: () => handleSelectTabToolMode(TAB_TOOL_MODE.REFERENCES),
     }),
-    { ...shell.tools.annotate, disabled: toolIdle },
-    shell.tools.own({ id: TAB_TOOL_MODE.MEASURE, label: "Measure",
-      icon: <MeasureIcon className="size-3.5" aria-hidden="true" />,
+    ...shell.tools.drawing.map(tool => ({ ...tool, disabled: toolIdle })),
+    shell.tools.own({ id: TAB_TOOL_MODE.MEASURE, label: "Measure", shortcut: TOOL_SHORTCUTS.measure,
+      icon: <MeasureIcon mode={pickModeOf(measureFilter, MEASURE_MODES).id} className="size-3.5" aria-hidden="true" />,
       active: tabToolMode === TAB_TOOL_MODE.MEASURE, disabled: measureToolDisabled,
       menu: measureFilterMenu,
       // A press takes it up — again, results and all, where they are kept — and does nothing while
@@ -3332,7 +3362,7 @@ function StepSurfaceBody({ view, data }) {
     selectMode: treeShape(selectionFilter),
     // In an assembly, a part's faces and edges load when a press under Faces or Edges first
     // reaches it; the model tree says so until the press can be picked.
-    loadingGeometry: Boolean(pendingTopologyPick),
+    loadingGeometry: Boolean(pendingTopologyPick || pendingMeasurePick),
     positionRuntime: previewing ? previewMotion.positionControls : motion.positionControls,
     // Position's tile dot: the joints off the default pose.
     positionChanged: !positionValuesAreDefault(stepModuleParameterValues, selectedStepModuleDefinition?.defaultParameterValues),
@@ -3407,10 +3437,10 @@ function StepSurfaceBody({ view, data }) {
     onCameraSettled: onLodCameraMoved
   };
 
-  return <RendererShell shell={shell} tools={tools} subToolbar={modelEffects.subToolbar} sidebar={stepSidebar} previewView={previewView}
+  return <RendererShell shell={shell} tools={tools} subToolbar={tabToolMode === TAB_TOOL_MODE.MEASURE ? <MeasurementsBar measure={measure} /> : modelEffects.subToolbar} sidebar={stepSidebar} previewView={previewView}
     references={selectionActionVisible ? promptSelection : EMPTY_LIST} referenceChips={referenceChips} nameReference={nameReference}
     onClearReferences={clearSelected} copySelection={copySelection} onSelectPress={selectPress} onSelectHover={selectHover}
-    selectsAnnotations={selects(selectFilter, "annotation")} inkTopology={inkTopology}
+    selectsAnnotations={selects(selectFilter, "annotation")} inkTouches={inkTouches}
     contextMenuItems={selectionToolActive
       ? press => viewportContextMenuItems(press, pickAtRef.current?.(press.clientX, press.clientY) || "") : null}
     onContextMenuOpenChange={handleViewportContextMenuOpenChange}

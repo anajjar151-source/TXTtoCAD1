@@ -17,10 +17,10 @@ vi.mock('../../../../../dist/renderers/kit/tools/annotate/annotation3d.js', () =
 beforeEach(() => { vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
-function mount(placement = 'surface') {
+function mount(placement = 'surface', tool = 'text') {
   // The session's views: a view is named, nothing more.
   const noteView = vi.fn((view: unknown) => (view ? 'view 1' : undefined));
-  const annotation = { items: [], selected: [], tool: 'text', color: '#ff2d55', strokeWidth: 2, strokeStyle: 'solid', placement,
+  const annotation = { items: [], selected: [], tool, style: { color: '#ff2d55', strokeWidth: 2, placement },
     noteView,
     add: vi.fn(), remove: vi.fn(), replace: vi.fn(), select: vi.fn(), undo: vi.fn(), redo: vi.fn() };
   render(<ViewerHostContext.Provider value={testHost()}>
@@ -86,4 +86,27 @@ it("puts a mark down as the session's placement says, named by its view, with no
   }
   expect(annotation.noteView).toHaveBeenCalledTimes(2);
   expect(annotation.noteView.mock.calls.every(call => call.length === 1)).toBe(true);
+});
+
+// A drag across the surface, as a mouse makes it.
+function drag(surface: HTMLElement, points: [number, number][]) {
+  const [first, ...rest] = points;
+  fireEvent.pointerDown(surface, { button: 0, buttons: 1, pointerId: 1, clientX: first[0], clientY: first[1] });
+  for (const [x, y] of rest) fireEvent.pointerMove(surface, { buttons: 1, pointerId: 1, clientX: x, clientY: y });
+  fireEvent.pointerUp(surface, { button: 0, pointerId: 1, clientX: rest[rest.length - 1][0], clientY: rest[rest.length - 1][1] });
+}
+
+it('the highlighter puts down an ordinary stroke: five times the weight, 0.35 opaque, no pressure widths; the pen keeps its own', () => {
+  const line: [number, number][] = [[20, 20], [60, 30], [100, 20], [140, 40]];
+  const highlighter = mount('surface', 'highlighter');
+  drag(highlighter.surface, line);
+  const [mark] = highlighter.annotation.add.mock.calls[0][0];
+  expect(mark).toMatchObject({ kind: 'stroke', color: '#ff2d55', width: 10, opacity: 0.35, closed: false });
+  expect(mark).not.toHaveProperty('widths');
+  cleanup();
+  const pen = mount('surface', 'freedraw');
+  drag(pen.surface, line);
+  const [inked] = pen.annotation.add.mock.calls[0][0];
+  expect(inked).toMatchObject({ kind: 'stroke', width: 3, opacity: 1 });
+  expect(inked.widths).toHaveLength(inked.points.length);
 });

@@ -64,7 +64,6 @@ SUPPORTED_RENDER_MODES = {"view", "list"}
 SUPPORTED_JOB_KEYS = frozenset(
     {
         "annotation",
-        "measurements",
         "input",
         "mode",
         "outputs",
@@ -1007,8 +1006,8 @@ def normalize_snapshot_job_packet(raw_payload: object) -> tuple[bool, list[objec
         return False, raw_payload
     if is_plain_object(raw_payload) and isinstance(raw_payload.get("jobs"), list):
         # Shared data is stored once on disk. A job replaces a whole field, never
-        # merges marks or measurements; an explicit empty value suppresses it.
-        shared_keys = {"input", "annotation", "measurements"}
+        # merges marks; an explicit empty value suppresses it.
+        shared_keys = {"input", "annotation"}
         unknown = sorted(set(raw_payload) - shared_keys - {"jobs"})
         if unknown:
             raise SnapshotError(f"snapshot packet has unknown key(s): {', '.join(unknown)}")

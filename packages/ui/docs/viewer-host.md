@@ -246,8 +246,8 @@ Quick Edit is the shared, host-neutral note to the agent
 Every way it goes carries its words, references and a snapshot packet captured at
 Copy, Queue or Send. The packet includes the current view plus distinct drawn views
 with remaining ink; an equivalent drawn entry uses the exact current framing.
-Shared input, inline annotation ([annotation](annotation.md)) and measurements
-appear once. Each job may override shared fields. Projection and lens are preserved.
+Shared input and inline annotation ([annotation](annotation.md)) appear once; measurements
+are the person's and never go. Each job may override shared fields. Projection and lens are preserved.
 Packets up to 1024 bytes of compact UTF-8 JSON are inlined; larger packets are
 written as one temporary `.snapshot.json` and named by path. Hosts use
 `resolvePromptMessage` to resolve an attachment's optional `inlineText` before its
@@ -266,10 +266,10 @@ document or revision never retargets it. A Quick Edit that reached its destinati
 (copied, queued or sent: no `failed` or `cancelled` receipt) tells the host once,
 `usage.used('quickEdit')`, for its count; a host that throws there changes nothing.
 
-`ViewerHost.promptFiles` is a `PromptFiles`: `create({ name, input, views, annotation, measurements })`
+`ViewerHost.promptFiles` is a `PromptFiles`: `create({ name, input, views, annotation })`
 answers `{ inline: compactJson }` or `{ snapshot: absolutePath }`, `read(path)` fetches JSON,
 and optional `save({ name, kind, data })` remains for older clients that export individual
-annotation or measurement files. Current chips do not call it. `createHttpPromptFiles({ origin, fetch })` from
+annotation files. Current chips do not call it. `createHttpPromptFiles({ origin, fetch })` from
 `@text-to-cad/core/client` posts to `POST /__cad/prompt-files`, which validates the packet in memory and returns inline JSON or writes the larger
 snapshot and returns its path with HTTP 200. The client advertises `acceptInline: true`;
 requests without it always receive a saved path, so already-open clients remain compatible. There is no render worker

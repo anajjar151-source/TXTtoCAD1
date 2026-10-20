@@ -94,7 +94,6 @@ def _run(
     video: object = None,
     joint_values: object = None,
     annotation: object = None,
-    measurements: object = None,
     focus: tuple[str, ...] = (),
     hide: tuple[str, ...] = (),
     width: int | None,
@@ -155,8 +154,6 @@ def _run(
         options.joint_values, options.joint_values_specified = joint_values, True
     if annotation is not None:
         options.annotation, options.annotation_specified = annotation, True
-    if measurements is not None:
-        options.measurements, options.measurements_specified = measurements, True
     options.focus = _refs(focus, "focus")
     options.hide = _refs(hide, "hide")
     options.focus_specified, options.hide_specified = bool(options.focus), bool(options.hide)
@@ -197,7 +194,6 @@ def step_snapshot_verb(door: str):
         grid: bool = False,
         preview: bool = False,
         annotation: str | dict | None = None,
-        measurements: str | dict | None = None,
         kinematics: str | dict | None = None,
         animation: str | dict | None = None,
         time: float | None = None,
@@ -257,10 +253,6 @@ def step_snapshot_verb(door: str):
         focus: occurrence ref rendered at full opacity (repeatable); the rest
             of the assembly is ghosted in place.
         hide: occurrence ref left out (repeatable).
-        measurements: dimensions drawn over the picture, as the CAD Viewer's
-            Measure draws them -- a JSON list of {"start": [x, y, z], "end": [x, y, z],
-            "label": "...", "color": "#rrggbb"} (one such object for one), or a path
-            to it. A Quick Edit job carries them; with --job it draws over every job.
         annotation: ink drawn over the model -- an annotation JSON file (the CAD Viewer
             writes one with a Quick Edit prompt) or the annotation JSON itself. Each
             mark is drawn on its part wherever the view puts it; with --job it
@@ -280,7 +272,7 @@ def step_snapshot_verb(door: str):
             kinds,
             target=target, out=out, job=job, mode=mode,
             camera=camera, display=display, grid=grid, preview=preview, kinematics=kinematics,
-            annotation=annotation, measurements=measurements,
+            annotation=annotation,
             animation=animation, time=time, video=video,
             focus=focus, hide=hide, width=width, height=height,
             size_profile=size_profile, view_labels=view_labels, debug=debug,
@@ -477,7 +469,6 @@ def mesh_snapshot_verb(door: str):
         grid: bool = False,
         preview: bool = False,
         annotation: str | dict | None = None,
-        measurements: str | dict | None = None,
         width: int | None = None,
         height: int | None = None,
         size_profile: str = "",
@@ -515,10 +506,6 @@ def mesh_snapshot_verb(door: str):
         preview: draw Preview's photographic look — studio lighting, floor
             and environment, perspective — instead of the display mode, at
             Preview's defaults. View mode only.
-        measurements: dimensions drawn over the picture, as the CAD Viewer's
-            Measure draws them -- a JSON list of {"start": [x, y, z], "end": [x, y, z],
-            "label": "...", "color": "#rrggbb"} (one such object for one), or a path
-            to it. A Quick Edit job carries them; with --job it draws over every job.
         annotation: ink drawn over the model -- an annotation JSON file (the CAD Viewer
             writes one with a Quick Edit prompt) or the annotation JSON itself. Each
             mark is drawn on its part wherever the view puts it; with --job it
@@ -538,7 +525,7 @@ def mesh_snapshot_verb(door: str):
             kinds,
             target=target, out=out, job=job, mode=mode,
             camera=camera, display=display, grid=grid, preview=preview, width=width, height=height,
-            annotation=annotation, measurements=measurements,
+            annotation=annotation,
             size_profile=size_profile, view_labels=view_labels, debug=debug,
         )
 
@@ -564,7 +551,6 @@ def robot_snapshot_verb(door: str):
         grid: bool = False,
         preview: bool = False,
         annotation: str | dict | None = None,
-        measurements: str | dict | None = None,
         width: int | None = None,
         height: int | None = None,
         size_profile: str = "",
@@ -603,10 +589,6 @@ def robot_snapshot_verb(door: str):
         preview: draw Preview's photographic look — studio lighting, floor
             and environment, perspective — instead of the display mode, at
             Preview's defaults. View mode only.
-        measurements: dimensions drawn over the picture, as the CAD Viewer's
-            Measure draws them -- a JSON list of {"start": [x, y, z], "end": [x, y, z],
-            "label": "...", "color": "#rrggbb"} (one such object for one), or a path
-            to it. A Quick Edit job carries them; with --job it draws over every job.
         annotation: ink drawn over the model -- an annotation JSON file (the CAD Viewer
             writes one with a Quick Edit prompt) or the annotation JSON itself. Each
             mark is drawn on its part wherever the view puts it; with --job it
@@ -626,7 +608,7 @@ def robot_snapshot_verb(door: str):
             kinds,
             target=target, out=out, job=job, mode=mode,
             joint_values=joint_values, camera=camera, display=display, grid=grid, preview=preview,
-            annotation=annotation, measurements=measurements,
+            annotation=annotation,
             width=width, height=height, size_profile=size_profile,
             view_labels=view_labels, debug=debug,
         )
@@ -652,7 +634,6 @@ def polymorphic_snapshot_verb():
         grid: bool = False,
         preview: bool = False,
         annotation: str | dict | None = None,
-        measurements: str | dict | None = None,
         kinematics: str | dict | None = None,
         animation: str | dict | None = None,
         time: float | None = None,
@@ -712,10 +693,6 @@ def polymorphic_snapshot_verb():
         focus: occurrence ref rendered at full opacity (STEP only,
             repeatable); the rest of the assembly is ghosted in place.
         hide: occurrence ref left out (STEP only, repeatable).
-        measurements: dimensions drawn over the picture, as the CAD Viewer's
-            Measure draws them -- a JSON list of {"start": [x, y, z], "end": [x, y, z],
-            "label": "...", "color": "#rrggbb"} (one such object for one), or a path
-            to it. A Quick Edit job carries them; with --job it draws over every job.
         annotation: ink drawn over the model -- an annotation JSON file (the CAD Viewer
             writes one with a Quick Edit prompt) or the annotation JSON itself. Each
             mark is drawn on its part wherever the view puts it; with --job it
@@ -737,7 +714,7 @@ def polymorphic_snapshot_verb():
             camera=camera, display=display, grid=grid, preview=preview, kinematics=kinematics,
             animation=animation, time=time, video=video,
             joint_values=joint_values, focus=focus, hide=hide,
-            annotation=annotation, measurements=measurements,
+            annotation=annotation,
             width=width, height=height, size_profile=size_profile,
             view_labels=view_labels, debug=debug,
         )

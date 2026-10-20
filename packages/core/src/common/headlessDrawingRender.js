@@ -9,8 +9,8 @@
  * headless entry routes a `dxf` job straight past the mesh pipeline.
  *
  * A job may frame it (a plan-view `camera`, the window a Quick Edit's view was
- * looking at) and draw over it (an `annotation` whose marks lie on the sheet, and
- * Measure's `measurements`), with the code the pane draws them with
+ * looking at) and draw over it (an `annotation` whose marks lie on the sheet), with the
+ * code the pane draws it with
  * (`../lib/drawing2d/marks.js`): so a prompt's views come back as they were seen.
  *
  * The payload arrives over the snapshot host's loopback asset server rather
@@ -21,7 +21,7 @@
  */
 import { appThemeColors } from "../lib/appTheme.js";
 import { clearSurface, drawDrawing, fitTransform, prepareDrawing } from "../lib/drawing2d/index.js";
-import { drawAnnotationMarks, drawMeasurementMarks } from "../lib/drawing2d/marks.js";
+import { drawAnnotationMarks } from "../lib/drawing2d/marks.js";
 import { planTransform } from "../lib/drawing2d/planView.js";
 import { ANNOTATION_REFERENCE_HEIGHT_PX, normalizeAnnotation } from "./annotation.js";
 
@@ -64,7 +64,7 @@ function canvasContext(width, height) {
  * OUTPUT pixels, so a render scale buys sampling quality and never changes the
  * size of the file.
  */
-function drawOutput(drawable, { width, height, scale, background, foreground, camera = null, annotation = null, measurements = null }) {
+function drawOutput(drawable, { width, height, scale, background, foreground, camera = null, annotation = null }) {
   const { canvas, context } = canvasContext(
     Math.max(1, Math.round(width * scale)),
     Math.max(1, Math.round(height * scale))
@@ -78,9 +78,6 @@ function drawOutput(drawable, { width, height, scale, background, foreground, ca
   }
   if (transform && annotation?.marks?.length) {
     drawAnnotationMarks(context, annotation.marks, { transform, pixelRatio: scale, lineScale: height / ANNOTATION_REFERENCE_HEIGHT_PX });
-  }
-  if (transform && measurements?.length) {
-    drawMeasurementMarks(context, measurements, { transform, width, height, pixelRatio: scale });
   }
   if (canvas.width === width && canvas.height === height) {
     return canvas.toDataURL("image/png");
@@ -145,8 +142,7 @@ export async function runHeadlessDrawingJob(job) {
         background: transparent ? null : background,
         foreground,
         camera: output?.camera && typeof output.camera === "object" ? output.camera : null,
-        annotation,
-        measurements: Array.isArray(job?.measurements) ? job.measurements : null
+        annotation
       })
     };
   });

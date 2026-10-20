@@ -8,8 +8,8 @@ import { useStripTouch } from "./stripTouch.js";
 // The strip's chevron: the second half of its tool's control (`FloatingToolBar.js` draws the two under
 // one fill), as tall as the strip's 24px tile and touching it, so the strip's own gap is the only
 // space before the next tool, as between any two. Over the pair's fill it only brightens, on its own
-// hover and while its menu is open, behind a hairline that parts the halves while the pair is lit.
-const CHEVRON_CLASS = "grid h-6 w-3 shrink-0 place-items-center rounded-l-none rounded-r-sm border-l border-transparent text-sidebar-foreground/70 outline-none transition group-hover/split:border-border group-hover/split:text-sidebar-accent-foreground group-data-[active]/split:border-border hover:bg-foreground/10 focus-visible:ring-2 focus-visible:ring-ring/45 disabled:pointer-events-none disabled:opacity-50 aria-expanded:border-border aria-expanded:bg-foreground/10 aria-expanded:text-sidebar-accent-foreground";
+// hover and while its menu is open, with no line between the halves.
+const CHEVRON_CLASS = "grid h-6 w-3 shrink-0 place-items-center rounded-l-none rounded-r-sm text-sidebar-foreground/70 outline-none transition group-hover/split:text-sidebar-accent-foreground hover:bg-foreground/10 focus-visible:ring-2 focus-visible:ring-ring/45 disabled:pointer-events-none disabled:opacity-50 aria-expanded:bg-foreground/10 aria-expanded:text-sidebar-accent-foreground";
 
 /**
  * A tool's settings: a button and the ordinary dropdown it opens with whatever the tool offers

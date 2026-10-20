@@ -230,22 +230,14 @@ async function open(options = {}) {
     // (`display: contents`): one not hidden is on screen.
     sidebar: () => pane.locator('[data-cad-file-sidebar] [data-tool-panel]').evaluateAll(panels => panels
       .filter(panel => !panel.closest('[hidden]')).map(panel => panel.getAttribute('aria-label'))),
-    // Select's selection filter is the chevron right after its button on the strip
-    // (`SelectionModes.jsx`): a checkbox per kind. `ticks` names those to tick (true) or untick
-    // (false); a kind the menu does not offer (Parts in a part file) is passed over.
-    setFilter: async ticks => {
+    // Select's mode, chosen from the chevron right after its button on the strip (`SelectionModes.jsx`):
+    // All, or Parts, Faces, Edges or Position alone. Choosing one puts the menu away.
+    chooseSelectMode: async name => {
       await pane.locator('[data-cad-toolbar] [data-select-filter-trigger]').click();
       const menu = page.locator('[role=menu][aria-label="Selection filter"]');
-      for (const [id, wanted] of Object.entries(ticks)) {
-        const item = menu.locator(`[data-select-filter="${id}"]`);
-        if (await item.count() && (await item.getAttribute('aria-checked') === 'true') !== wanted) await item.click();
-      }
-      await page.keyboard.press('Escape');
+      await menu.locator(`[data-select-filter="${name === 'All' ? 'all' : name.toLowerCase()}"]`).click();
       await menu.waitFor({ state: 'detached' });
     },
-    // The geometry Select picks, as the old modes named it: All of it, or Parts, Faces or Edges alone.
-    chooseSelectMode: name => opened.setFilter({ parts: name === 'All' || name === 'Parts', faces: name === 'All' || name === 'Faces',
-      edges: name === 'All' || name === 'Edges' }),
     selectFilter: () => pane.locator('[data-cad-toolbar] [data-select-filter-trigger]').getAttribute('aria-label'),
     // A part is a leaf of the tree: its row's menu Expands it, which loads its faces and edges for
     // a pick under All, and Collapses it again.
@@ -288,12 +280,13 @@ test('a STEP opens in Select with the tools its sidecar earns, its Model tree, P
   // Select's selection filter is a chevron right after its button, never pressed as a tool is,
   // picking everything as the file opens; Measure's, after its own, snapping to everything. Position
   // is no tool: its knobs are Select's.
-  assert.deepEqual(await view.tools(), ['Select:true', 'Selection filter: everything:null', 'Annotate:false', 'Measure:false', 'Measure filter: everything:null',
+  assert.deepEqual(await view.tools(), ['Select:true', 'Selection filter: everything:null', 'Pencil:false', 'Shapes:false', 'Measure:false', 'Measure filter: everything:null',
     'Explode:false', 'Clip:false'],
     'no Animation tool: routines are the sidebar\'s. Display is a dropdown, not a tool');
   assert.deepEqual(await view.viewControls(), ['Projection: Orthographic', 'Display mode: Solid', 'Preview'],
     'the view\'s controls end the strip: Projection, Display, then Preview');
-  assert.equal(await pane.locator('[data-cad-toolbar] [data-strip-rule] + [data-view-controls]').count(), 1, 'after the strip\'s rule');
+  assert.equal(await pane.locator('[data-cad-toolbar] [data-strip-rule]').count(), 1, 'one rule: the tools that pick, then Explode, Clip and the view\'s controls');
+  assert.equal(await pane.locator('[data-cad-toolbar] [data-view-controls]').evaluate(element => element.previousElementSibling?.getAttribute('aria-label')), 'Clip', 'no rule before the view\'s controls');
   assert.equal(await pane.locator('[data-viewer-navbar] [data-view-controls] button').count(), 0, 'nothing of the view in the navbar');
   assert.equal(await pane.getByRole('region', { name: 'Model tree', exact: true }).getByRole('button', { name: /^Selection filter: / }).count(), 0,
     'Select\'s filter is the strip\'s, not the Model tree section\'s');
@@ -543,7 +536,7 @@ test('under Faces or Edges, one press on a part whose faces are not loaded loads
   assert.doesNotMatch(edgeText, /\bType\b/);
   // An update of the model keeps the mode, and drops what was picked in the revision before it.
   await view.update();
-  assert.equal(await view.selectFilter(), 'Selection filter: Edges, Position, Annotations, Measurement');
+  assert.equal(await view.selectFilter(), 'Selection filter: Edges');
   assert.deepEqual(await selected(), []);
   assert.deepEqual(errors, []);
 });
@@ -632,7 +625,7 @@ test('hiding a part takes it off the screen, and the viewport menus offer what t
   await page.keyboard.press('Escape');
   await page.getByRole('menu').waitFor({ state: 'detached' });
   await away();
-  for (const tool of ['Measure', 'Annotate']) {
+  for (const tool of ['Measure', 'Pencil']) {
     await view.tool(tool).click();
     // A menu opens in the render the press causes: two frames on, it would be there.
     await page.mouse.click(...at([6, 6, 5]), { button: 'right' });
@@ -649,9 +642,9 @@ test('hiding a part takes it off the screen, and the viewport menus offer what t
       document.querySelector('[data-testid="one"] [aria-busy] > div > canvas').dispatchEvent(event);
       return event.defaultPrevented;
     }), true, `${tool} still suppresses the native menu`);
-    // And a secondary DRAG is still a pan. (Not under Annotate: that tool locks the
+    // And a secondary DRAG is still a pan. (Not under Pencil: that tool locks the
     // view on purpose and the editor takes the drag, which its own test asserts.)
-    if (tool === 'Annotate') continue;
+    if (tool === 'Pencil') continue;
     const before = await page.evaluate(() => window.__cadCamera().target);
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.down({ button: 'right' });
@@ -662,14 +655,14 @@ test('hiding a part takes it off the screen, and the viewport menus offer what t
   }
   // The tree is the sidebar's, under any tool, and acted from it goes back to Select first —
   // Isolate, which has no selection of its own to make.
-  assert.deepEqual(await view.tools(), ['Select:false', 'Selection filter: everything:null', 'Annotate:true', 'Measure:false', 'Measure filter: everything:null', 'Explode:false', 'Clip:false']);
+  assert.deepEqual(await view.tools(), ['Select:false', 'Selection filter: everything:null', 'Pencil:true', 'Shapes:false', 'Measure:false', 'Measure filter: everything:null', 'Explode:false', 'Clip:false']);
   assert.equal(await pane.getByRole('button', { name: 'Select arm', exact: true }).isVisible(), true);
   // A menu goes when the camera moves, and the last pan is still coasting: it opens at rest.
   await pane.getByRole('button', { name: 'Select arm', exact: true }).click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Isolate', exact: true }).click();
   await page.getByRole('menu').waitFor({ state: 'detached' });
   await page.waitForFunction(() => window.cadHarness.a.controller.readState().isolatedPartIds.join() === 'o1.2');
-  assert.deepEqual(await view.tools(), ['Select:true', 'Selection filter: everything:null', 'Annotate:false', 'Measure:false', 'Measure filter: everything:null', 'Explode:false', 'Clip:false']);
+  assert.deepEqual(await view.tools(), ['Select:true', 'Selection filter: everything:null', 'Pencil:false', 'Shapes:false', 'Measure:false', 'Measure filter: everything:null', 'Explode:false', 'Clip:false']);
   await page.keyboard.press('Escape');
   assert.deepEqual(errors, []);
 });
@@ -873,10 +866,10 @@ test('Position drives the mate and repaints, a named pose jumps, Select\'s knob 
   await page.mouse.dblclick(view.box.x + dragged.x, view.box.y + dragged.y);
   await settle(page);
   assert.deepEqual(await picked(), [[], [], []], 'a double-click on the knob isolates nothing');
-  // With Position unticked from the filter the knob goes; ticked again it is back.
-  await view.setFilter({ position: false });
+  // Picking Faces alone, the knob goes; back to All, it is back.
+  await view.chooseSelectMode('Faces');
   await page.waitForFunction(() => window.__cadJointHandles().length === 0);
-  await view.setFilter({ position: true });
+  await view.chooseSelectMode('All');
   await page.waitForFunction(() => window.__cadJointHandles().length === 1);
   assert.deepEqual(errors, []);
 });
@@ -1264,7 +1257,7 @@ test('Measure reads a distance between two picks', async () => {
   await view.partMenu('base', 'Expand');
   await view.partMenu('arm', 'Expand');
   await view.tool('Measure').click();
-  // It has no panel: what it takes is Quick Edit's, a chip each.
+  // It has no panel: what it takes is its row's under the strip, a chip each, and none of it Quick Edit's.
   assert.deepEqual(await view.stack(), []);
   // Measure says what the pointer does over the model: a crosshair, not Select's hand.
   await page.mouse.move(...at([0, 0, 5]));
@@ -1275,10 +1268,12 @@ test('Measure reads a distance between two picks', async () => {
   await chip.waitFor();
   assert.match(await chip.innerText(), /\d+\.\d+ mm/, 'its chip reads a length');
   assert.equal(await chip.count(), 1, 'one ruler');
-  // Its X deletes it, and Quick Edit, with nothing left to carry, goes with it.
+  assert.equal(await pane.locator('[data-measurements] [data-quick-edit-ref^="measure-"]').count(), 1, "in Measure's row");
+  assert.equal(await view.quickEdit().count(), 0, 'and no Quick Edit: a measurement is the person\'s alone');
+  // Its X deletes it, and the row, with nothing left to list, goes with it.
   await chip.getByRole('button', { name: /^Remove Measurement 1: / }).click();
   await chip.waitFor({ state: 'detached' });
-  await view.quickEdit().waitFor({ state: 'detached' });
+  await pane.locator('[data-measurements]').waitFor({ state: 'detached' });
   assert.deepEqual(errors, []);
 });
 
@@ -1669,7 +1664,11 @@ test('a reload of the tab brings back the view — camera, Display, Clip, Explod
   await measurePoints(page, at, [0, 0, 5], [15, 0, 4]);
   await measurements.waitFor();
   await view.tool('Select').click();
-  assert.equal(await measurements.isVisible(), true);
+  // The row is Measure's: under Select it goes, and the measurement stays for Measure's return.
+  assert.equal(await measurements.count(), 0);
+  await view.tool('Measure').click();
+  await measurements.waitFor();
+  await view.tool('Select').click();
   await pane.getByRole('button', { name: 'Select base', exact: true }).click();
   await page.waitForFunction(() => window.cadHarness.a.controller.readState().selectedPartIds.length === 1);
   // A part hidden, another isolated.

@@ -1,18 +1,21 @@
 import SelectFilterMenu from "../select/SelectFilterMenu.jsx";
-import { modeGlyphIcon } from "../select/modeGlyphs.jsx";
+import { ModeGlyph, modeGlyphIcon } from "../select/modeGlyphs.jsx";
 import { MEASURE_SNAP_KINDS } from "./measureFilter.js";
 
 // Each kind's glyph, Select's own: a point in a ring for Vertices, the cube with an edge or a face drawn solid.
 const GLYPHS = Object.freeze({ vertex: "points", edge: "edges", face: "faces" });
-const KINDS = MEASURE_SNAP_KINDS.map(kind => ({ ...kind, icon: modeGlyphIcon(GLYPHS[kind.id]) }));
+/** Measure's modes: All (the vertex near the pointer, else the edge, else the face), then each alone. */
+export const MEASURE_MODES = Object.freeze([
+  { id: "all", label: "All", kinds: MEASURE_SNAP_KINDS.map(kind => kind.id), icon: <ModeGlyph tool="measure" mode="all" className="size-3.5" aria-hidden="true" /> },
+  ...MEASURE_SNAP_KINDS.map(kind => ({ id: kind.id, label: kind.label, kinds: [kind.id], icon: modeGlyphIcon(GLYPHS[kind.id]) })),
+]);
 
 /**
- * Measure's selection filter: the chevron after its button on the strip, Select's own menu
- * (`SelectFilterMenu.jsx`) with what Measure snaps to (`measureFilter.js`): Select all, then
- * Vertices, Edges and Faces.
+ * Measure's menu: the chevron after its button on the strip, Select's own (`SelectFilterMenu.jsx`)
+ * with what Measure picks (`measureFilter.js`): All, Vertices, Edges or Faces.
  *
  * @param {{ value: readonly string[], onChange(filter: readonly string[]): void, disabled?: boolean }} props
  */
 export default function MeasureFilterMenu({ value, onChange, disabled = false }) {
-  return <SelectFilterMenu value={value} onChange={onChange} kinds={KINDS} disabled={disabled} name="measure" triggerName="Measure filter" />;
+  return <SelectFilterMenu value={value} onChange={onChange} modes={MEASURE_MODES} disabled={disabled} name="measure" triggerName="Measure filter" />;
 }

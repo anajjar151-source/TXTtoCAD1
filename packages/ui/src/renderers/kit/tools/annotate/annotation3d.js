@@ -12,8 +12,8 @@ import { requestSceneFrame } from "../../viewport/sceneFrames.js";
 // the nearest visible surface's plane). Placement says what a point does on the model: On surface
 // drops each point onto the visible surface under it, On plane keeps it on the level plane; off the
 // model both carry on at the level. Ink the model hides is drawn faint through it
-// (`ANNOTATION_HIDDEN_OPACITY`). Every mark is in model coordinates and stays put, whatever Explode, a
-// pose or hiding a part does to the model; Clip cuts it. The projected ink is plain data
+// (`ANNOTATION_HIDDEN_OPACITY`). Every mark is in model coordinates and stays put, whatever a model
+// effect that moves the parts, a pose or hiding a part does to the model; Clip cuts it. The projected ink is plain data
 // (`AnnotationItem`), kept across scene rebuilds; `mountAnnotations` draws it in a viewer runtime.
 
 /**
@@ -461,18 +461,18 @@ function levelDepth(view, level, point) {
  * A stroke's line is split into pieces of a few pixels first, in both. A text mark is a card facing
  * the view, at the level's depth under its anchor corner, in both. Every point is a little off what it
  * lies on, toward the eye (text, more).
- * `touches`: what each mark was drawn over, most first — the face or edge (`ref`, from `topologyAt`,
+ * `touches`: what each mark was drawn over, most first — the face or edge (`ref`, from `touchesAt`,
  * a screen point's `[{ part, ref }]`), else the part.
  *
  * @param {object} runtime  The viewer runtime (`THREE`, `camera`, `modelGroup`, `renderer`, `scene`, `activeClipPlanes`).
  * @param {import("../../../../annotation/geometry.js").ScreenMark[]} marks
  * @param {{ width: number, height: number }} size  The viewport's CSS size, which the marks' pixels are of.
  * @param {{ placement?: "surface" | "plane", level?: { point: number[], normal: number[] } | null,
- *   topologyAt?: ((point: { x: number, y: number }) => { part: string, ref?: string }[]) | null, cpuBudget?: number }} [options]
+ *   touchesAt?: ((point: { x: number, y: number }) => { part: string, ref?: string }[]) | null, cpuBudget?: number }} [options]
  *   `level`: every mark lies on this plane instead of its own (a fill of a flat shape, on the shape's plane).
  * @returns {AnnotationItem[]}
  */
-export function projectAnnotations(runtime, marks, size, { placement = "surface", level = null, topologyAt = null, cpuBudget } = {}) {
+export function projectAnnotations(runtime, marks, size, { placement = "surface", level = null, touchesAt = null, cpuBudget } = {}) {
   const { THREE, camera } = runtime;
   const { width, height } = size;
   if (!THREE || !camera || !(width > 0) || !(height > 0) || !marks.length) return [];
@@ -516,8 +516,8 @@ export function projectAnnotations(runtime, marks, size, { placement = "surface"
     const positions = new Float32Array(points.length * 3);
     points.forEach((point, index) => view.at(point, depths[index]).toArray(positions, index * 3));
     const item = { id: mark.id, kind: mark.kind, points: positions, color: mark.color, ...(mark.group ? { group: mark.group } : {}),
-      ...(mark.view ? { view: mark.view } : {}), touches: touchesOf(mark.kind === "area" ? mark.outline : points, topologyAt, partAt) };
-    if (mark.kind === "stroke") Object.assign(item, { width: mark.width, opacity: mark.opacity, dash: mark.dash, closed: mark.closed,
+      ...(mark.view ? { view: mark.view } : {}), touches: touchesOf(mark.kind === "area" ? mark.outline : points, touchesAt, partAt) };
+    if (mark.kind === "stroke") Object.assign(item, { width: mark.width, opacity: mark.opacity, closed: mark.closed,
       ...(widths ? { widths } : {}) });
     else if (mark.kind === "area") Object.assign(item, { opacity: mark.opacity, triangles: area.index, outline: mark.outline.length });
     else Object.assign(item, { text: mark.text, fontPx: mark.fontPx });
@@ -527,14 +527,14 @@ export function projectAnnotations(runtime, marks, size, { placement = "surface"
 
 // What a mark was drawn over is read at up to this many of its points.
 const TOUCH_SAMPLES = 16;
-// What a mark was drawn over, most first: each face or edge `topologyAt` names at a sample of its
-// points, with its part; without `topologyAt`, each part under them.
-function touchesOf(points, topologyAt, partAt) {
+// What a mark was drawn over, most first: each face or edge `touchesAt` names at a sample of its
+// points, with its part; without `touchesAt`, each part under them.
+function touchesOf(points, touchesAt, partAt) {
   const tally = new Map();
   const step = Math.max(1, (points.length - 1) / Math.max(1, TOUCH_SAMPLES - 1));
   for (let at = 0; at < points.length; at += step) {
     const point = points[Math.round(at)];
-    const found = topologyAt ? topologyAt(point) || [] : [{ part: partAt(point) }];
+    const found = touchesAt ? touchesAt(point) || [] : [{ part: partAt(point) }];
     for (const touch of found) {
       if (touch?.part == null) continue;
       const entry = touch.ref ? { part: String(touch.part), ref: String(touch.ref) } : { part: String(touch.part) };

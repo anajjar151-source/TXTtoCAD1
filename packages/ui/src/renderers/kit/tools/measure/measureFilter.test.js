@@ -16,18 +16,17 @@ test('with every kind ticked, an edge near its end is that vertex, and every oth
   assert.equal(restrictMeasurePick(null, MEASURE_FILTER_DEFAULT), null);
 });
 
-test('an unticked kind falls through to the next the filter allows, and none ticked is the point on the model', () => {
-  const fallbacks = { vertex: [0, 0, 0], face: () => onFace, free: () => free };
+test('an unticked kind falls through to the next the filter allows, else to nothing', () => {
+  const fallbacks = { vertex: [0, 0, 0], face: () => onFace };
   // Vertices unticked: the edge stays an edge, wherever its ends are.
   assert.equal(restrictMeasurePick(edge, ['edge', 'face'], fallbacks), edge);
   // Edges unticked: away from an end, the face under the pointer; at an end, the vertex.
   assert.equal(restrictMeasurePick(edge, ['face'], fallbacks), onFace);
   assert.equal(restrictMeasurePick(edge, ['vertex', 'face'], fallbacks).snapKind, 'vertex');
   assert.equal(restrictMeasurePick(edge, ['vertex', 'face'], { ...fallbacks, vertex: null }), onFace);
-  // No face under it to fall to, or Faces unticked too: the point on the model.
-  assert.equal(restrictMeasurePick(edge, ['face'], { ...fallbacks, face: () => null }), free);
-  assert.equal(restrictMeasurePick(edge, [], fallbacks), free);
-  assert.equal(restrictMeasurePick(face, ['vertex', 'edge'], fallbacks), free);
+  // No face under it to fall to, or Faces unticked too: nothing a press can take there.
+  assert.equal(restrictMeasurePick(edge, ['face'], { ...fallbacks, face: () => null }), null);
+  assert.equal(restrictMeasurePick(face, ['vertex', 'edge'], fallbacks), null);
 });
 
 test("an edge's ends are the points that end one segment; a closed edge has none", () => {

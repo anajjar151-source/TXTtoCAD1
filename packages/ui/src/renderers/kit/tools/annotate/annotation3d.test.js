@@ -43,7 +43,7 @@ function rig({ oblique = false } = {}) {
   return { runtime, slab, post, renders };
 }
 const size = { width: 100, height: 100 };
-const stroke = (id, points) => ({ kind: 'stroke', id, points: points.map(([x, y]) => ({ x, y })), closed: false, color: '#ff0000', width: 2, opacity: 1, dash: 'solid' });
+const stroke = (id, points) => ({ kind: 'stroke', id, points: points.map(([x, y]) => ({ x, y })), closed: false, color: '#ff0000', width: 2, opacity: 1 });
 const along = (from, to, step = 1) => Array.from({ length: Math.round(Math.abs(to - from) / step) + 1 }, (_, index) => from + Math.sign(to - from) * index * step);
 const worldOf = item => Array.from({ length: item.points.length / 3 }, (_, index) => new THREE.Vector3().fromArray(item.points, index * 3));
 const rounded = item => worldOf(item).map(point => [point.x, point.y, point.z].map(value => Math.round(value * 1000) / 1000));
@@ -215,8 +215,8 @@ test('a two-point line is split into pieces of a few pixels in both modes, the p
 
 test('what a mark touches: each face or edge the renderer names under it, most first, with its part', () => {
   const { runtime } = rig();
-  const topologyAt = ({ x }) => (x < 45 ? [{ part: 'slab', ref: '@cad[s.step#f1]' }] : x < 50 ? [{ part: 'slab', ref: '@cad[s.step#e2]' }] : [{ part: 'slab' }]);
-  const [item] = projectAnnotations(runtime, [stroke('t', along(41, 46).map(x => [x, 58]))], size, { topologyAt });
+  const touchesAt = ({ x }) => (x < 45 ? [{ part: 'slab', ref: '@cad[s.step#f1]' }] : x < 50 ? [{ part: 'slab', ref: '@cad[s.step#e2]' }] : [{ part: 'slab' }]);
+  const [item] = projectAnnotations(runtime, [stroke('t', along(41, 46).map(x => [x, 58]))], size, { touchesAt });
   assert.deepEqual(item.touches, [{ part: 'slab', ref: '@cad[s.step#f1]' }, { part: 'slab', ref: '@cad[s.step#e2]' }]);
   // Without the renderer's names, the parts under it.
   const [parts] = projectAnnotations(runtime, [stroke('p', along(46, 54).map(x => [x, 50]))], size);

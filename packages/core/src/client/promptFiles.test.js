@@ -27,11 +27,11 @@ test("a chip's copy is saved as a file at once, and answered with its path", asy
   const calls = [];
   const files = createHttpPromptFiles({ origin: 'http://cad.invalid', fetch: async (url, options) => {
     calls.push({ url, method: options.method, body: JSON.parse(options.body), guard: options.headers['x-cadgen-viewer'] });
-    return Response.json({ ok: true, path: '/tmp/p/a-3.measurement.json' });
+    return Response.json({ ok: true, path: '/tmp/p/a-3.annotation.json' });
   } });
-  const data = { start: [0, 0, 0], end: [1, 0, 0], label: '1.00 mm', color: '#d59090' };
-  assert.equal(await files.save({ name: 'a.step', kind: 'measurement', data }), '/tmp/p/a-3.measurement.json');
-  assert.deepEqual(calls, [{ url: 'http://cad.invalid/__cad/prompt-files/save', method: 'POST', body: { name: 'a.step', kind: 'measurement', data }, guard: '1' }]);
+  const data = { units: 'mm', marks: [] };
+  assert.equal(await files.save({ name: 'a.step', kind: 'annotation', data }), '/tmp/p/a-3.annotation.json');
+  assert.deepEqual(calls, [{ url: 'http://cad.invalid/__cad/prompt-files/save', method: 'POST', body: { name: 'a.step', kind: 'annotation', data }, guard: '1' }]);
 });
 
 test("a refused save says why", async () => {

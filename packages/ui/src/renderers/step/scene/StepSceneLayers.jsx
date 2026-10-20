@@ -226,7 +226,8 @@ export default function StepSceneLayers({ viewport, stepScene, policy, props: su
     if (pick && !measureLockedAnchorRef.current) {
       measureLockedAnchorRef.current = pick;
       measureHoverRef.current = pick;
-    } else if (pick && measureLockedAnchorRef.current) {
+    } else {
+      // The second end, the held pick pressed again, or a press on nothing: each lets go of it.
       measureLockedAnchorRef.current = null;
     }
     onMeasurePick?.(pick);
@@ -267,6 +268,8 @@ export default function StepSceneLayers({ viewport, stepScene, policy, props: su
     deferActivation,
     pickAtRef: props.pickAtRef,
     topologyAtRef: props.topologyAtRef,
+    measureAtRef: props.measureAtRef,
+    onMeasureWantsTopology: props.onMeasureWantsTopology,
     onMeasurePick: handleMeasurePick,
     onMeasureHoverPoint: handleMeasureHoverPoint,
     viewerReadyTick,

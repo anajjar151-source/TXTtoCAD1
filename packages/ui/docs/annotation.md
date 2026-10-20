@@ -1,15 +1,16 @@
 # Annotation
 
-Annotate is the CAD viewer's own ink, with no drawing SDK behind it. A view has one
+The drawing tools — Pencil and Shapes — are the CAD viewer's own ink, with no drawing SDK behind it. A view has one
 annotation: its marks are projected into the model in 3D, so they stay where they
-were drawn from every angle, lying on the surface they were drawn on. The STEP renderer is the one that offers Annotate
-([Annotate](cad-renderer.md#annotate)).
+were drawn from every angle, lying on the surface they were drawn on. The STEP, GLB, mesh, robot and DXF renderers offer them
+([Pencil and Shapes](cad-renderer.md#pencil-and-shapes)).
 
 ## Pieces
 
 - `annotation/session.js` — `useAnnotationSession`: the annotation's ink, what the tools
-  put down next (tool, the last of each family taken up, color, stroke width, line style,
-  placement — `surface`, the default, or `plane`) and the selection. Each add, erase, restyle of the selection
+  put down next (the tool of the strip tool in hand, `pencil` — the pen, the highlighter or the eraser — and `shape` — the line first, the arrow, rectangle, ellipse or text — each kept while the other is up; `style`, the colour, stroke width and
+  placement — `surface`, the default, or `plane` — of the tool in hand, kept per drawing kind in `styles`: `pen`, `highlighter` (yellow
+  `#ffe600`; the others neon red) and `shapes`, which all five shapes share; the eraser has none) and the selection. Each add, erase, restyle of the selection
   (`restyle`) or fill of a closed shape (`fill`, joining its group) is one step
   in the file view's history (`renderers/kit/shell/useViewerHistory.js`, 200
   steps, shared with the renderer's own tools; without one the session keeps its
@@ -25,22 +26,29 @@ were drawn from every angle, lying on the surface they were drawn on. The STEP r
   screen (Explode, or the pose off its default as `kinematics` or
   `jointValues`), the parts hidden and isolated, and the picture's size. Never
   how it looks.
-- `annotation/toolbar.jsx` — `AnnotationToolbar`, Annotate's sub-toolbar: seven
-  tool buttons (Pen, Line, Arrow, Rectangle, Ellipse, Text, Eraser), then Color,
-  Stroke width, Line style and Placement (On surface, On plane), Undo, Redo and Clear. A flat
-  view (a DXF) passes `placements={false}`: its ink has nowhere to lie but the drawing. These form one row
-  on a wide view and two equal rows below 64rem. The dropdowns use visual choices.
+- `annotation/tools.js` — the two strip tools that draw and their tools: Pencil (`freedraw`, `highlighter`,
+  `eraser`) and Shapes (`line`, `arrow`, `rectangle`, `ellipse`, `text`); `toolFamily(tool)`, `styleSlot(tool)` (the style slot a tool draws with; none for the eraser).
+- `annotation/toolbar.jsx` — `AnnotationToolbar`, the sub-toolbar both strip tools share: one row (at every width; a phone's
+  wraps where it has no room) — the tools of the strip tool that is up, a button each, the one in hand pressed (Pencil's Pen,
+  Highlighter, Eraser; Shapes' Rectangle, Line, Arrow, Ellipse, Text); a rule; Color, Stroke width and Placement (On
+  surface, On plane), dropdowns of the tool in hand's own style (disabled under the Eraser), Stroke width's glyph a straight line drawn at the weight (four, 1–6px, unnamed in its menu; Color's and its menus have no heading), then Clear;
+  Undo and Redo are ⌘Z and ⇧⌘Z, with no buttons. A flat view (a DXF) passes `placements={false}`: its ink has nowhere to lie but the drawing.
   `annotationColors` offers
   neon swatches and a neutral that reads against the theme: white in dark mode,
   near-black in light mode. A native color picker adds a custom color.
   `AnnotationStylePickers` also restyles the selection's ink.
 - `renderers/kit/tools/annotate/AnnotationSelectionBar.jsx` — the bar over the ink Select
-  picked: its colour, weight and line style, Fill for a closed shape (seeded
+  picked: its colour and weight, Fill for a closed shape (seeded
   inside its outline as it falls on the screen, `annotation/geometry.js`'s
   `interiorPoint` and `fillMarkAt`, and projected where the shape lies: On plane on the
   shape's own plane if its points are coplanar (a fitted plane), else On surface) and
   Delete.
 - `annotation/geometry.js` — each tool's mark in screen space:
+  - The highlighter (`highlighterMark`) is the pen's smoothed line at one broad width — five times the stroke width
+    (`HIGHLIGHTER_WIDTH_FACTOR`) — 35% opaque (`HIGHLIGHTER_OPACITY`), round-ended, with no `widths`: an ordinary
+    stroke mark (`width`, `opacity`) that no new field or kind describes. `strokeWidthAt` and `strokeSettingOf` convert
+    between a stroke's width and the setting (1, 2, 4) for restyling. Translucent strokes are drawn once-only
+    in the model (`core/common/annotation.js`: a stencil reference per stroke), so its overlapping segments do not darken.
   - The pen is smoothed as it is drawn, and each point's width comes from its
     pressure (a stylus's own, or simulated from speed with a mouse), using
     `perfect-freehand`.
@@ -48,14 +56,14 @@ were drawn from every angle, lying on the surface they were drawn on. The STEP r
   - A fill finds the area inside a shape with
     `@text-to-cad/core/lib/annotation/fillRegion.js`.
 - `renderers/kit/tools/annotate/AnnotationOverlay.jsx` — the surface over the viewport
-  while Annotate is up. It turns every gesture into marks, previews a mark on its
+  while Pencil or Shapes is up. It turns every gesture into marks, previews a mark on its
   own canvas as it is made, and puts it into the model when the gesture ends.
   Text is written where the surface is pressed: Enter, or a press elsewhere,
   puts it down as a text mark; Shift+Enter makes a new line; Escape drops it. The
   surface stops the press's mousedown, which would otherwise take the keyboard
   back from the text it just opened.
   Each mark names the view it was put down in, and is projected onto the surface it starts on.
-  Annotate has no Select of its own:
+  The drawing tools have no Select of their own:
   the viewer's Select picks ink (`RendererShell.jsx`, through the viewport's
   `annotationAt`), Shift adding to the pick, and Delete and Escape act on it (here too).
   The camera stays the person's between strokes: the wheel zooms, a right or
@@ -117,7 +125,7 @@ were drawn from every angle, lying on the surface they were drawn on. The STEP r
     Explode, Position or hiding a part does to the model. Clip cuts it.
     `touches` says what it was drawn over, most first, the same for either placement: the faces and edges the
     renderer names under it (`ref`, a prompt reference, from the shell's
-    `inkTopology`; the STEP renderer's reads them whatever Select's filter picks),
+    `inkTouches`; the STEP renderer's reads them whatever Select's filter picks),
     each with its part; without it, the parts.
   - The projected ink is plain data (`AnnotationItem`): an annotation mark
     (`@text-to-cad/core/common/annotation.js`), kept across scene rebuilds.
@@ -132,11 +140,11 @@ were drawn from every angle, lying on the surface they were drawn on. The STEP r
 ## Lifetime and capture
 
 The live annotation is session-only: it is never written to tab or file state. It
-outlives Annotate being put down, because the ink stays in the model and the next
-Annotate adds to it. It goes when the person clears it, or when the model it was
+outlives the drawing tools being put down, because the ink stays in the model and the next
+one adds to it. It goes when the person clears it, or when the model it was
 drawn on changes.
 
-⌘C / Ctrl+C while Annotate is up copies the view as it is on screen, ink
+⌘C / Ctrl+C while Pencil or Shapes is up copies the view as it is on screen, ink
 included, to the clipboard as a PNG.
 
 Quick Edit captures the current view and distinct views with remaining ink when
@@ -145,5 +153,5 @@ includes shared annotation and measurements: up to 1 KiB of compact UTF-8 JSON
 travels inline, and larger packets are saved to a temporary `.snapshot.json`.
 No images are rendered at handoff. Save inline JSON to a file before running
 `cadgen snapshot --job <file>` to render those views over the model or an edit of it.
-Annotation and measurement chips do not copy references or save individual files.
+The Annotation chip does not copy references or save individual files.
 Queue and Send clear the annotation with the note; Copy Prompt keeps it.
