@@ -102,6 +102,26 @@ class SdfSourceTests(unittest.TestCase):
         self.assertEqual((mesh_path.resolve(),), source.visual_mesh_paths)
         self.assertEqual((mesh_path.resolve(),), source.collision_mesh_paths)
 
+    def test_read_sdf_source_resolves_absolute_paths_and_file_uris(self) -> None:
+        absolute = self._write_mesh("base.stl").resolve()
+        # On Windows these are "C:\\...\\base.stl" and "file:///C:/.../base.stl".
+        for uri in (str(absolute), absolute.as_uri()):
+            source_path = self._write_sdf(
+                "robot",
+                f"""
+                <sdf version="1.12">
+                  <model name="sample">
+                    <link name="base_link">
+                      <visual name="base_visual">
+                        <geometry><mesh><uri>{uri}</uri></mesh></geometry>
+                      </visual>
+                    </link>
+                  </model>
+                </sdf>
+                """,
+            )
+            self.assertEqual((absolute,), read_sdf_source(source_path).visual_mesh_paths, uri)
+
     def test_read_sdf_source_accepts_external_mesh_uri_without_resolution(self) -> None:
         source_path = self._write_sdf(
             "robot",
