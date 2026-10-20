@@ -14,6 +14,25 @@ test('the strip draws the tools it is handed, in order, and knows none by name',
   view.unmount();
 });
 
+test('a thin rule parts the strip\'s groups: the tools that pick, then the model\'s effects, then the view', () => {
+  const view = render(FloatingToolBar, {
+    tools: [tool('select'), tool('annotate'), tool('measure'), tool('explode', { group: 'model' }), tool('clip', { group: 'model' })],
+    views: [{ id: 'display', label: 'Display', icon: null, tile: null }],
+  });
+  const row = elements(view.tree).filter(node => node.props['data-strip-rule'] === '' || typeof node.props.label === 'string')
+    .map(node => (node.props['data-strip-rule'] === '' ? '|' : node.props.label));
+  assert.deepEqual(row, ['SELECT', 'ANNOTATE', 'MEASURE', '|', 'EXPLODE', 'CLIP', '|']);
+  view.unmount();
+});
+
+test('a tool with a menu is one control: its button and chevron under one fill, lit while the tool is in hand', () => {
+  const view = render(FloatingToolBar, { tools: [tool('select', { active: true, menu: 'MENU' }), tool('measure', { menu: 'MENU' }), tool('annotate')] });
+  const splits = elements(view.tree).filter(node => node.props['data-tool-split'] === '');
+  assert.deepEqual(splits.map(node => node.props['data-active']), ['', undefined], 'the pair, lit with the tool in hand');
+  assert.ok(splits.every(node => /group\/split/.test(node.props.className)), 'one hover for the pair');
+  view.unmount();
+});
+
 test('every press reaches onSelect, and a press is all a tool is: no tool opens a menu from the strip', () => {
   const pressed = [];
   const view = render(FloatingToolBar, { tools: [

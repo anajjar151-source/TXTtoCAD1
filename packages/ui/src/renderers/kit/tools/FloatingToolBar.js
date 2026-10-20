@@ -28,6 +28,8 @@ export { STRIP_BUTTON_CLASS, StripTouchProvider, TOUCH_STRIP_BUTTON_CLASS, useSt
  * @property {string} [description]  `aria-description`.
  * @property {import("react").ReactNode} [menu]  Its modes: the chevron after its button, and the menu it opens.
  * @property {boolean} [changed]  What it sets is off its default (an effect on the model): a dot in its tile's corner.
+ * @property {string} [group]  The strip's group it is in: a thin rule parts it from the tool before it when that
+ *   tool's group is another (the tools that pick — Select, Annotate, Measure — then the model's effects, "model").
  */
 
 /**
@@ -49,19 +51,25 @@ export { STRIP_BUTTON_CLASS, StripTouchProvider, TOUCH_STRIP_BUTTON_CLASS, useSt
  *   nested submenu of its row (Projection's, Display's modes); `openPopover` opens its `popover` from More (Display's settings page).
  */
 
-// A plain function, not a component: the strip's own output is the buttons. A tool with a menu is
-// its button as every tool's, then the menu's small chevron, a button of its own with its own
-// hover, as a design tool's toolbar has it (`ToolSettingsMenu`'s "chevron" trigger).
-function toolButton(tool, className = STRIP_BUTTON_CLASS) {
+// A tool with a menu is ONE control (Select, Measure): its button, then its menu's small chevron
+// (`ToolSettingsMenu`'s "chevron" trigger), touching, under one rounded fill. The fill lights the pair
+// on hover, while the tool is in hand and while its menu is open; the chevron's half only brightens,
+// on its own hover and while its menu is open, behind a hairline (`CHEVRON_CLASS`), so the two never
+// read as two buttons side by side.
+const SPLIT_CLASS = "group/split inline-flex items-center rounded-sm transition hover:bg-sidebar-accent data-[active]:bg-sidebar-accent has-[[aria-expanded=true]]:bg-sidebar-accent";
+const SPLIT_BUTTON_CLASS = "rounded-r-none hover:bg-transparent data-[variant=secondary]:bg-transparent data-[variant=secondary]:hover:bg-transparent group-hover/split:text-sidebar-accent-foreground";
+
+// A plain function, not a component: the strip's own output is the buttons.
+function toolButton(tool, className = STRIP_BUTTON_CLASS, touch = false) {
   const active = tool.active === true;
   const button = <ToolbarButton tooltipSide="top" label={tool.label} active={active} disabled={tool.disabled}
-    className={cn(className, tool.changed && "relative")} aria-pressed={active} aria-description={tool.description} onClick={() => tool.onSelect()}
+    className={cn(className, tool.changed && "relative", tool.menu && SPLIT_BUTTON_CLASS)} aria-pressed={active} aria-description={tool.description} onClick={() => tool.onSelect()}
     data-changed={tool.changed ? "" : undefined}>
     {tool.icon}
     {tool.changed ? <ChangedDot /> : null}
   </ToolbarButton>;
   if (!tool.menu) return button;
-  return <span className="inline-flex items-center" data-tool-split="">{button}{tool.menu}</span>;
+  return <span className={cn(SPLIT_CLASS, touch && "rounded-md")} data-tool-split="" data-active={active ? "" : undefined}>{button}{tool.menu}</span>;
 }
 
 const GROUP_CLASS = `pointer-events-auto inline-flex min-h-8 max-w-full items-center gap-1 rounded-md p-1 ${FLOATING_CHROME_SURFACE_CLASS}`;
@@ -87,7 +95,10 @@ export default function FloatingToolBar({ tools = [], views = [], touch = false 
   if (touch) return <TouchStrip tools={tools} views={views} />;
   return (<div className="relative z-20 flex max-w-full shrink-0 flex-col items-end gap-1" data-cad-toolbar="tools">
       <div role="group" aria-label="Interaction tools" className={cn(GROUP_CLASS, "flex-wrap")}>
-        {tools.map(tool => <Fragment key={tool.id}>{toolButton(tool)}</Fragment>)}
+        {tools.map((tool, index) => <Fragment key={tool.id}>
+          {index > 0 && (tool.group || "") !== (tools[index - 1].group || "") ? rule : null}
+          {toolButton(tool)}
+        </Fragment>)}
         {tools.length && views.length ? rule : null}
         {views.length ? <span className="inline-flex items-center gap-1" data-view-controls="">
           {views.map(view => <Fragment key={view.id}>{view.tile}</Fragment>)}
@@ -158,7 +169,7 @@ function TouchStrip({ tools, views }) {
   return <StripTouchProvider value={true}>
     <div ref={root} className="relative z-20 flex max-w-full shrink-0 flex-col items-end gap-1" data-cad-toolbar="tools" data-touch-strip="">
       <div role="group" aria-label="Interaction tools" className={cn(GROUP_CLASS, "flex-nowrap")}>
-        {shownTools.map(({ tool }) => <Fragment key={tool.id}>{toolButton(tool, TOUCH_STRIP_BUTTON_CLASS)}</Fragment>)}
+        {shownTools.map(({ tool }) => <Fragment key={tool.id}>{toolButton(tool, TOUCH_STRIP_BUTTON_CLASS, true)}</Fragment>)}
         {shownTools.length && shownViews.length ? rule : null}
         {shownViews.length ? <span className="inline-flex items-center gap-1" data-view-controls="">
           {shownViews.map(({ control }) => <Fragment key={control.id}>{control.tile}</Fragment>)}

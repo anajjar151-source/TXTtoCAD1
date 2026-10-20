@@ -86,6 +86,8 @@ import {
 } from "@text-to-cad/core/lib/render/meshCost.js";
 import { createAnimationClock, AnimationClockProvider } from "./workbench/animationClockStore.js";
 import { useMeasureSession } from "../kit/tools/measure/useMeasureSession.js";
+import MeasureFilterMenu from "../kit/tools/measure/MeasureFilterMenu.jsx";
+import { MEASURE_FILTER_DEFAULT } from "../kit/tools/measure/measureFilter.js";
 import { fileKey } from "./workbench/entryPaths.js";
 import {
   stepModuleTopologyOccurrenceIds
@@ -261,6 +263,9 @@ function StepSurfaceBody({ view, data }) {
   // edge pick grows (Group faces, Group edges) is independent of it.
   const [selectFilter, setSelectFilter] = useState(STEP_SELECT_DEFAULT);
   const selectionFilter = selectGeometryMode(selectFilter);
+  // What Measure snaps to, its own filter (`kit/tools/measure/measureFilter.js`): Vertices, Edges
+  // and Faces, every kind when a file opens.
+  const [measureFilter, setMeasureFilter] = useState(MEASURE_FILTER_DEFAULT);
   const [connectedSelection, setConnectedSelection] = useState(NO_CONNECTED_SELECTION);
   // A press under a face or edge filter on an assembly part whose faces are not loaded yet:
   // `{ partId, clientX, clientY, pointerType, multiSelect }`, replayed once they can be picked.
@@ -1422,10 +1427,15 @@ function StepSurfaceBody({ view, data }) {
     [viewerPickableReferences, selectFilter]);
   const filteredViewerFaces = useMemo(() => filteredViewerReferences.filter(isFaceReference), [filteredViewerReferences, isFaceReference]);
   const filteredViewerEdges = useMemo(() => filteredViewerReferences.filter(isEdgeReference), [filteredViewerReferences, isEdgeReference]);
-  // What the tool in hand may pick: Measure snaps to no edge or face (points on the model), Select
-  // to what the selection filter allows.
-  const viewerPickableFacesForTool = measureModeActive ? EMPTY_LIST : filteredViewerFaces;
-  const viewerPickableEdgesForTool = measureModeActive ? EMPTY_LIST : filteredViewerEdges;
+  // What the tool in hand may pick: Measure what its filter ticks, every face where Faces is and
+  // every edge where Edges or Vertices is (a vertex is an edge's end, `useStepPicking.js`), whatever
+  // Select's filter says; Select what the selection filter allows.
+  const measurableFaces = useMemo(() => (measureFilter.includes("face") ? viewerPickableReferences.filter(isFaceReference) : EMPTY_LIST),
+    [measureFilter, viewerPickableReferences, isFaceReference]);
+  const measurableEdges = useMemo(() => (measureFilter.includes("edge") || measureFilter.includes("vertex")
+    ? viewerPickableReferences.filter(isEdgeReference) : EMPTY_LIST), [measureFilter, viewerPickableReferences, isEdgeReference]);
+  const viewerPickableFacesForTool = measureModeActive ? measurableFaces : filteredViewerFaces;
+  const viewerPickableEdgesForTool = measureModeActive ? measurableEdges : filteredViewerEdges;
   const measureToolDisabled = viewerLoading || !selectedMeshData;
   const topologySelectionActive =
     (isAssemblyView && requestedStepTreeTopologyNodeIds.length > 0) ||
@@ -3215,6 +3225,7 @@ function StepSurfaceBody({ view, data }) {
     materialOverrides: resolvedMaterialOverrides,
     receiveShadows: resolvedScene.view.lighting.enabled,
     pickMode,
+    measureSnaps: measureFilter,
     pickableParts: !retainingPreviousStepMesh ? viewerAssemblyRenderParts : EMPTY_LIST,
     hoverStore,
     selectorRuntime: viewerSelectorRuntimeForRenderPane({ hasTopology: true,
@@ -3259,6 +3270,10 @@ function StepSurfaceBody({ view, data }) {
     onChange={value => { changeSelectFilter(value); handleSelectTabToolMode(TAB_TOOL_MODE.REFERENCES); }}
     connected={connectedSelection} onConnectedChange={(id, checked) => setConnectedSelection(current => ({ ...current, [id]: checked }))} />,
   [selectFilter, isAssemblyView, poseAvailable, selectDisabled, connectedSelection, changeSelectFilter, handleSelectTabToolMode]);
+  // What Measure snaps to: its chevron's filter, whose change takes Measure up, as Select's does Select.
+  const measureFilterMenu = useMemo(() => <MeasureFilterMenu value={measureFilter} disabled={measureToolDisabled}
+    onChange={value => { setMeasureFilter(value); handleSelectTabToolMode(TAB_TOOL_MODE.MEASURE); }} />,
+  [measureFilter, measureToolDisabled, handleSelectTabToolMode]);
   const tools = [
     shell.tools.own({
       id: TAB_TOOL_MODE.REFERENCES,
@@ -3273,6 +3288,7 @@ function StepSurfaceBody({ view, data }) {
     shell.tools.own({ id: TAB_TOOL_MODE.MEASURE, label: "Measure",
       icon: <MeasureIcon className="size-3.5" aria-hidden="true" />,
       active: tabToolMode === TAB_TOOL_MODE.MEASURE, disabled: measureToolDisabled,
+      menu: measureFilterMenu,
       // A press takes it up — again, results and all, where they are kept — and does nothing while
       // it is the tool.
       onSelect: () => { if (tabToolMode !== TAB_TOOL_MODE.MEASURE) handleSelectTabToolMode(TAB_TOOL_MODE.MEASURE); } }),

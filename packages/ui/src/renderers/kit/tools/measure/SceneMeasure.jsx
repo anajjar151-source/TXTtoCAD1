@@ -4,6 +4,7 @@ import { projectWorldPointToClient } from "@text-to-cad/core/lib/viewer/measureR
 import { meshMeasurePick } from "@text-to-cad/core/lib/viewer/meshMeasure.js";
 import { usePointerPick } from "../select/usePointerPick.js";
 import { useMeasureOverlay } from "./useMeasureOverlay.js";
+import { MEASURE_FILTER_DEFAULT } from "./measureFilter.js";
 
 // Measure on a scene of triangles: points snapped to the triangles under the pointer
 // (`meshMeasure.js`), lengths in the file's unit (the scene's `units`) and approximate, drawn and
@@ -26,9 +27,9 @@ const pointArray = point => (Array.isArray(point) ? point : point?.toArray?.() ?
  * scene that cannot be picked.
  *
  * @param {{ viewport: object, scene: object | null, measure: ReturnType<typeof import("./useMeasureSession.js").useMeasureSession>,
- *   picking: boolean, preview?: boolean }} props
+ *   picking: boolean, preview?: boolean, snaps?: readonly string[] }} props  `snaps`: Measure's filter (`measureFilter.js`).
  */
-export function SceneMeasureOverlay({ viewport, scene, measure, picking, preview = false }) {
+export function SceneMeasureOverlay({ viewport, scene, measure, picking, preview = false, snaps = MEASURE_FILTER_DEFAULT }) {
   const canvasRef = useRef(null);
   const hoverRef = useRef(null);
   const anchorRef = useRef(null);
@@ -38,7 +39,7 @@ export function SceneMeasureOverlay({ viewport, scene, measure, picking, preview
     const runtime = viewport.runtimeRef.current;
     if (!hit || !pointer || !runtime?.camera || !scene?.units) return null;
     const rect = { left: 0, top: 0, width: pointer.width, height: pointer.height };
-    return meshMeasurePick({ ...hit, point: pointArray(hit.point) }, pointer, point => projectWorldPointToClient(point, runtime.camera, rect), scene.units);
+    return meshMeasurePick({ ...hit, point: pointArray(hit.point) }, pointer, point => projectWorldPointToClient(point, runtime.camera, rect), scene.units, { snaps });
   };
   usePointerPick({
     viewport, scene, enabled: picking && !preview,

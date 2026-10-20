@@ -14,21 +14,17 @@ function Panel({ colorScheme = 'light' }: { colorScheme?: 'light' | 'dark' }) {
   return <AnnotationToolbar annotation={session} history={history} colorScheme={colorScheme} />;
 }
 
-it("Annotate's controls, two rows at the sub-toolbars' one width: every tool a button, over what is drawn next as dropdowns, placement among them, then Undo, Redo and Clear", async () => {
+it("Annotate's controls, three rows parted by rules at the sub-toolbars' one width: what draws, what is drawn next as dropdowns, placement among them, then the eraser, Clear, Undo and Redo", async () => {
   render(<Panel />);
   const row = screen.getByRole('toolbar', { name: 'Annotation controls' });
   const label = (element: Element) => element.getAttribute('role') === 'separator' ? '|' : element.getAttribute('aria-label');
-  // No rule between the halves: they are two rows, one over the other, whatever the view's width.
-  expect([...row.querySelectorAll('[role=group], [role=separator]')].map(label))
-    .toEqual(['Annotation tools', 'Annotation style', 'Annotation history']);
+  // Each row its own group, one over the other, a thin rule between them, whatever the view's width.
+  expect([...row.children].map(label)).toEqual(['Annotation tools', '|', 'Annotation style', '|', 'Erase and history']);
   expect(row.className.split(/\s+/)).toEqual(expect.arrayContaining(['flex-col', ...SUB_TOOLBAR_WIDTH_CLASS.split(/\s+/)]));
-  expect([...row.children].map(child => child.getAttribute('role') === 'group' ? child.getAttribute('aria-label')
-    : [...child.querySelectorAll('[role=group]')].map(group => group.getAttribute('aria-label')).join(' + ')))
-    .toEqual(['Annotation tools', 'Annotation style + Annotation history']);
   expect(within(screen.getByRole('group', { name: 'Annotation tools' })).getAllByRole('button').map(button => button.getAttribute('aria-label')))
-    .toEqual(['Pen', 'Line', 'Arrow', 'Rectangle', 'Ellipse', 'Text', 'Eraser']);
-  expect(within(screen.getByRole('group', { name: 'Annotation history' })).getAllByRole('button').map(button => button.getAttribute('aria-label')))
-    .toEqual(['Undo', 'Redo', 'Clear annotations']);
+    .toEqual(['Pen', 'Line', 'Arrow', 'Rectangle', 'Ellipse', 'Text']);
+  expect(within(screen.getByRole('group', { name: 'Erase and history' })).getAllByRole('button').map(button => button.getAttribute('aria-label')))
+    .toEqual(['Eraser', 'Clear annotations', 'Undo', 'Redo']);
   const settings = screen.getByRole('group', { name: 'Annotation style' });
   expect(within(settings).getAllByRole('button').map(button => button.getAttribute('aria-label')))
     .toEqual(['Color', 'Stroke width', 'Line style', 'Placement']);
@@ -41,21 +37,23 @@ it("Annotate's controls, two rows at the sub-toolbars' one width: every tool a b
   expect(session.placement).toBe('plane');
 });
 
-it('Stroke width and Line style are rows of glyphs, each named, the current one marked', async () => {
+it('Stroke width and Line style are menus as the strip\'s are: headed with their name, a row per choice, glyph and name, the current one checked', async () => {
   render(<Panel />);
   const choices = async (name: string) => {
     fireEvent.pointerDown(screen.getByRole('button', { name }), { button: 0, ctrlKey: false });
     const menu = await screen.findByRole('menu', { name });
-    return { menu, items: [...menu.querySelectorAll('[data-style-option]')].map(item =>
-      [item.getAttribute('aria-label'), item.getAttribute('data-style-option'), item.hasAttribute('data-checked'), item.textContent]) };
+    return { menu, heading: menu.querySelector('[data-slot=dropdown-menu-label]')?.textContent, items: within(menu).getAllByRole('menuitemradio').map(item =>
+      [item.getAttribute('aria-label'), item.getAttribute('data-style-option'), item.getAttribute('aria-checked'), item.textContent]) };
   };
   const width = await choices('Stroke width');
-  expect(width.items).toEqual([['Thin', '1', false, ''], ['Medium', '2', true, ''], ['Bold', '4', false, '']]);
-  fireEvent.click(within(width.menu).getByRole('menuitem', { name: 'Bold' }));
+  expect(width.heading).toBe('Stroke width');
+  expect(width.items).toEqual([['Thin', '1', 'false', 'Thin'], ['Medium', '2', 'true', 'Medium'], ['Bold', '4', 'false', 'Bold']]);
+  fireEvent.click(within(width.menu).getByRole('menuitemradio', { name: 'Bold' }));
   expect(session.strokeWidth).toBe(4);
   const dash = await choices('Line style');
-  expect(dash.items.map(([label, value, checked, text]) => [value, checked, text])).toEqual([['solid', true, ''], ['dashed', false, ''], ['dotted', false, '']]);
-  fireEvent.click(within(dash.menu).getByRole('menuitem', { name: dash.items[1][0]! }));
+  expect(dash.heading).toBe('Line style');
+  expect(dash.items).toEqual([['Solid', 'solid', 'true', 'Solid'], ['Dashed', 'dashed', 'false', 'Dashed'], ['Dotted', 'dotted', 'false', 'Dotted']]);
+  fireEvent.click(within(dash.menu).getByRole('menuitemradio', { name: 'Dashed' }));
   expect(session.strokeStyle).toBe('dashed');
 });
 
@@ -72,6 +70,7 @@ it('Color is a grid of the scheme\'s swatches, the current one marked, then a cu
     return screen.findByRole('menu', { name: 'Color' });
   };
   let menu = await open();
+  expect(menu.querySelector('[data-slot=dropdown-menu-label]')?.textContent).toBe('Color');
   const neons = ANNOTATION_COLORS.slice(0, 7).map(option => option.label);
   expect(within(menu).getAllByRole('menuitem').map(item => item.getAttribute('aria-label'))).toEqual([...neons, 'White', 'Custom color']);
   expect([...menu.querySelectorAll('[data-checked]')].map(item => item.getAttribute('aria-label'))).toEqual(['Neon red']);

@@ -285,9 +285,10 @@ async function open(options = {}) {
 test('a STEP opens in Select with the tools its sidecar earns, its Model tree, Position and Animation the file sidebar\'s tiles, Select\'s selection filter on the strip, Projection, Display and Preview ending the strip, and paints both authored colours', async () => {
   const view = await open();
   const { page, pane, errors } = view;
-  // Select's selection filter is a chevron of its own right after its button, never pressed as a
-  // tool is, picking everything as the file opens. Position is no tool: its knobs are Select's.
-  assert.deepEqual(await view.tools(), ['Select:true', 'Selection filter: everything:null', 'Annotate:false', 'Measure:false',
+  // Select's selection filter is a chevron right after its button, never pressed as a tool is,
+  // picking everything as the file opens; Measure's, after its own, snapping to everything. Position
+  // is no tool: its knobs are Select's.
+  assert.deepEqual(await view.tools(), ['Select:true', 'Selection filter: everything:null', 'Annotate:false', 'Measure:false', 'Measure filter: everything:null',
     'Explode:false', 'Clip:false'],
     'no Animation tool: routines are the sidebar\'s. Display is a dropdown, not a tool');
   assert.deepEqual(await view.viewControls(), ['Projection: Orthographic', 'Display mode: Solid', 'Preview'],
@@ -661,14 +662,14 @@ test('hiding a part takes it off the screen, and the viewport menus offer what t
   }
   // The tree is the sidebar's, under any tool, and acted from it goes back to Select first —
   // Isolate, which has no selection of its own to make.
-  assert.deepEqual(await view.tools(), ['Select:false', 'Selection filter: everything:null', 'Annotate:true', 'Measure:false', 'Explode:false', 'Clip:false']);
+  assert.deepEqual(await view.tools(), ['Select:false', 'Selection filter: everything:null', 'Annotate:true', 'Measure:false', 'Measure filter: everything:null', 'Explode:false', 'Clip:false']);
   assert.equal(await pane.getByRole('button', { name: 'Select arm', exact: true }).isVisible(), true);
   // A menu goes when the camera moves, and the last pan is still coasting: it opens at rest.
   await pane.getByRole('button', { name: 'Select arm', exact: true }).click({ button: 'right' });
   await page.getByRole('menuitem', { name: 'Isolate', exact: true }).click();
   await page.getByRole('menu').waitFor({ state: 'detached' });
   await page.waitForFunction(() => window.cadHarness.a.controller.readState().isolatedPartIds.join() === 'o1.2');
-  assert.deepEqual(await view.tools(), ['Select:true', 'Selection filter: everything:null', 'Annotate:false', 'Measure:false', 'Explode:false', 'Clip:false']);
+  assert.deepEqual(await view.tools(), ['Select:true', 'Selection filter: everything:null', 'Annotate:false', 'Measure:false', 'Measure filter: everything:null', 'Explode:false', 'Clip:false']);
   await page.keyboard.press('Escape');
   assert.deepEqual(errors, []);
 });

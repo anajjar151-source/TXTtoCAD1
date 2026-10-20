@@ -240,8 +240,8 @@ it("Annotate is one tool on the strip; its controls, a row under the strip, have
   expect([row.closest('[data-cad-tool-stack]'), row.closest('[data-tool-panel]')]).toEqual([null, null]);
   const panel = () => within(screen.getByRole('toolbar', { name: 'Annotation controls' }));
   const tools = () => within(panel().getByRole('group', { name: 'Annotation tools' }));
-  const history = () => within(panel().getByRole('group', { name: 'Annotation history' }));
-  expect(tools().getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['Pen', 'Line', 'Arrow', 'Rectangle', 'Ellipse', 'Text', 'Eraser']);
+  const history = () => within(panel().getByRole('group', { name: 'Erase and history' }));
+  expect(tools().getAllByRole('button').map(button => button.getAttribute('aria-label'))).toEqual(['Pen', 'Line', 'Arrow', 'Rectangle', 'Ellipse', 'Text']);
   const disabled = () => ['Undo', 'Redo', 'Clear annotations'].map(name => history().getByRole('button', { name }).hasAttribute('disabled'));
   expect(disabled()).toEqual([true, true, true]);
   fireEvent.click(tools().getByRole('button', { name: 'Text' }));

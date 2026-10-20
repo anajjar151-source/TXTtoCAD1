@@ -52,7 +52,7 @@ export default function StepSceneLayers({ viewport, stepScene, policy, props: su
   const hover = useViewerHover(surfaceProps.hoverStore, surfaceProps.resolveHover);
   const props = { ...surfaceProps, hoveredPartId: hover.hoveredPartId, hoveredReferenceId: hover.hoveredReferenceId };
   const {
-    meshData, modelKey, isLoading, renderMode, preview = false, pickMode, hiddenPartIds, selectedPartIds,
+    meshData, modelKey, isLoading, renderMode, preview = false, pickMode, measureSnaps, hiddenPartIds, selectedPartIds,
     hoveredPartId, selectorRuntime, stepParameterRuntime, stepAnimationRuntime, animateMode,
     jointHandles, measureState, activeMeasurementId, selectedMeasurementIds = [], hoveredMeasurementId = "", measureModeActive,
     onLodCameraChange, onMeshSourceAdoption, onViewerAlertChange,
@@ -255,6 +255,7 @@ export default function StepSceneLayers({ viewport, stepScene, policy, props: su
     sceneMountRef: mountRef,
     preview,
     pickMode,
+    measureSnaps,
     selectorRuntime: activeSelectorRuntime,
     pickableFaces: filteredPickableFaces,
     pickableEdges: filteredPickableEdges,

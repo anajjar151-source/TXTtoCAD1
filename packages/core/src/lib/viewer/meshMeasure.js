@@ -35,7 +35,9 @@ const key = point => point.map(value => value.toPrecision(7)).join(",");
 /**
  * Where a Measure pick lands on `hit`: the triangle's corner nearest the pointer when it is within
  * `MESH_SNAP_VERTEX_PX`, else the nearest point on one of its sides within `MESH_SNAP_EDGE_PX`,
- * else the point on the face ("surface").
+ * else the point on the face ("surface"). `snaps`, Measure's filter (`measureFilter.js` in the UI
+ * package), leaves out the corners without "vertex" and the sides without "edge"; the point on the
+ * face is always there, a mesh's face being no more than that point.
  *
  * @param {{ id: string, point: number[], triangle: number[][] } | null} hit  The scene's pick, the
  *   triangle in scene coordinates.
@@ -43,7 +45,7 @@ const key = point => point.map(value => value.toPrecision(7)).join(",");
  * @param {(point: number[]) => ({ x: number, y: number } | null)} project  Scene → CSS pixels.
  * @param {import("./sceneUnits.js").SceneUnits} units
  */
-export function meshMeasurePick(hit, pointer, project, units) {
+export function meshMeasurePick(hit, pointer, project, units, { snaps = ["vertex", "edge", "face"] } = {}) {
   const point = hit?.point;
   const triangle = hit?.triangle;
   if (!isFinitePoint(point) || !Array.isArray(triangle) || triangle.length !== 3) return null;
@@ -53,13 +55,13 @@ export function meshMeasurePick(hit, pointer, project, units) {
     return at ? Math.hypot(at.x - pointer.x, at.y - pointer.y) : Infinity;
   };
   let best = null;
-  for (const corner of triangle) {
+  for (const corner of snaps.includes("vertex") ? triangle : []) {
     const distance = screen(corner);
     if (distance <= MESH_SNAP_VERTEX_PX && (!best || distance < best.distance)) best = { corner, distance };
   }
   if (best) return pick(best.corner, "vertex", `v${key(best.corner)}`);
   let side = null;
-  for (let index = 0; index < 3; index += 1) {
+  for (let index = 0; index < (snaps.includes("edge") ? 3 : 0); index += 1) {
     const start = triangle[index], end = triangle[(index + 1) % 3];
     const nearest = closestPointOnSegment(point, start, end);
     const distance = nearest ? screen(nearest) : Infinity;

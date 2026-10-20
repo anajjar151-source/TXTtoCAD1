@@ -179,7 +179,8 @@ it('Explode and Clip open neutral, each one row under the strip with its amount 
   render(<Workbench />);
   await user.click(tool('Explode'));
   expect([pressed(), subRows()]).toEqual([['Explode'], ['Explode controls']]);
-  expect(screen.getByRole('group', { name: 'Interaction tools' }).querySelector('[role=separator]')).toBeNull();
+  // One rule only, parting the tools that pick from the model's effects (this strip has no view controls).
+  expect(screen.getByRole('group', { name: 'Interaction tools' }).querySelectorAll('[role=separator][data-strip-rule]')).toHaveLength(1);
   // A row of its own, no panel of a stack: its slider, its amount, its Reset (idle).
   expect([row('Explode controls')!.hasAttribute('data-cad-sub-toolbar'), row('Explode controls')!.closest('[data-tool-panel], [data-cad-tool-stack]')]).toEqual([true, null]);
   expect([reads('Explode controls'), resettable('Explode controls', 'explode')]).toEqual([['0%', 'Reset explode'], false]);

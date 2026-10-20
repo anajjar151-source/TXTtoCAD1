@@ -13,7 +13,7 @@ test('Annotate puts ink into the model that orbits with it, undoes, redoes, reco
 });
 
 
-test('on a narrow view Annotate\'s controls are two aligned rows, and on a phone the menu of a chevron after its tile', async (t) => {
+test('on a narrow view Annotate\'s controls are three rows from the left, and on a phone the menu of a chevron after its tile', async (t) => {
   const harness = await serveStepHarness(t);
   const { page, pane, errors } = await harness.open();
   await page.waitForFunction(() => window.cadHarness.a.controller?.readState().loading === false);
@@ -23,16 +23,17 @@ test('on a narrow view Annotate\'s controls are two aligned rows, and on a phone
     await page.setViewportSize({ width, height: 600 });
     await page.waitForFunction(() => {
       const buttons = [...document.querySelectorAll('[aria-label="Annotation controls"] button')].map(button => button.getBoundingClientRect().top);
-      return buttons.length === 14 && buttons[7] > buttons[0];
+      return buttons.length === 14 && buttons[10] > buttons[6] && buttons[6] > buttons[0];
     });
     const layout = await controls.evaluate(row => {
       const buttons = [...row.querySelectorAll('button')].map(button => button.getBoundingClientRect());
       return { count: buttons.length, top: buttons.map(box => box.top), x: buttons.map(box => box.left) };
     });
     assert.equal(layout.count, 14);
-    assert.ok(layout.top.slice(0, 7).every(y => y === layout.top[0]), `${width}px: seven tools on the first row`);
-    assert.ok(layout.top.slice(7).every(y => y === layout.top[7]) && layout.top[7] > layout.top[0], `${width}px: seven settings/actions on the second row`);
-    assert.deepEqual(layout.x.slice(0, 7), layout.x.slice(7), `${width}px: the two rows align, column for column`);
+    const rows = [layout.top.slice(0, 6), layout.top.slice(6, 10), layout.top.slice(10)];
+    assert.ok(rows.every(row => row.every(y => y === row[0])), `${width}px: six tools, four styles, then the eraser and three actions, a row each`);
+    assert.ok(rows[0][0] < rows[1][0] && rows[1][0] < rows[2][0], `${width}px: the rows one over the other`);
+    assert.deepEqual([layout.x[6], layout.x[10]], [layout.x[0], layout.x[0]], `${width}px: every row starts at the same left edge`);
   }
   // A phone: no row under the strip; the chevron after Annotate's tile holds its controls.
   await page.setViewportSize({ width: 390, height: 700 });

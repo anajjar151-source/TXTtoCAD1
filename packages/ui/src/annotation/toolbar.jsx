@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Circle, Eraser, MoveUpRight, Pencil, Redo2, Slash, Square, Trash2, Type, Undo2 } from 'lucide-react';
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator,
   DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger
 } from '@text-to-cad/ui/primitives/dropdown-menu';
 import { ToolbarButton } from '@text-to-cad/ui/primitives/toolbar-button';
@@ -123,28 +123,27 @@ const strokeGlyph = width => {
 const swatch = color => ({ backgroundColor: color, boxShadow: 'inset 0 0 0 1px color-mix(in oklab, currentColor 35%, transparent)' });
 const ROW = 'flex min-w-0 flex-wrap items-center gap-0.5';
 
+// A menu's heading, as the strip's menus have one (Select's and Measure's "Selection filter", Display's).
+const menuHeading = text => <DropdownMenuLabel className="text-tiny font-normal text-muted-foreground">{text}</DropdownMenuLabel>;
+
 /**
- * One of a mark's styles as a dropdown: its button shows the value (no chevron), and opens a menu
- * of the choices — each its glyph and its name, or, where the glyph says it all (`glyphsOnly`: a
- * weight, a line style), a row of the glyphs alone, the current one marked, each keeping its name
- * for assistive technology. One chosen closes it.
+ * One of a mark's styles as a dropdown, laid out as the strip's menus are: its button shows the
+ * value (no chevron), and opens a menu headed with its name, a row per choice, its glyph and its
+ * name, the check on the right of the current one. One chosen closes it.
  */
-function StyleMenu({ label, options, value, glyph, onChange, disabled, glyphsOnly = false }) {
+function StyleMenu({ label, options, value, glyph, onChange, disabled }) {
   return <DropdownMenu modal={false}>
     <DropdownMenuTrigger asChild>
       <ToolbarButton tooltip={false} label={label} disabled={disabled}>{glyph(value)}</ToolbarButton>
     </DropdownMenuTrigger>
     <DropdownMenuContent align="start" sideOffset={4} collisionPadding={8} aria-label={label}
-      className={cn(FLOATING_SURFACE_CLASS, glyphsOnly ? 'w-auto min-w-0 p-1.5' : 'w-40', 'data-[state=closed]:animate-none!')}>
-      {glyphsOnly ? <div className="flex gap-1">
-        {options.map(option => <DropdownMenuItem key={option.value} aria-label={option.label} data-style-option={option.value}
-          data-checked={String(option.value) === String(value) ? '' : undefined} onSelect={() => onChange(option.value)}
-          className="size-7 justify-center rounded-md p-0 data-[checked]:bg-accent">{glyph(option.value)}</DropdownMenuItem>)}
-      </div> : <DropdownMenuRadioGroup value={String(value)} onValueChange={next => onChange(options.find(option => String(option.value) === next).value)}>
-        {options.map(option => <DropdownMenuRadioItem key={option.value} value={String(option.value)} aria-label={option.label}>
+      className={cn(FLOATING_SURFACE_CLASS, 'w-40 data-[state=closed]:animate-none!')}>
+      {menuHeading(label)}
+      <DropdownMenuRadioGroup value={String(value)} onValueChange={next => onChange(options.find(option => String(option.value) === next).value)}>
+        {options.map(option => <DropdownMenuRadioItem key={option.value} value={String(option.value)} aria-label={option.label} data-style-option={option.value}>
           <span className="grid size-3.5 place-items-center">{glyph(option.value)}</span>{option.label}
         </DropdownMenuRadioItem>)}
-      </DropdownMenuRadioGroup>}
+      </DropdownMenuRadioGroup>
     </DropdownMenuContent>
   </DropdownMenu>;
 }
@@ -153,7 +152,8 @@ const colorGlyph = color => <span className="size-3 rounded-full" style={swatch(
 const WHEEL = { background: 'conic-gradient(#ff2d55, #ffe600, #39ff14, #00e5ff, #2979ff, #d500f9, #ff2d55)' };
 
 /**
- * The colour: its button shows the colour in hand, and opens a grid of swatches, unnamed (each
+ * The colour: its button shows the colour in hand, and opens a menu headed Color, as the other
+ * style menus are, over a grid of swatches, unnamed (each
  * keeps its name for assistive technology) — the palette, then the colour wheel, which opens the
  * system's colour picker for any other colour, kept once the picker closes (one change, one step
  * of the history, however long it is dragged). A colour off the palette shows on the button as it
@@ -183,6 +183,7 @@ function ColorMenu({ value, colors, onChange, disabled }) {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" sideOffset={4} collisionPadding={8} aria-label="Color"
         className={cn(FLOATING_SURFACE_CLASS, 'w-auto min-w-0 p-1.5 data-[state=closed]:animate-none!')}>
+        {menuHeading('Color')}
         <div className="grid grid-cols-3 gap-1">
           {colors.map(option => <DropdownMenuItem key={option.value} aria-label={option.label} data-color={option.value}
             data-checked={option.value === value ? '' : undefined} onSelect={() => onChange(option.value)}
@@ -216,9 +217,9 @@ export function AnnotationStylePickers({ color, width = null, dash = null, place
   return <div role="group" aria-label={label} className={className}>
     <ColorMenu value={color.toLowerCase()} colors={colors} onChange={onColor} disabled={disabled} />
     {width == null ? null : <StyleMenu label="Stroke width" options={ANNOTATION_STROKE_WIDTHS} value={width} glyph={strokeGlyph}
-      onChange={value => onWidth?.(value)} disabled={disabled} glyphsOnly />}
+      onChange={value => onWidth?.(value)} disabled={disabled} />}
     {dash == null ? null : <StyleMenu label="Line style" options={ANNOTATION_STROKE_STYLES} value={dash} glyph={styleGlyph}
-      onChange={value => onDash?.(value)} disabled={disabled} glyphsOnly />}
+      onChange={value => onDash?.(value)} disabled={disabled} />}
     {placement == null ? null : <StyleMenu label="Placement" options={ANNOTATION_PLACEMENTS} value={placement} glyph={placementGlyph}
       onChange={value => onPlacement?.(value)} disabled={disabled} />}
     {children}
@@ -226,15 +227,17 @@ export function AnnotationStylePickers({ color, width = null, dash = null, place
 }
 
 const icon = Icon => <Icon className="size-3" strokeWidth={2} aria-hidden="true" />;
+// The thin rule between Annotate's rows, the sub-toolbars' rule lying down.
+const ROW_RULE = <div role="separator" aria-orientation="horizontal" className="mx-0.5 h-px shrink-0 bg-border" data-annotation-rule="" />;
 
 /**
- * Annotate's sub-toolbar (`kit/tools/SubToolbar.jsx`), one row under the strip while Annotate is the tool:
- * its tools, every one a button — the pen, the line, the arrow, the rectangle, the ellipse, text,
- * the eraser; then what is drawn next — its colour (`annotationColors`, for the viewer's
- * `colorScheme`, or any from the wheel), weight, line style and placement, each a dropdown — and
- * Undo, Redo (the annotation's history, `history`) and Clear, with no rule between them: two rows,
- * the seven tools over the seven after them. A flat view, where ink has nowhere to lie but the
- * drawing, has no placement to choose (`placements={false}`).
+ * Annotate's sub-toolbar (`kit/tools/SubToolbar.jsx`), under the strip while Annotate is the tool:
+ * three rows, parted by thin rules, as the phone's menu parts its sections. What draws — the pen,
+ * the line, the arrow, the rectangle, the ellipse, text, every one a button; then what is drawn
+ * next — its colour (`annotationColors`, for the viewer's `colorScheme`, or any from the wheel),
+ * weight, line style and placement, each a dropdown laid out as the strip's are; then what takes
+ * ink away — the eraser, Clear, Undo and Redo (the annotation's history, `history`).
+ * A flat view, where ink has nowhere to lie but the drawing, has no placement to choose (`placements={false}`).
  * @param {{ annotation: import('./session.js').AnnotationSession, colorScheme?: 'light' | 'dark', placements?: boolean,
  *   history: { canUndo: boolean, canRedo: boolean, undo(): void, redo(): void } }} props
  */
@@ -244,22 +247,21 @@ export function AnnotationToolbar({ annotation, history, colorScheme = 'light', 
     active={!disabled && annotation.tool === id} aria-pressed={!disabled && annotation.tool === id} onClick={() => annotation.selectTool(id)}>
     {icon(Icon)}
   </ToolbarButton>;
-  // Seven tools, then seven settings and actions: two rows, one over the other, their buttons column
-  // for column — the sub-toolbars' one width (`SUB_TOOLBAR_WIDTH_CLASS`), whatever the view's.
+  // Three rows, one over the other, their buttons from the left — the sub-toolbars' one width
+  // (`SUB_TOOLBAR_WIDTH_CLASS`), whatever the view's.
   return <SubToolbar label="Annotation controls" data-annotation-controls=""
     className={cn("text-to-cad-annotation-toolbar flex-col flex-nowrap items-stretch", SUB_TOOLBAR_WIDTH_CLASS)}>
-    <div role="group" aria-label="Annotation tools" className="flex items-center gap-1">{[PEN, ...ANNOTATION_SHAPE_TOOLS, ERASER].map(toolButton)}</div>
-
-    <div className="flex items-center gap-1">
-      <AnnotationStylePickers label="Annotation style" className="contents" disabled={disabled} colors={annotationColors(colorScheme)}
-        color={annotation.color} width={annotation.strokeWidth ?? 2} dash={annotation.strokeStyle ?? 'solid'}
-        placement={placements ? annotation.placement ?? 'surface' : null}
-        onColor={annotation.selectColor} onWidth={annotation.selectStrokeWidth} onDash={annotation.selectStrokeStyle} onPlacement={annotation.selectPlacement} />
-      <div role="group" aria-label="Annotation history" className="contents">
-        <ToolbarButton tooltip={false} label="Undo" disabled={disabled || !history.canUndo} onClick={() => history.undo()}>{icon(Undo2)}</ToolbarButton>
-        <ToolbarButton tooltip={false} label="Redo" disabled={disabled || !history.canRedo} onClick={() => history.redo()}>{icon(Redo2)}</ToolbarButton>
-        <ToolbarButton tooltip={false} label="Clear annotations" disabled={disabled || !annotation.hasContent} onClick={() => annotation.clear()}>{icon(Trash2)}</ToolbarButton>
-      </div>
+    <div role="group" aria-label="Annotation tools" className="flex items-center gap-1">{[PEN, ...ANNOTATION_SHAPE_TOOLS].map(toolButton)}</div>
+    {ROW_RULE}
+    <AnnotationStylePickers label="Annotation style" className="flex items-center gap-1" disabled={disabled} colors={annotationColors(colorScheme)}
+      color={annotation.color} width={annotation.strokeWidth ?? 2} dash={annotation.strokeStyle ?? 'solid'} placement={placements ? annotation.placement ?? 'surface' : null}
+      onColor={annotation.selectColor} onWidth={annotation.selectStrokeWidth} onDash={annotation.selectStrokeStyle} onPlacement={annotation.selectPlacement} />
+    {ROW_RULE}
+    <div role="group" aria-label="Erase and history" className="flex items-center gap-1">
+      {toolButton(ERASER)}
+      <ToolbarButton tooltip={false} label="Clear annotations" disabled={disabled || !annotation.hasContent} onClick={() => annotation.clear()}>{icon(Trash2)}</ToolbarButton>
+      <ToolbarButton tooltip={false} label="Undo" disabled={disabled || !history.canUndo} onClick={() => history.undo()}>{icon(Undo2)}</ToolbarButton>
+      <ToolbarButton tooltip={false} label="Redo" disabled={disabled || !history.canRedo} onClick={() => history.redo()}>{icon(Redo2)}</ToolbarButton>
     </div>
   </SubToolbar>;
 }

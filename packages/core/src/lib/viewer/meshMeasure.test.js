@@ -21,6 +21,15 @@ test("a pick on a triangle snaps to its corner, else to its side, else stays on 
   assert.equal(meshMeasurePick({ id: "n3", point: [1, 1, 1] }, { x: 1, y: 1 }, project, mm), null, "no triangle, no pick");
 });
 
+test("Measure's filter leaves a mesh's corners or sides out, and the face is always there", () => {
+  const mm = threeMfSceneUnits("millimeter");
+  const corner = { ...hit, point: [4, 3, 0] }, atCorner = { x: 4, y: 3 };
+  assert.equal(meshMeasurePick(corner, atCorner, project, mm, { snaps: ["edge", "face"] }).snapKind, "edge", "no vertices: the side");
+  assert.equal(meshMeasurePick(corner, atCorner, project, mm, { snaps: ["face"] }).snapKind, "surface", "neither: the face");
+  assert.equal(meshMeasurePick(corner, atCorner, project, mm, { snaps: [] }).snapKind, "surface", "none: still the point on the face");
+  assert.equal(meshMeasurePick({ ...hit, point: [40, 3, 0] }, { x: 40, y: 3 }, project, mm, { snaps: ["vertex", "face"] }).snapKind, "surface");
+});
+
 test("a mesh's length is in its file's unit and says it is approximate, wherever it is read", () => {
   // A GLB's scene is in millimetres; its file is in metres.
   const a = meshMeasurePick({ ...hit, point: [0.5, 0.5, 0] }, { x: 0.5, y: 0.5 }, project, GLB_SCENE_UNITS);

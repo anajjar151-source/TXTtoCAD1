@@ -37,7 +37,7 @@ export async function runAnnotateScenario({ page, pane, errors, update }) {
   // Annotate's controls: a row hung under the strip — its tools, what is drawn next, its history.
   const controls = pane.getByRole('toolbar', { name: 'Annotation controls', exact: true });
   const annotateTool = name => controls.getByRole('group', { name: 'Annotation tools' }).getByRole('button', { name, exact: true });
-  const annotateHistory = name => controls.getByRole('group', { name: 'Annotation history' }).getByRole('button', { name, exact: true });
+  const annotateHistory = name => controls.getByRole('group', { name: 'Erase and history' }).getByRole('button', { name, exact: true });
   // A setting of what is drawn next, from its dropdown in Annotate's row.
   const choose = async (setting, name) => {
     await controls.getByRole('group', { name: 'Annotation style' }).getByRole('button', { name: setting, exact: true }).click();
@@ -87,9 +87,9 @@ export async function runAnnotateScenario({ page, pane, errors, update }) {
   await surface.waitFor();
   assert.equal(await draw.getAttribute('aria-pressed'), 'true', 'Annotate is the tool');
   assert.equal(await annotateTool('Pen').getAttribute('aria-pressed'), 'true', 'Annotate opens on the pen');
-  assert.deepEqual(await names(controls.getByRole('group', { name: 'Annotation tools' })), ['Pen', 'Line', 'Arrow', 'Rectangle', 'Ellipse', 'Text', 'Eraser']);
+  assert.deepEqual(await names(controls.getByRole('group', { name: 'Annotation tools' })), ['Pen', 'Line', 'Arrow', 'Rectangle', 'Ellipse', 'Text']);
   assert.deepEqual(await names(controls.getByRole('group', { name: 'Annotation style' })), ['Color', 'Stroke width', 'Line style', 'Placement']);
-  assert.deepEqual(await names(controls.getByRole('group', { name: 'Annotation history' })), ['Undo', 'Redo', 'Clear annotations']);
+  assert.deepEqual(await names(controls.getByRole('group', { name: 'Erase and history' })), ['Eraser', 'Clear annotations', 'Undo', 'Redo']);
   assert.equal(await controls.evaluate(row => Boolean(row.closest('[data-cad-tool-stack], [data-tool-panel]'))), false, 'not a panel of the stack');
   const [stripBox, rowBox] = await Promise.all([strip.boundingBox(), controls.boundingBox()]);
   assert.ok(rowBox.y >= stripBox.y + stripBox.height, 'the row hangs under the strip');

@@ -6,6 +6,8 @@ import {
   isFinitePoint
 } from "@text-to-cad/core/lib/viewer/measurement.js";
 import { buildEdgeLinePositionsFromProxy } from "@text-to-cad/core/lib/viewer/referenceGeometry.js";
+import { projectWorldPointToClient } from "@text-to-cad/core/lib/viewer/measureRuler.js";
+import { MEASURE_FILTER_DEFAULT, edgeEnds, nearestEnd, restrictMeasurePick } from "../../kit/tools/measure/measureFilter.js";
 import { pointVisibleByClipPlane } from "@text-to-cad/core/lib/viewer/clipPlane.js";
 import { screenLimitedPickThreshold } from "@text-to-cad/core/lib/viewer/pickingThresholds.js";
 import { PERF_MEASURE_NAMES, perfMeasure, perfStart } from "@text-to-cad/core/lib/viewer/perfMarks.js";
@@ -227,6 +229,8 @@ export function useStepPicking({
   sceneMountRef = null,
   preview,
   pickMode,
+  // What Measure snaps to (`kit/tools/measure/measureFilter.js`): its picks are kept to it.
+  measureSnaps = MEASURE_FILTER_DEFAULT,
   selectorRuntime,
   pickableFaces,
   pickableEdges,
@@ -260,6 +264,7 @@ export function useStepPicking({
   // them: not a pose tick (a posed selector runtime), not a hover, not a new pickable list.
   const pickModeRef = useRef(pickMode);
   const selectorRuntimeRef = useRef(selectorRuntime);
+  const measureSnapsRef = useRef(measureSnaps);
   const pickableFacesRef = useRef(pickableFaces);
   const pickableEdgesRef = useRef(pickableEdges);
   const onHoverReferenceChangeRef = useRef(onHoverReferenceChange);
@@ -271,6 +276,7 @@ export function useStepPicking({
 
   pickModeRef.current = pickMode;
   selectorRuntimeRef.current = selectorRuntime;
+  measureSnapsRef.current = measureSnaps;
   pickableFacesRef.current = pickableFaces;
   pickableEdgesRef.current = pickableEdges;
   onHoverReferenceChangeRef.current = onHoverReferenceChange;
@@ -702,18 +708,36 @@ export function useStepPicking({
       const { edgeSegments, edgeGeometry } = bypassTopology
         ? { edgeSegments: null, edgeGeometry: null }
         : measureSnapGeometry(reference, referenceId);
-      return {
-        pick: measurePickForPosition({
-          reference,
-          worldHitPoint,
-          referenceId,
-          bypassTopology,
-          edgeSegments,
-          edgeGeometry,
-          modelOffset
-        }),
-        referenceId
-      };
+      const pick = measurePickForPosition({
+        reference,
+        worldHitPoint,
+        referenceId,
+        bypassTopology,
+        edgeSegments,
+        edgeGeometry,
+        modelOffset
+      });
+      if (bypassTopology || !pick) {
+        return { pick, referenceId };
+      }
+      // Kept to Measure's filter: an edge's end, under the pointer, is its vertex; a kind the filter
+      // leaves out falls to the face under the pointer, else to the point on the model.
+      const snaps = measureSnapsRef.current;
+      const camera = runtimeRef.current?.camera;
+      const rect = runtimeRef.current?.renderer?.domElement?.getBoundingClientRect?.();
+      const toScreen = point => (camera && rect ? projectWorldPointToClient(point, camera, rect) : null);
+      const vertex = pick.snapKind === "edge" && snaps.includes("vertex")
+        ? nearestEnd(edgeEnds(edgeSegments).map(end => measureModelPointToWorld(end, modelOffset)), toScreen, { x: clientX, y: clientY })
+        : null;
+      const kept = restrictMeasurePick(pick, snaps, {
+        vertex,
+        face: () => {
+          const face = pickFaceReference(modelIntersections);
+          return face ? measurePickForPosition({ reference: measureReferenceById(face.id), worldHitPoint, referenceId: face.id, modelOffset }) : null;
+        },
+        free: () => measurePickForPosition({ worldHitPoint, bypassTopology: true })
+      });
+      return { pick: kept, referenceId: kept ? kept.referenceId : referenceId };
     }
 
     // The part, face and edge under a point, as Select would find them with every kind pickable:

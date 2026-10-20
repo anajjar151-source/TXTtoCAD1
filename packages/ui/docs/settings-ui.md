@@ -112,8 +112,10 @@ none.
   rows on screen, the rows of a folder open inline among them. A pick opens the file and
   closes it, as do Escape and a press anywhere outside it.
 - **Tool strip** at the top centre, 8px down, never wider than the view less 8px at each
-  side (it wraps before it would be): the tools, left to right (with no navbar, then a thin
-  rule and the view's controls, **Display** and **Preview**: below). 24px tiles with 14px icons,
+  side (it wraps before it would be): the tools, left to right, in their groups, each parted
+  from the next by a thin rule (a tool's `group`: the tools that pick, Select, Annotate and
+  Measure, then the model's effects, Explode and Clip), then (with no navbar) a thin rule and the
+  view's controls, **Display** and **Preview**: below. 24px tiles with 14px icons,
   an even 4px apart, a tool's chevron touching its button, in a 34px row (`FloatingToolBar`,
   `data-cad-toolbar`). A file with no tools has no strip. On a phone
   ([mobile](#the-file-sidebar-and-the-tool-stack)) the tiles are 36px with 18px icons, a chevron
@@ -201,8 +203,8 @@ Explode or Clip with its effect set takes it up again, as it is; unset, it start
 | Tool | Pressing it | Its sub-toolbar | Leaving it |
 | --- | --- | --- | --- |
 | Select | The default tool of every 3D file but an STL; picks what its filter ticks, or a GLB's nodes, a 3MF's objects (Shift adds; Delete deletes annotations and measurements); what is picked is Quick Edit's chips | None: its filter is the chevron after its button | The selection stays, lit and in Quick Edit, under any tool |
-| Annotate | Draws on the view | Its tools, what is drawn next, Undo, Redo and Clear annotations (on a phone, the menu of a chevron after its tile instead) | The annotations stay in the model, their chip in Quick Edit; the tool in hand stays, the strip's Annotate showing its icon |
-| Measure | Arms picking between points on the model (a STEP's exact vertices, edges and faces; a mesh's triangles, approximately, in its file's unit; a drawing's ends, centres and lines, in the unit it declares, else "units"); each result a chip in Quick Edit, in its colour | None | Unfinished picks are cancelled; completed measurements stay, Quick Edit's chips |
+| Annotate | Draws on the view | Three rows: its drawing tools, what is drawn next, then the eraser, Clear annotations, Undo and Redo (on a phone, the menu of a chevron after its tile instead) | The annotations stay in the model, their chip in Quick Edit; the tool in hand stays, the strip's Annotate showing its icon |
+| Measure | Arms picking between points on the model, snapped to what its filter ticks (a STEP's exact vertices, edges and faces; a mesh's corners, sides and faces, approximately, in its file's unit; a drawing's ends, centres and lines, in the unit it declares, else "units"); each result a chip in Quick Edit, in its colour | None: its filter is the chevron after its button (a 3D file's) | Unfinished picks are cancelled; completed measurements stay, Quick Edit's chips |
 | Explode / Clip | The effect as it is set, or neutral; an edit applies it (Explode's, as a motion: see below) | The slider, its amount beside it, Reset (Clip's: its axis first, whose dropdown holds its settings) | The effect stays on the model |
 
 **One motion at a time.** Every tool's state stands beside every other's — the selection,
@@ -227,10 +229,13 @@ is nothing to take away, it removes the effect — the amount back at zero, noth
 axis and its settings stay as set) — and leaves the tool up. Position's way back is its Pose row's Default. A
 measurement's chip X deletes it; the Annotation chip's X clears the annotations.
 
-**Select is the one tool with a menu on the strip**: the chevron right after its button
-(`ToolSettingsMenu`'s "chevron" trigger, `kit/tools/ToolModeMenu.jsx`), a small button of
-its own as tall as the tile and touching it, lit by its own hover and while its menu is
-open, never with the tool. A press on any other tool is its only action. Whatever a tool can
+**Select and Measure are the tools with a menu on the strip**, each its selection filter: the
+chevron right after the button (`ToolSettingsMenu`'s "chevron" trigger, `kit/tools/ToolModeMenu.jsx`),
+as tall as the tile and touching it. The button and its chevron are **one control**
+(`FloatingToolBar.js`): one rounded fill lights the pair on hover, while the tool is in hand and
+while its menu is open, and the chevron's half only brightens over it, on its own hover and
+while its menu is open, behind a hairline that parts the halves while the pair is lit. A change
+to a filter takes its tool up. A press on any other tool is its only action. Whatever a tool can
 be set to while it is up is its sub-toolbar. A dropdown is ordinary — under its own button,
 free to overlap the view — and closes with no exit animation, so a quick second tap (touch
 included) always reaches its trigger. Choosing a value closes it; ticking an option leaves
@@ -287,22 +292,24 @@ buttons of their own, which would squeeze the slider: they are the dropdown of w
 (Clip's axis).
 
 **Annotate.** Its sub-toolbar, "Annotation controls", while Annotate is up
-(`annotation/toolbar.jsx`'s `AnnotationToolbar`): **Annotation tools**, a button each — Pen,
-Line, Arrow, Rectangle, Ellipse, Text (a mark put down in place) and Eraser — then a rule and
+(`annotation/toolbar.jsx`'s `AnnotationToolbar`), is three rows, one over the other from the
+left, parted by thin rules, as the phone's menu parts its sections: **Annotation tools**, a
+button each — Pen, Line, Arrow, Rectangle, Ellipse and Text (a mark put down in place); then
 **Annotation style**, what is drawn next, each a dropdown whose button shows its value, no
-chevron: **Color** (a grid of swatches, unnamed but for assistive technology: the neons and
+chevron, laid out as the strip's menus are (headed with its name, a row per choice, the check
+on the right): **Color** (a grid of swatches, unnamed but for assistive technology: the neons and
 one neutral that reads against the viewer, white in dark mode and near-black in light, then
 the colour wheel, which opens the system's colour picker for any other colour, kept once the
 picker closes), **Stroke width** (Thin, Medium, Bold — a shape's 1, 2 or 4px, the pen drawn to
 look the same weight, its glyph a dot 3, 5 or 7px across) and **Line style** (Solid, Dashed,
 Dotted — a shape's line; the pen's freehand ink is always solid; its glyph a diagonal line
-drawn in the style), each a row of glyphs alone, the current one marked, and **Placement**
-(On surface, the default, or On plane: whether each point of the next mark lies on the
-visible surface under it or on the plane of the surface the mark starts on; its glyph a sphere or
-a sheet; a name and glyph per row, the current one marked; a flat view, a DXF, has none; on a phone it is a submenu of the chevron's menu); then **Annotation history** — **Undo**, **Redo** — and
-**Clear annotations** (the trash), each disabled while there is nothing for it, with no rule
-before them. In a view narrower than 32rem the seven tools and the seven after them are two
-rows, column for column, with no rule. Annotate has no Select or Pan of its own (Select picks
+drawn in the style), each a row per choice, its glyph and its name, and **Placement**
+(**On surface**, the default, its glyph a sphere: each point of the next mark on the visible
+surface under it; **On plane**, its glyph a sheet: the whole mark on the plane of the surface it
+starts on; a flat view, a DXF, has none; on a phone it is a submenu of the chevron's menu); then
+**Erase and history** — the **Eraser**, **Clear annotations** (the trash), **Undo** and **Redo**,
+each action disabled while there is nothing for it. The rows are the same at every width.
+Annotate has no Select or Pan of its own (Select picks
 annotations, a right drag or Space orbits). Never a restyle of ink already down: the
 annotations Select picks have their own bar, a small floating toolbar on the tool strip's
 surface just above them — Color, Stroke width and Line style dropdowns, Fill for a closed
@@ -315,8 +322,14 @@ the view with its annotations to the clipboard as a PNG. A first stroke opens
 [Quick Edit](#quick-edit), whose header says **annotation** while there is ink. Annotate
 disables the cube without hiding it.
 
-**Measure.** It has no sub-toolbar and no menu: it measures between points on the model,
-snapping to no edge or face, and its button is the ruler. Each completed measurement
+**Measure.** It has no sub-toolbar; its button is the ruler and its menu is its selection
+filter (`kit/tools/measure/MeasureFilterMenu.jsx`, Select's own menu): Select all, then
+**Vertices**, **Edges** and **Faces**, every kind ticked when a file opens. It measures between
+points snapped to what the filter ticks (`measureFilter.js`): an edge's end within 10px of the
+pointer is its vertex, else the edge, else the face. A kind left unticked falls to the next the
+filter allows (the face under the pointer, else the point on the model); with none ticked, or
+Shift held, a press takes the point on the model as it is. On a mesh a face is no more than the
+point on its triangle, so Faces changes nothing there. A drawing's Measure has no filter. Each completed measurement
 is a chip in [Quick Edit](#quick-edit): the ruler in the measurement's own colour (the
 colour of its line on the model) and its reading; its X deletes it, resting on it lights
 its line and labels it, and its card is the full reading (the distance, the angle where
