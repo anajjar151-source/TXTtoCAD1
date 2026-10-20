@@ -9,11 +9,19 @@ import { buildEdgeLinePositionsFromProxy } from "@text-to-cad/core/lib/viewer/re
 import { projectWorldPointToClient } from "@text-to-cad/core/lib/viewer/measureRuler.js";
 import { MEASURE_FILTER_DEFAULT, edgeEnds, nearestEnd, restrictMeasurePick } from "../../kit/tools/measure/measureFilter.js";
 import { pointVisibleByClipPlane } from "@text-to-cad/core/lib/viewer/clipPlane.js";
-import { screenLimitedPickThreshold } from "@text-to-cad/core/lib/viewer/pickingThresholds.js";
+import { screenLimitedPickThreshold, worldUnitsPerPixelAtDistance } from "@text-to-cad/core/lib/viewer/pickingThresholds.js";
 import { PERF_MEASURE_NAMES, perfMeasure, perfStart } from "@text-to-cad/core/lib/viewer/perfMarks.js";
 import { partIdFromIntersection, shouldRaycastRecordForPick } from "./partPicking.js";
 import { createClickActivation } from "./clickActivation.js";
+import { TOPOLOGY_FACE_ID_NONE } from "@text-to-cad/core/lib/viewer/selectorPickGroups.js";
 import { prefersCoarsePointer } from "../../kit/viewport/dom.js";
+import {
+  boxSamplePoints,
+  createBoxTally,
+  pointInBox,
+  segmentInBox,
+  triangleTouchesBox
+} from "../../kit/tools/select/boxSelect.js";
 
 const AUTO_EDGE_PICK_THRESHOLD_FACTOR = 1;
 const FRONT_LAYER_DISTANCE_FACTOR = 0.0015;
@@ -35,6 +43,16 @@ const EDGE_TOUCH_PICK_PRIORITY_WITH_FACE_PX = 16;
 const HOVER_PICK_MIN_MOVE_PX = 2;
 const FINE_POINTER_TAP_SLOP_PX = 4;
 const COARSE_POINTER_TAP_SLOP_PX = 12;
+// A box's own rays, beyond its grid: at most this many, for the faces, edges or parts the grid
+// passed between, and at most this many looks along each edge.
+const BOX_PROBE_MAX = 3000;
+const BOX_EDGE_LOOKS_PER_EDGE = 3;
+// How far behind the surface in front an edge may lie and still be visible, in screen pixels at
+// its depth: an edge IS the border of the faces either side, so it lies on that surface, give or
+// take the tessellation.
+const BOX_EDGE_OCCLUSION_PX = 3;
+// A part's outline on the screen, from at most this many of its vertices.
+const BOX_PART_VERTICES_MAX = 20000;
 
 /**
  * What a pick at one point resolves to under the pick mode, from ONE raycast of the model:
@@ -252,6 +270,11 @@ export function useStepPicking({
   // while the listeners are bound. (clientX, clientY) -> { part, face, edge } reference ids ("" for
   // none), the face and the edge whatever Select's filter picks.
   topologyAtRef = null,
+  // What a box takes, for Select's Box select tool: set while the listeners are bound, null
+  // otherwise. (clientBox, { parts, faces, edges }) -> { partIds, referenceIds }: the render part ids
+  // and the pickable reference ids visible in the box, anything of them touching it
+  // (`kit/tools/select/boxSelect.js`).
+  boxPickRef = null,
   onMeasurePick,
   onMeasureHoverPoint,
   // A Measure press on a part whose faces and edges are not loaded (an assembly's): (partId, { clientX,
@@ -1235,6 +1258,237 @@ export function useStepPicking({
       }
     }
 
+    // ---- a box (Select's Box select tool) -----------------------------------------------------
+    // What a box takes is what is VISIBLE in it, wholly inside or not: rays cast on a grid over the
+    // box find the faces and parts in front, and a ray at each one the grid passed between (a small
+    // face, a far part) finds whether it is in front too. An edge is visible where nothing stands
+    // nearer than it. What touches the box comes from the selector proxy for faces and edges, and
+    // from a part's own vertices for a part.
+    const boxCameraMatrix = () => {
+      const camera = runtime.camera;
+      camera.updateMatrixWorld();
+      return new runtime.THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse).elements;
+    };
+    // A point in the world as the screen has it, in client pixels: `behind` when it is behind the eye.
+    function projector(rect, cameraMatrix, objectMatrix = null) {
+      const m = cameraMatrix, o = objectMatrix;
+      return (x, y, z) => {
+        let wx = x, wy = y, wz = z;
+        if (o) {
+          wx = o[0] * x + o[4] * y + o[8] * z + o[12];
+          wy = o[1] * x + o[5] * y + o[9] * z + o[13];
+          wz = o[2] * x + o[6] * y + o[10] * z + o[14];
+        }
+        const w = m[3] * wx + m[7] * wy + m[11] * wz + m[15];
+        if (!(w > 1e-9)) return { x: 0, y: 0, behind: true, wx, wy, wz };
+        const nx = (m[0] * wx + m[4] * wy + m[8] * wz + m[12]) / w;
+        const ny = (m[1] * wx + m[5] * wy + m[9] * wz + m[13]) / w;
+        return { x: rect.left + (nx + 1) * 0.5 * rect.width, y: rect.top + (1 - ny) * 0.5 * rect.height, behind: false, wx, wy, wz };
+      };
+    }
+    // The front-most part (and, with `face`, face) under one point of the screen, and how far
+    // along the ray the surface is. Resolved while this point's ray is the raycaster's: the face
+    // lookup casts at the selector proxy with it.
+    function frontAt(clientX, clientY, { face = false } = {}) {
+      setPointerFromPosition(clientX, clientY);
+      const intersections = intersectVisibleModelMeshes();
+      return {
+        distance: Number(intersections[0]?.distance),
+        origin: runtime.raycaster.ray.origin.clone(),
+        partId: String(pickPartReferenceFromIntersections(intersections.slice(0, 1)) || ""),
+        faceId: face ? String(pickFaceReference(intersections)?.id || "") : "",
+      };
+    }
+    function referenceForRow(cache, row, lookup, allowed) {
+      if (cache.has(row)) return cache.get(row);
+      const reference = lookup?.get?.(row) || null;
+      const id = String(reference?.id || "").trim();
+      const value = id && (!allowed.size || allowed.has(id)) ? id : "";
+      cache.set(row, value);
+      return value;
+    }
+
+    // The triangles faces are drawn with, each mesh with its triangle-to-face-row table: the shown
+    // display meshes, which carry it where the part's topology is loaded, else the selector proxy's
+    // pick mesh — the two places a face pick reads (`pickFaceReference`).
+    function faceTriangleSources() {
+      const { focused: focusIds, hidden: hiddenIds } = pickSetsRef.current;
+      const meshes = runtime.displayRecords
+        .filter((record) => shouldRaycastRecordForPick(record, { focusIds, hiddenIds }))
+        .map((record) => record.mesh)
+        .filter((mesh) => mesh?.userData?.faceIds?.length && mesh.geometry?.getAttribute?.("position"));
+      if (!meshes.length && runtime.facePickMesh?.userData?.faceIds?.length) meshes.push(runtime.facePickMesh);
+      return meshes;
+    }
+
+    function boxFaces(box, rect, cameraMatrix, samples) {
+      if (!(Array.isArray(pickableFacesRef.current) && pickableFacesRef.current.length)) return [];
+      const allowed = pickSetsRef.current.faces;
+      const lookup = selectorRuntimeRef.current?.faceReferenceByRowIndex;
+      const tally = createBoxTally();
+      const rows = new Map();
+      for (const mesh of faceTriangleSources()) {
+        mesh.updateWorldMatrix(true, false);
+        const project = projector(rect, cameraMatrix, mesh.matrixWorld.elements);
+        const positions = mesh.geometry.getAttribute("position");
+        const index = mesh.geometry.index;
+        const faceIds = mesh.userData.faceIds;
+        const screen = new Array(positions.count);
+        const at = (vertex) => screen[vertex] || (screen[vertex] = project(positions.getX(vertex), positions.getY(vertex), positions.getZ(vertex)));
+        const triangles = Math.min(faceIds.length, Math.floor((index ? index.count : positions.count) / 3));
+        for (let triangle = 0; triangle < triangles; triangle += 1) {
+          const row = Number(faceIds[triangle]);
+          if (row === TOPOLOGY_FACE_ID_NONE) continue;
+          const id = referenceForRow(rows, row, lookup, allowed);
+          if (!id) continue;
+          const a = at(index ? index.getX(triangle * 3) : triangle * 3);
+          const b = at(index ? index.getX(triangle * 3 + 1) : triangle * 3 + 1);
+          const c = at(index ? index.getX(triangle * 3 + 2) : triangle * 3 + 2);
+          if (a.behind || b.behind || c.behind) continue;
+          if (triangleTouchesBox(box, a.x, a.y, b.x, b.y, c.x, c.y)) {
+            const cx = (a.x + b.x + c.x) / 3, cy = (a.y + b.y + c.y) / 3;
+            tally.touch(id, pointInBox(box, cx, cy) ? { x: cx, y: cy } : null);
+          }
+        }
+      }
+      // Visible: hit by the grid, or by a ray of its own where the grid passed between.
+      const visible = new Set();
+      for (const sample of samples) {
+        if (sample.faceId) visible.add(sample.faceId);
+      }
+      let probes = 0;
+      for (const [id, entry] of tally.entries) {
+        if (visible.has(id) || !entry.probe || !tally.takes(id) || probes >= BOX_PROBE_MAX) continue;
+        probes += 1;
+        if (frontAt(entry.probe.x, entry.probe.y, { face: true }).faceId === id) visible.add(id);
+      }
+      return [...visible].filter(id => tally.takes(id));
+    }
+
+    function boxEdges(box, rect, cameraMatrix) {
+      const proxy = selectorRuntimeRef.current?.proxy;
+      const positions = proxy?.edgePositions, indices = proxy?.edgeIndices, edgeIds = proxy?.edgeIds;
+      if (!(positions instanceof Float32Array) || !(indices instanceof Uint32Array) || !edgeIds?.length || !runtime.edgePickLines) return [];
+      if (!(Array.isArray(pickableEdgesRef.current) && pickableEdgesRef.current.length)) return [];
+      const allowed = pickSetsRef.current.edges;
+      const { focused: focusIds, hidden: hiddenIds } = pickSetsRef.current;
+      runtime.edgePickLines.updateMatrixWorld();
+      const project = projector(rect, cameraMatrix, runtime.edgePickLines.matrixWorld.elements);
+      const tally = createBoxTally();
+      const rows = new Map();
+      const lookup = selectorRuntimeRef.current?.edgeReferenceByRowIndex;
+      // Where to look for each edge: points of it inside the box, its ends and the middles of what
+      // of it lies in the box.
+      const lookAt = new Map();
+      const look = (id, point) => {
+        if (!pointInBox(box, point.x, point.y)) return;
+        const points = lookAt.get(id) || [];
+        if (points.length < BOX_EDGE_LOOKS_PER_EDGE * 4) points.push(point);
+        lookAt.set(id, points);
+      };
+      for (let segment = 0; segment * 2 + 1 < indices.length; segment += 1) {
+        const id = referenceForRow(rows, Number(edgeIds[segment]), lookup, allowed);
+        if (!id) continue;
+        const ia = indices[segment * 2], ib = indices[segment * 2 + 1];
+        const a = project(positions[ia * 3], positions[ia * 3 + 1], positions[ia * 3 + 2]);
+        const b = project(positions[ib * 3], positions[ib * 3 + 1], positions[ib * 3 + 2]);
+        const span = a.behind || b.behind ? null : segmentInBox(box, a.x, a.y, b.x, b.y);
+        if (!span) continue;
+        tally.touch(id);
+        look(id, a);
+        look(id, b);
+        // The middle of the part of it in the box: a long edge across the box may have no end or
+        // middle in it.
+        const t = (span[0] + span[1]) / 2;
+        const lerp = axis => positions[ia * 3 + axis] + (positions[ib * 3 + axis] - positions[ia * 3 + axis]) * t;
+        look(id, project(lerp(0), lerp(1), lerp(2)));
+      }
+      const references = selectorRuntimeRef.current?.referenceMap;
+      const point = new runtime.THREE.Vector3();
+      const taken = [];
+      let probes = 0;
+      for (const [id] of tally.entries) {
+        if (!tally.takes(id)) continue;
+        // An edge of a part out of view (hidden, or outside what is isolated) is not visible.
+        const partId = String(references?.get?.(id)?.partId || "").trim();
+        if (partId && (hiddenIds.has(partId) || (focusIds.size && !focusIds.has(partId)))) continue;
+        const points = lookAt.get(id) || [];
+        // An even spread of its points, rather than its first few.
+        const stride = Math.max(1, Math.floor(points.length / BOX_EDGE_LOOKS_PER_EDGE));
+        for (let index = 0; index < points.length && probes < BOX_PROBE_MAX; index += stride) {
+          const at = points[index];
+          point.set(at.wx, at.wy, at.wz);
+          if (!pointVisibleByClipPlane(runtime.activeClipPlane, point)) continue;
+          probes += 1;
+          const front = frontAt(at.x, at.y);
+          const depth = point.distanceTo(front.origin);
+          const allowance = Math.max(1e-6, (worldUnitsPerPixelAtDistance(runtime.camera, rect.height, depth) || 0) * BOX_EDGE_OCCLUSION_PX);
+          if (!Number.isFinite(front.distance) || front.distance + allowance >= depth) {
+            taken.push(id);
+            break;
+          }
+        }
+      }
+      return taken;
+    }
+
+    function boxParts(box, rect, cameraMatrix, samples) {
+      const visible = new Set();
+      for (const sample of samples) {
+        if (sample.partId) visible.add(String(sample.partId));
+      }
+      const { focused: focusIds, hidden: hiddenIds } = pickSetsRef.current;
+      const records = runtime.displayRecords.filter((record) => shouldRaycastRecordForPick(record, { focusIds, hiddenIds }));
+      const vertex = new runtime.THREE.Vector3();
+      let probes = 0;
+      for (const record of records) {
+        const partId = String(record?.partId || "").trim();
+        const mesh = record?.mesh;
+        const position = mesh?.geometry?.getAttribute?.("position");
+        if (!partId || visible.has(partId) || !position?.count || probes >= BOX_PROBE_MAX) continue;
+        mesh.updateWorldMatrix(true, false);
+        const project = projector(rect, cameraMatrix, mesh.matrixWorld.elements);
+        // The grid passed between it: one of its vertices (thinned to a bounded count) in the box,
+        // the middle-most, to cast a ray at.
+        const stride = Math.max(1, Math.ceil(position.count / BOX_PART_VERTICES_MAX));
+        const middleX = (box.left + box.right) / 2, middleY = (box.top + box.bottom) / 2;
+        let probe = null, nearest = Infinity;
+        for (let index = 0; index < position.count; index += stride) {
+          vertex.fromBufferAttribute(position, index);
+          const at = project(vertex.x, vertex.y, vertex.z);
+          if (at.behind || !pointInBox(box, at.x, at.y)) continue;
+          const distance = (at.x - middleX) ** 2 + (at.y - middleY) ** 2;
+          if (distance < nearest) { nearest = distance; probe = at; }
+        }
+        if (!probe) continue;
+        probes += 1;
+        if (frontAt(probe.x, probe.y).partId === partId) visible.add(partId);
+      }
+      return [...visible];
+    }
+
+    function boxPick(clientBox, { parts = false, faces = false, edges = false } = {}) {
+      if (suppressTopologyPicking || pickModeRef.current === VIEWER_PICK_MODE.NONE || !runtime.camera) {
+        return { partIds: [], referenceIds: [] };
+      }
+      const rect = container.getBoundingClientRect();
+      // The box as far as it lies over the viewport.
+      const box = {
+        ...clientBox,
+        left: Math.max(clientBox.left, rect.left), right: Math.min(clientBox.right, rect.right),
+        top: Math.max(clientBox.top, rect.top), bottom: Math.min(clientBox.bottom, rect.bottom)
+      };
+      if (!(box.right > box.left && box.bottom > box.top)) return { partIds: [], referenceIds: [] };
+      const matrix = boxCameraMatrix();
+      const samples = (parts || faces) ? boxSamplePoints(box).map(({ x, y }) => frontAt(x, y, { face: faces })) : [];
+      const referenceIds = [
+        ...(faces ? boxFaces(box, rect, matrix, samples) : []),
+        ...(edges ? boxEdges(box, rect, matrix) : []),
+      ];
+      return { partIds: parts ? boxParts(box, rect, matrix, samples) : [], referenceIds };
+    }
+
+    if (boxPickRef) boxPickRef.current = boxPick;
     if (pickAtRef) pickAtRef.current = (clientX, clientY, pointerType = "") => pickActivationReference(clientX, clientY, pointerType) || "";
     if (topologyAtRef) topologyAtRef.current = topologyAtPosition;
     if (measureAtRef) measureAtRef.current = (clientX, clientY) => measurePress(clientX, clientY, { replay: true });
@@ -1258,6 +1512,7 @@ export function useStepPicking({
       if (pickAtRef) pickAtRef.current = null;
       if (topologyAtRef) topologyAtRef.current = null;
       if (measureAtRef) measureAtRef.current = null;
+      if (boxPickRef) boxPickRef.current = null;
       container.removeEventListener("pointerdown", handlePointerDownCapture, true);
       container.removeEventListener("pointermove", handlePointerMoveCapture, true);
       container.removeEventListener("pointerup", handlePointerUpCapture, true);

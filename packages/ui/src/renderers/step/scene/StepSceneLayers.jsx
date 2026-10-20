@@ -9,6 +9,7 @@ import { useStepExplode } from "./useStepExplode.js";
 import { useStepHighlights } from "./useStepHighlights.js";
 import { useMeasureOverlay } from "../../kit/tools/measure/useMeasureOverlay.js";
 import { useStepPicking } from "./useStepPicking.js";
+import { useBoxSelectGesture } from "../../kit/tools/select/useBoxSelectGesture.js";
 import { useStepPose } from "./useStepPose.js";
 import { releaseStepRuntime, useStepSceneSync } from "./useStepSceneSync.js";
 import { useHover } from "../workbench/hoverStore.js";
@@ -35,7 +36,8 @@ import ViewportError from "../../kit/status/ViewportError.jsx";
  * | pick proxies, B-rep linework, part highlight | `useStepDisplay.js` (`useStepLinework`) |
  * | reference highlight | `useStepHighlights.js` |
  * | measure rulers and the snap indicator | `kit/tools/measure/useMeasureOverlay.js` |
- * | pointer: hover, tap, double-click, measure picks | `useStepPicking.js` |
+ * | pointer: hover, tap, double-click, measure picks, what a box takes | `useStepPicking.js` |
+ * | Box select: the drag and the box drawn | the kit's `useBoxSelectGesture` |
  * | Pose knobs | the kit's `JointHandleOverlay` |
  *
  * Preview mounts its own instance in its own viewport (`preview`, `StepPreviewLayers.jsx`):
@@ -270,6 +272,7 @@ export default function StepSceneLayers({ viewport, stepScene, policy, props: su
     topologyAtRef: props.topologyAtRef,
     measureAtRef: props.measureAtRef,
     onMeasureWantsTopology: props.onMeasureWantsTopology,
+    boxPickRef: props.boxPickRef,
     onMeasurePick: handleMeasurePick,
     onMeasureHoverPoint: handleMeasureHoverPoint,
     viewerReadyTick,
@@ -277,6 +280,9 @@ export default function StepSceneLayers({ viewport, stepScene, policy, props: su
     // Position's knobs are Select's and leave its picks alone: a press is the knob's only on a knob.
     suppressTopologyPicking: animateMode || stepAnimationPlaying
   });
+
+  // Under Box select a drag draws a box; what it takes is the surface's to select.
+  useBoxSelectGesture(viewport, Boolean(props.onBoxSelect) && !preview, props.onBoxSelect);
 
   // Read-only debug/test seams. `__cadCamera` and `__cadStage` are the viewport's.
   const placementRef = useRef(null);

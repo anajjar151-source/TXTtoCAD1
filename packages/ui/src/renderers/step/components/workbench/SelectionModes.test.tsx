@@ -94,3 +94,42 @@ it('the strip shows Select as the plain pointer and Measure as its ruler, and op
   expect(select).toHaveBeenCalledOnce();
   expect(screen.queryByRole('menu')).toBeNull();
 });
+
+it('Select and Box select are two tools in their own section at the top, apart from what they pick', async () => {
+  const user = userEvent.setup();
+  const toolChange = vi.fn(), change = vi.fn();
+  function ToolMenu() {
+    const [tool, setTool] = useState<'select' | 'box'>('select');
+    const [value, setValue] = useState<readonly string[]>(['faces']);
+    return <>
+      <SelectModeMenu value={value} onChange={(next: readonly string[]) => { setValue(next); change(next); }} assembly={false} posable={false}
+        connected={{ edgeChain: false, tangentFaces: false }} onConnectedChange={() => {}}
+        tool={tool} onToolChange={(next: 'select' | 'box') => { setTool(next); toolChange(next); }} />
+      <SelectIcon tool={tool} mode="faces" aria-hidden="true" />
+    </>;
+  }
+  const tools = () => [...document.querySelectorAll('[data-select-tool]')].map(item => [item.textContent, item.getAttribute('aria-checked')]);
+  render(<ToolMenu />);
+  expect(badges(document.body)).toEqual(['select:faces']);
+  await open(user);
+  // The tools first, each with its glyph, then a rule, then what a pick takes.
+  expect(tools()).toEqual([['Select', 'true'], ['Box select', 'false']]);
+  expect(glyphs(document.querySelector('[data-select-tool="box"]')!)).toEqual(['boxSelect']);
+  const order = [...menu().querySelectorAll('[data-select-tool], [role=separator], [data-select-filter]')]
+    .map(item => item.getAttribute('data-select-tool') ?? item.getAttribute('data-select-filter') ?? 'rule');
+  expect(order.slice(0, 4)).toEqual(['select', 'box', 'rule', 'all']);
+  await user.click(document.querySelector<HTMLElement>('[data-select-tool="box"]')!);
+  // Choosing a tool puts the menu away and leaves what is picked as it was.
+  expect([toolChange.mock.calls, change.mock.calls, !!screen.queryByRole('menu')]).toEqual([[['box']], [], false]);
+  expect(badges(document.body)).toEqual(['boxSelect:faces']);
+  await open(user);
+  expect(tools()).toEqual([['Select', 'false'], ['Box select', 'true']]);
+  expect(filterItems()).toContainEqual(['Faces', 'true']);
+});
+
+it('without a tool to choose, the menu has no Tool section', async () => {
+  const user = userEvent.setup();
+  render(<Menu initial={['faces']} assembly={false} posable={false} />);
+  await open(user);
+  expect(document.querySelectorAll('[data-select-tool]').length).toBe(0);
+});
