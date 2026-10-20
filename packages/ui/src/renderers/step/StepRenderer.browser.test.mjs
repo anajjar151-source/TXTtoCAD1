@@ -1463,8 +1463,17 @@ test('a click selects at once, and a double-click ends where it did when a click
   const { page, box, at, errors } = view;
   const selection = () => page.evaluate(() => { const state = window.cadHarness.a.controller.readState();
     return { parts: state.selectedPartIds, refs: state.selectedReferenceIds, isolated: state.isolatedPartIds }; });
+  // A selection that does not clear says what stood instead: the picks, the tool in hand, the keyboard's owner, any popup.
   const cleared = () => page.waitForFunction(() => { const state = window.cadHarness.a.controller.readState();
-    return state.selectedPartIds.length + state.selectedReferenceIds.length === 0; });
+    return state.selectedPartIds.length + state.selectedReferenceIds.length === 0; }).catch(async error => {
+    const seen = await page.evaluate(() => { const state = window.cadHarness.a.controller.readState();
+      return { parts: state.selectedPartIds, refs: state.selectedReferenceIds, isolated: state.isolatedPartIds,
+        tool: [...document.querySelectorAll('[data-cad-toolbar] button[aria-pressed="true"]')].map(button => button.getAttribute('aria-label')),
+        focus: document.activeElement?.getAttribute('aria-label') || document.activeElement?.tagName,
+        quickEdit: Boolean(document.querySelector('[data-quick-edit-box]')),
+        popups: [...document.querySelectorAll('[role=menu], [role=dialog], [role=listbox], [data-radix-popper-content-wrapper]')].map(node => node.getAttribute('role') || 'popper') }; });
+    throw new Error(`the selection did not clear: ${JSON.stringify(seen)}`, { cause: error });
+  });
   const copies = () => page.evaluate(() => window.__clipboardWrites.length);
   // Empty space: the bottom centre, under the model, with nothing of the viewer's own in it (the
   // view cube is the bottom-right's, the file sidebar runs down the left).
