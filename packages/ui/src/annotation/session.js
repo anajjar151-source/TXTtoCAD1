@@ -17,8 +17,9 @@ import { penWidth } from './geometry.js';
  * @property {string} color
  * @property {number} strokeWidth
  * @property {import('./toolbar.jsx').AnnotationStrokeStyle} strokeStyle
- * @property {import('./toolbar.jsx').AnnotationPlacement} placement  Where what is drawn next lies: on
- *   the model, or in space on a plane facing the view.
+ * @property {import('./toolbar.jsx').AnnotationPlacement} placement  How what is drawn next lies: `surface` (the default),
+ *   each point on the visible surface under it, or `plane`, each on the plane of the surface the mark starts on; off the
+ *   model both carry on at that plane (`annotation3d.js`'s `projectAnnotations`).
  * @property {readonly import('../renderers/kit/tools/annotate/annotation3d.js').AnnotationItem[]} items
  * @property {readonly string[]} selected  The ink the viewer's Select has picked: what the selection's bar
  *   (`restyle`, `fill`) and Delete act on. Annotate's tools never pick ink.
@@ -43,11 +44,12 @@ import { penWidth } from './geometry.js';
  * @property {() => void} redo
  * @property {() => void} clear  Every piece of ink, as one step to undo.
  * @property {() => void} forget  The same as `clear`.
- * @property {() => void} discard  Every piece of ink and the history with it: nothing to undo.
+ * @property {() => void} discard  Every piece of ink and the history with it, and the views: nothing to undo.
  * @property {readonly import('./views.js').LabelledView[]} views  The views ink was drawn in, in order
  *   ("view 1", "view 2"…): a mark names its own (`view`).
- * @property {(view: import('./views.js').PromptView | null) => string | undefined} noteView  The label of
- *   the view ink is being put down in: the one drawn in before that is the same (`sameView`), or a new one.
+ * @property {(view: import('./views.js').PromptView | null) => string | undefined} noteView
+ *   The label of the view ink is being put down in: the one drawn in before that is the same
+ *   (`sameView`), or a new one.
  */
 
 const DEFAULTS = Object.freeze({ tool: 'freedraw', color: '#ff2d55', strokeWidth: 2, strokeStyle: 'solid', placement: 'surface' });
@@ -117,8 +119,8 @@ export function useAnnotationSession(active = true, initial = {}, history = null
     selectColor: next => setColor(next),
     selectStrokeWidth: next => setStrokeWidth(next),
     selectStrokeStyle: next => setStrokeStyle(next),
-    // Not a style: ink already down, selected or not, stays where it lies.
     selectPlacement: next => setPlacement(next),
+    // Not a style: ink already down, selected or not, stays where it lies.
     restyle: ({ color: nextColor, width, dash }) => {
       const ids = new Set(selectedRef.current);
       if (!ids.size) return;

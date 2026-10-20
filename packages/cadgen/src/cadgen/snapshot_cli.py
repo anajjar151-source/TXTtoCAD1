@@ -379,7 +379,7 @@ def load_annotation_option(value: object, *, cwd: Path) -> tuple[dict[str, objec
             raise SnapshotError(f"Cannot read annotation file {text}: {exc}") from exc
         source = str(path)
     if not is_plain_object(parsed):
-        raise SnapshotError(f"{source or 'annotation'}: an annotation is a JSON object with units, parts and marks")
+        raise SnapshotError(f"{source or 'annotation'}: an annotation is a JSON object with units and marks")
     return parsed, source
 
 

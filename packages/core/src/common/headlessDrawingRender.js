@@ -95,20 +95,11 @@ function drawOutput(drawable, { width, height, scale, background, foreground, ca
 }
 
 /**
- * A job's annotation, checked as every annotation is, and lying on the sheet: a drawing has no
- * parts for ink to hang on, so every mark is on none, its points in drawing coordinates.
+ * A job's annotation, checked as every annotation is: on a drawing its points are in drawing
+ * coordinates, on the sheet.
  */
 function drawingAnnotation(raw) {
-  if (raw == null) return null;
-  const annotation = normalizeAnnotation(raw);
-  const onPart = annotation.marks.find(mark => mark.part != null);
-  if (Object.keys(annotation.parts).length || onPart) {
-    throw new Error(
-      `annotation: a drawing has no parts for ink to hang on${onPart ? ` (${onPart.id} is on part ${onPart.part})` : ""}; `
-      + "its marks lie on the sheet, on no part, their points in drawing coordinates"
-    );
-  }
-  return annotation;
+  return raw == null ? null : normalizeAnnotation(raw);
 }
 
 /**

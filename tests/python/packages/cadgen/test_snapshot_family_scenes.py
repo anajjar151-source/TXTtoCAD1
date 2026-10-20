@@ -270,8 +270,8 @@ class SnapshotFamilySceneTests(unittest.TestCase):
         # The saved job packet names an annotation file, as Quick Edit's job does. Two jobs
         # replay that same saved ink and dimension through the real Python -> browser path.
         annotation = workspace / "part.annotation.json"
-        annotation.write_text(json.dumps({"units": "mm", "parts": {}, "marks": [
-            {"id": "1", "kind": "stroke", "part": None, "points": [2, 2, 10.1, 8, 8, 10.1],
+        annotation.write_text(json.dumps({"units": "mm", "marks": [
+            {"id": "1", "kind": "stroke", "points": [2, 2, 10.1, 8, 8, 10.1],
              "color": "#ff00ff", "width": 14}]}), encoding="utf-8")
         measurement = {"start": [1, 9, 10.2], "end": [9, 9, 10.2], "label": "8.00 mm", "color": "#00ff00"}
         jobs += [job(name, str(workspace / "part.stl"), camera="top", annotation=str(annotation),

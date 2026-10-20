@@ -134,7 +134,7 @@ it('copies the note with its references by their files\' absolute paths, and its
     views: () => views,
     files: vi.fn(async () => ({ snapshot: '/tmp/p/bracket-1.snapshot.json' })),
     read: vi.fn(async () => new Blob()),
-    annotation: () => ({ units: 'mm', parts: {}, marks: [] }),
+    annotation: () => ({ units: 'mm', marks: [] }),
   };
   const clear = vi.fn();
   mount(host, { references: [face], annotation, prompt, onClear: clear });
@@ -184,7 +184,7 @@ it('annotation and measurement chips keep details and removal without copying or
   const measure = { measurements: [{ id: 'm1', colorIndex: 0, pickA: { point: [0, 0, 0] },
     pickB: { point: [3, 4, 0] }, measurement: { euclidean: 5, delta: [3, 4, 0], unit: 'mm' } }],
     onDelete, hover, clear: vi.fn() };
-  const ink = { units: 'mm', parts: {}, marks: [] };
+  const ink = { units: 'mm', marks: [] };
   function Note() {
     const measurements = useQuickEditMeasurements(measure);
     return <QuickEdit resource={resource} annotation={{ present: true, clear: clearInk }} measurements={measurements}
@@ -262,7 +262,7 @@ it('every chip\'s copy pasted is its pill, as its chip shows it: a measurement, 
   const pills = () => [...field().querySelectorAll('[data-quick-edit-note-ref]')]
     .map(pill => [pill.querySelector('svg')?.getAttribute('data-pick-glyph'), pill.textContent]);
   const mark = { start: [0, 0, 0], end: [10, 0, 0], label: '10.00 mm', color: '#d59090' };
-  const annotation = { units: 'mm', parts: {}, marks: [{ id: 'a', kind: 'stroke' }] };
+  const annotation = { units: 'mm', marks: [{ id: 'a', kind: 'stroke' }] };
   paste(JSON.stringify(mark));
   paste(JSON.stringify(annotation, null, 2));
   paste('/models/parts/bracket.step#o1.2');

@@ -145,7 +145,7 @@ it('Quick Edit is there once something is picked, with what the host can do, is 
 });
 
 // A stroke as Annotate puts one into the model.
-const ink = (id: string) => ({ id, kind: 'stroke', part: null, placement: 'surface', points: new Float32Array([0, 0, 0, 1, 0, 0]), color: '#ff2d55', width: 2, dash: 'solid', touches: [] });
+const ink = (id: string) => ({ id, kind: 'stroke', points: new Float32Array([0, 0, 0, 1, 0, 0]), color: '#ff2d55', width: 2, dash: 'solid', touches: [] });
 
 it("an annotation opens Quick Edit, which sends the note with the files made of its view and its annotation, and goes with them", async () => {
   const destination = { kind: 'composer', available: true } as const;

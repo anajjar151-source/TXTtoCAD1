@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, expect, it } from 'vitest';
 import { useAnnotationSession } from './session.js';
 import { ANNOTATION_COLORS, AnnotationToolbar, annotationColors } from './toolbar.jsx';
@@ -36,9 +36,9 @@ it("Annotate's controls, two rows at the sub-toolbars' one width: every tool a b
   fireEvent.pointerDown(within(settings).getByRole('button', { name: 'Placement' }), { button: 0, ctrlKey: false });
   const menu = await screen.findByRole('menu', { name: 'Placement' });
   expect(within(menu).getAllByRole('menuitemradio').map(item => [item.getAttribute('aria-label'), item.getAttribute('aria-checked')]))
-    .toEqual([['Draw on surface', 'true'], ['Draw on plane', 'false']]);
-  fireEvent.click(within(menu).getByRole('menuitemradio', { name: 'Draw on plane' }));
-  expect(session.placement).toBe('space');
+    .toEqual([['On surface', 'true'], ['On plane', 'false']]);
+  fireEvent.click(within(menu).getByRole('menuitemradio', { name: 'On plane' }));
+  expect(session.placement).toBe('plane');
 });
 
 it('Stroke width and Line style are rows of glyphs, each named, the current one marked', async () => {

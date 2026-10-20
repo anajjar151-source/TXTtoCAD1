@@ -2,21 +2,21 @@
 
 Annotate is the CAD viewer's own ink, with no drawing SDK behind it. A view has one
 annotation: its marks are projected into the model in 3D, so they stay where they
-were drawn from every angle. The STEP renderer is the one that offers Annotate
+were drawn from every angle, lying on the surface they were drawn on. The STEP renderer is the one that offers Annotate
 ([Annotate](cad-renderer.md#annotate)).
 
 ## Pieces
 
 - `annotation/session.js` — `useAnnotationSession`: the annotation's ink, what the tools
   put down next (tool, the last of each family taken up, color, stroke width, line style,
-  placement) and the selection. Each add, erase, restyle of the selection
+  placement — `surface`, the default, or `plane`) and the selection. Each add, erase, restyle of the selection
   (`restyle`) or fill of a closed shape (`fill`, joining its group) is one step
   in the file view's history (`renderers/kit/shell/useViewerHistory.js`, 200
   steps, shared with the renderer's own tools; without one the session keeps its
   own). Choosing what is drawn next never touches ink already down.
   `clear()` is a step; `discard()` drops the ink and takes its steps out of the
   history, for a model that changed under it. The session also keeps the views ink was drawn
-  in (`views`, "view 1", "view 2"…): `noteView(view)` names the one a mark goes
+  in (`views`, "view 1", "view 2"…), as labels for the agent: `noteView(view)` names the one a mark goes
   down in — a view drawn in before that is the same (`annotation/views.js`'s
   `sameView`: less than 2° of turn, 5% of zoom or pan, nothing else changed),
   or a new one.
@@ -27,16 +27,18 @@ were drawn from every angle. The STEP renderer is the one that offers Annotate
   how it looks.
 - `annotation/toolbar.jsx` — `AnnotationToolbar`, Annotate's sub-toolbar: seven
   tool buttons (Pen, Line, Arrow, Rectangle, Ellipse, Text, Eraser), then Color,
-  Stroke width, Line style and Placement, Undo, Redo and Clear. These form one row
-  on a wide view and two equal rows below 64rem. The dropdowns use visual choices;
-  Placement offers “Draw on surface” and “Draw on plane”. `annotationColors` offers
+  Stroke width, Line style and Placement (On surface, On plane), Undo, Redo and Clear. A flat
+  view (a DXF) passes `placements={false}`: its ink has nowhere to lie but the drawing. These form one row
+  on a wide view and two equal rows below 64rem. The dropdowns use visual choices.
+  `annotationColors` offers
   neon swatches and a neutral that reads against the theme: white in dark mode,
   near-black in light mode. A native color picker adds a custom color.
   `AnnotationStylePickers` also restyles the selection's ink.
 - `renderers/kit/tools/annotate/AnnotationSelectionBar.jsx` — the bar over the ink Select
   picked: its colour, weight and line style, Fill for a closed shape (seeded
   inside its outline as it falls on the screen, `annotation/geometry.js`'s
-  `interiorPoint` and `fillMarkAt`, and projected where the shape lies) and
+  `interiorPoint` and `fillMarkAt`, and projected where the shape lies: On plane on the
+  shape's own plane if its points are coplanar (a fitted plane), else On surface) and
   Delete.
 - `annotation/geometry.js` — each tool's mark in screen space:
   - The pen is smoothed as it is drawn, and each point's width comes from its
@@ -52,7 +54,8 @@ were drawn from every angle. The STEP renderer is the one that offers Annotate
   puts it down as a text mark; Shift+Enter makes a new line; Escape drops it. The
   surface stops the press's mousedown, which would otherwise take the keyboard
   back from the text it just opened.
-  Each mark names the view it was put down in. Annotate has no Select of its own:
+  Each mark names the view it was put down in, and is projected onto the surface it starts on.
+  Annotate has no Select of its own:
   the viewer's Select picks ink (`RendererShell.jsx`, through the viewport's
   `annotationAt`), Shift adding to the pick, and Delete and Escape act on it (here too).
   The camera stays the person's between strokes: the wheel zooms, a right or
@@ -60,37 +63,71 @@ were drawn from every angle. The STEP renderer is the one that offers Annotate
 - `mountAnnotations(runtime).update(items, selected, hovered)` haloes the ink Select
   picked, a wider line in the selection's blue behind it, and, fainter, the ink
   its pointer rests on (the shell's `hoveredAnnotation`, the marks drawn with it too). Ink draws after the model and its
-  highlights (`ANNOTATION_RENDER_ORDER`), so a lit part never paints over it.
+  highlights (`ANNOTATION_RENDER_ORDER`), so a lit part never paints over it. Nothing else is drawn: no
+  pane, no label. The ink's box (`runtime.annotationBounds`) widens the camera's depth range.
 - `renderers/kit/tools/annotate/annotation3d.js` — projects a mark into the model.
-  - What lies under the marks comes from one render of the parts' depth and
-    ids over the marks' bounds, read back. No ray is cast per point: on a large
-    assembly that took most of a second per stroke.
-  - Every point stays on the ray through where it was drawn, so from that view
-    the ink is exactly what was drawn. Only its depth comes from the model.
-  - A stroke lies over the nearest of what is within a few pixels of its line,
-    so nothing it was drawn over cuts through it. Where it leaves the model it
-    carries on in the air from the model's depth there.
-  - A fill lies on the surface when all of it is over the model, else whole on a
-    sheet in front of what it covers. A text mark stands in front of what it covers.
-  - A mark belongs to the part most of it lies on, in that part's frame, so
-    Explode and Position carry it, Clip cuts it, and hiding the part hides it.
-    Marks drawn as one thing (`group`: an arrow's line and its head) belong to
-    the part most of them all lies on, so they never come apart. `touches` lists
-    the parts it was drawn over, most first.
-  - A mark drawn **in space** ignores the model: every point lies on the plane
-    facing the view just in front of the model's bounds, so nothing of the model
-    hides it from where it was drawn. It belongs to no part (`part: null`,
-    `placement: "space"`), its points are model coordinates, and it stays put
-    through Explode, Position and hiding parts. Clip still cuts it. Moved with
-    Select, it lands on that plane as the view is then. When every mark is in
-    space, the parts are not rendered for depth at all.
+  - Every point stays on the ray through where it was drawn, so from that view the ink is
+    exactly what was drawn. **Ink lies on the surface it is drawn on.** Every mark has a
+    **level**: the plane of the surface it starts on (a stroke's first point, a text mark's anchor
+    corner, a fill's first outline point), found by `levelOf(runtime, start, size)`. A flat face's
+    level is its own plane; a curved face's, its tangent plane at the start point (the geometry's
+    smooth normal there). The normal is the surface's, **not the view direction**: from any
+    angle, a mark started on a plate's top has the plate's top plane as its level. No sheet, no
+    pane: nothing is made per view, and nothing is held between marks.
+  - **Placement** says what a point does, per mark at draw time. *On surface* (the default): each
+    point drops onto the visible surface under it (a stroke follows a curved face and steps across
+    faces); a point with nothing under it (past the model's edge, over a through-hole) takes the
+    level: its ray met with the level plane, so a stroke that trails off a face carries on at that
+    face's level. *On plane*: every point is its ray met with the level plane — flat across a
+    curved face, staying on the tangent plane where it started, and carried off the surface at
+    the same level. Both modes agree off the surface. A stroke's line is first split into pieces
+    of a few pixels (`subdivideStroke`) in both, so a two-point line reads the surface all along
+    it; the pen's widths are split with it. In On surface a point takes the nearest depth within
+    its own reach — half the stroke's width and a pixel, never a neighbour's, so a slanted face
+    does not lift the ink off it; a fill point by point. Every point is then two screen pixels toward
+    the eye, text eight. Text is a card facing the view, at the level's depth under its anchor
+    corner, in both modes. Ink already down never moves with the setting.
+  - **The level, when the start is over nothing** (in order):
+    1. the surface under the start point (a ray through it);
+    2. the **visible surface nearest to the start on the screen**: in a depth render of the parts
+       over the window (read back at no more than 256 pixels on the long side), the covered pixel
+       with the least screen distance to the start, found by searching outward in rings of pixels
+       from where the start falls (the nearer of two as far wins), then ray-cast through its middle
+       for the surface point and normal there;
+    3. nothing drawn in the window, but a model: the drawn surface **nearest to the window on the
+       screen** — the same render over a region round the window, large enough to hold the model's box
+       on screen (the window's size on each side where part of the box is behind the eye), at low
+       resolution; the covered pixel with the least screen distance to the window rect;
+    4. no model drawn: the plane through the origin facing the view.
+
+    "Drawn" is what the depth render sees: hidden parts and what Clip cuts away do not count.
+    Clip's cap faces are not part meshes (stencil fills, `sectionCaps.js`), so they are not in
+    the render: through a cut the level is the surface seen inside. Without a GPU float render the
+    same reads come from rays, at a far lower resolution. The depth renders are made only when a
+    level needs them, once for all the marks put down together (`projectAnnotations`).
+  - **Grazing guard:** a level whose plane is nearly edge-on to the view (|normal · view
+    direction| below 0.08) is replaced by the plane facing the view through the same point, else rays
+    would stretch the mark along the plane.
+  - `projectAnnotations(runtime, marks, size, { placement, topologyAt, level })` projects marks,
+    finding each one's level inside; `level` ({ point, normal }) gives all of them one instead (a fill
+    of a flat shape lies on the shape's plane).
+  - What the model hides of the ink is drawn faint through it (core's `ANNOTATION_HIDDEN_OPACITY`,
+    on the viewer and in snapshots), so a profile drawn through a part's middle is seen.
+  - Every mark is in model coordinates: it stays where it was drawn whatever
+    Explode, Position or hiding a part does to the model. Clip cuts it.
+    `touches` says what it was drawn over, most first, the same for either placement: the faces and edges the
+    renderer names under it (`ref`, a prompt reference, from the shell's
+    `inkTopology`; the STEP renderer's reads them whatever Select's filter picks),
+    each with its part; without it, the parts.
   - The projected ink is plain data (`AnnotationItem`): an annotation mark
-    (`@text-to-cad/core/common/annotation.js`) with its part's placement as it was
-    drawn, kept across scene rebuilds. `mountAnnotations` draws it in a viewer runtime and
-    `update` draws only the marks a change adds; the objects and how they follow
-    their parts are core's, the ones a snapshot draws an annotation with. The preview
+    (`@text-to-cad/core/common/annotation.js`), kept across scene rebuilds.
+    `mountAnnotations` draws it in a viewer runtime and `update` draws only the
+    marks a change adds; the objects are core's, the ones a snapshot draws an
+    annotation with. The preview
     holds a finished mark until the scene has drawn it. `annotationDocumentOf` writes the
-    annotation as an annotation file.
+    annotation as an annotation file. The file format is unchanged: marks are 3D points; the level is the viewer's own.
+  - A double-click under Select (Look at, `kit/camera/lookAt.js`) is navigation only; it sets
+    no plane for ink.
 
 ## Lifetime and capture
 

@@ -158,7 +158,7 @@ The envelope accepts shared `input`, `annotation`, and `measurements` defaults:
 ```json
 {
   "input": "/path/model.step",
-  "annotation": { "units": "mm", "parts": {}, "marks": [] },
+  "annotation": { "units": "mm", "marks": [] },
   "measurements": [],
   "jobs": [
     { "camera": "iso", "outputs": [{ "path": "/tmp/iso.png" }] },

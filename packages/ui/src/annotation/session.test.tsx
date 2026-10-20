@@ -5,13 +5,13 @@ import { useViewerHistory } from '../renderers/kit/shell/useViewerHistory.js';
 
 afterEach(cleanup);
 const CAD = { tool: 'freedraw', color: '#ff2d55' };
-const stroke = (id: string, extra = {}) => ({ id, kind: 'stroke', part: null, points: new Float32Array(6), color: '#ff2d55', width: 2, dash: 'solid', ...extra });
+const stroke = (id: string, extra = {}) => ({ id, kind: 'stroke', points: new Float32Array(6), color: '#ff2d55', width: 2, dash: 'solid', ...extra });
 const view = (x: number) => ({ camera: { position: [x, -100, 0], target: [0, 0, 0], up: [0, 0, 1], orthographicHalfHeight: 50 }, width: 1600, height: 1200 });
 
 it('holds the ink, each add, erase or restyle one step to undo and redo; clear is one more, discard leaves nothing to undo', () => {
   const session = renderHook(() => useAnnotationSession(true, CAD));
   const current = () => session.result.current;
-  expect(current()).toMatchObject({ ready: true, tool: 'freedraw', color: '#ff2d55', strokeWidth: 2, strokeStyle: 'solid', placement: 'surface', hasContent: false });
+  expect(current()).toMatchObject({ ready: true, tool: 'freedraw', color: '#ff2d55', strokeWidth: 2, strokeStyle: 'solid', hasContent: false });
   act(() => current().add([stroke('a'), stroke('b')]));
   act(() => current().remove(['a']));
   act(() => current().select(['b']));
@@ -30,13 +30,13 @@ it('holds the ink, each add, erase or restyle one step to undo and redo; clear i
   expect(current()).toMatchObject({ hasContent: false, canUndo: false, canRedo: false });
 });
 
-it("Annotate's colour, weight, line style and placement are what is drawn next; the selection's restyle is one step, the pen's weight its own", () => {
+it("Annotate's colour, weight and line style are what is drawn next; the selection's restyle is one step, the pen's weight its own", () => {
   const session = renderHook(() => useAnnotationSession(true, CAD));
   const current = () => session.result.current;
   act(() => current().add([stroke('a'), stroke('b'), stroke('p', { widths: [1, 1] })]));
   act(() => current().select(['a', 'p']));
-  act(() => { current().selectColor('#39ff14'); current().selectStrokeWidth(4); current().selectStrokeStyle('dashed'); current().selectPlacement('space'); });
-  expect(current()).toMatchObject({ color: '#39ff14', strokeWidth: 4, strokeStyle: 'dashed', placement: 'space', canUndo: true });
+  act(() => { current().selectColor('#39ff14'); current().selectStrokeWidth(4); current().selectStrokeStyle('dashed'); });
+  expect(current()).toMatchObject({ color: '#39ff14', strokeWidth: 4, strokeStyle: 'dashed', canUndo: true });
   expect(current().items.map(item => item.color)).toEqual(['#ff2d55', '#ff2d55', '#ff2d55']);
   act(() => current().restyle({ color: '#ffffff', width: 4, dash: 'dotted' }));
   expect(current().items.map(item => [item.id, item.color, item.width, item.dash])).toEqual([
@@ -49,7 +49,7 @@ it("a fill joins its shape's group in its colour, one step; an undo takes the pi
   const session = renderHook(() => useAnnotationSession(true, CAD));
   const current = () => session.result.current;
   act(() => current().add([stroke('r', { closed: true, color: '#00e5ff' })]));
-  act(() => current().fill('r', [{ id: 'f', kind: 'area', part: null, points: new Float32Array(9), color: '#ff2d55' } as any]));
+  act(() => current().fill('r', [{ id: 'f', kind: 'area', points: new Float32Array(9), color: '#ff2d55' } as any]));
   const [shape, fill] = current().items;
   expect(fill).toMatchObject({ id: 'f', color: '#00e5ff', group: shape.group });
   expect(shape.group).toBeTruthy();
@@ -93,11 +93,27 @@ it('names the view ink goes down in: one drawn in before that is the same, or a 
   expect(current().views).toEqual([]);
 });
 
-it("put down, Annotate keeps the tool in hand, the ink, Select's pick of it, the colour, the weight, the line style and the placement", () => {
+it('keeps only the views\' labels: no plane, and none to look up', () => {
+  const session = renderHook(() => useAnnotationSession(true, CAD));
+  act(() => { session.result.current.noteView(view(0)); });
+  expect(session.result.current.views[0]).not.toHaveProperty('plane');
+  expect(session.result.current).not.toHaveProperty('planeOf');
+});
+
+it('Placement is what is drawn next: on the surface at first, kept like the colour when Annotate is put down', () => {
+  const session = renderHook(({ active }) => useAnnotationSession(active, CAD), { initialProps: { active: true } });
+  const current = () => session.result.current;
+  expect(current().placement).toBe('surface');
+  act(() => current().selectPlacement('plane'));
+  session.rerender({ active: false });
+  expect(current().placement).toBe('plane');
+});
+
+it("put down, Annotate keeps the tool in hand, the ink, Select's pick of it, the colour, the weight and the line style", () => {
   const session = renderHook(({ active }) => useAnnotationSession(active, CAD), { initialProps: { active: true } });
   const current = () => session.result.current;
   act(() => { current().add([stroke('a')]); current().selectTool('eraser'); current().select(['a']); });
-  act(() => { current().selectColor('#ffffff'); current().selectStrokeWidth(4); current().selectStrokeStyle('dotted'); current().selectPlacement('space'); });
+  act(() => { current().selectColor('#ffffff'); current().selectStrokeWidth(4); current().selectStrokeStyle('dotted'); });
   session.rerender({ active: false });
-  expect(current()).toMatchObject({ tool: 'eraser', selected: ['a'], color: '#ffffff', strokeWidth: 4, strokeStyle: 'dotted', placement: 'space', hasAnnotation: true });
+  expect(current()).toMatchObject({ tool: 'eraser', selected: ['a'], color: '#ffffff', strokeWidth: 4, strokeStyle: 'dotted', hasAnnotation: true });
 });

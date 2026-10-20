@@ -21,8 +21,8 @@ from cadgen.viewer.http_app import create_cad_app
 from cadgen.viewer.prompt_files import PromptFiles
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
-ANNOTATION = {"units": "mm", "parts": {}, "marks": [
-    {"id": "1", "kind": "stroke", "part": None, "points": [0, 0, 0, 1, 1, 1] * 128, "color": "#ff2d55", "width": 2}]}
+ANNOTATION = {"units": "mm", "marks": [
+    {"id": "1", "kind": "stroke", "points": [0, 0, 0, 1, 1, 1] * 128, "color": "#ff2d55", "width": 2}]}
 CAMERA = {"position": [10, -10, 10], "target": [0, 0, 0], "up": [0, 0, 1]}
 
 

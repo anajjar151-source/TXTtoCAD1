@@ -570,8 +570,8 @@ class StepDebugReportsWhatWasResolved(unittest.TestCase):
         self.assertEqual((1, 1, False), (entry["componentCount"], entry["occurrenceCount"], entry["selectorIndex"]))
 
 
-ANNOTATION = {"units": "mm", "parts": {}, "marks": [
-    {"id": "1", "kind": "stroke", "part": None, "points": [0, 0, 0, 1, 1, 1], "color": "#ff2d55", "width": 2}]}
+ANNOTATION = {"units": "mm", "marks": [
+    {"id": "1", "kind": "stroke", "points": [0, 0, 0, 1, 1, 1], "color": "#ff2d55", "width": 2}]}
 
 
 class AnnotationAndTargetTests(_Workspace):
@@ -591,7 +591,7 @@ class AnnotationAndTargetTests(_Workspace):
 
     def test_packet_defaults_and_per_job_replacements_reach_the_renderer(self) -> None:
         mark = {"start": [0, 0, 0], "end": [10, 0, 0], "label": "10 mm", "color": "#ff2d55"}
-        empty = {"units": "mm", "parts": {}, "marks": []}
+        empty = {"units": "mm", "marks": []}
         other = self.write("other.stl", STL)
         packet = {"input": "part.stl", "annotation": "ink.annotation.json", "measurements": [mark], "jobs": [
             {"outputs": [{"path": "shared.png"}]},
@@ -660,7 +660,7 @@ class AnnotationAndTargetTests(_Workspace):
         self.write("list.json", "[]")
         for job, said in (
             (self.stl_job(annotation="missing.json"), "annotation file does not exist: missing.json"),
-            (self.stl_job(annotation="list.json"), "an annotation is a JSON object with units, parts and marks"),
+            (self.stl_job(annotation="list.json"), "an annotation is a JSON object with units and marks"),
             (self.stl_job(annotation=["not", "one"]), "annotation is the path of an annotation JSON file"),
             ({"input": "part.stl", "mode": "list", "outputs": [], "annotation": ANNOTATION}, "only view mode draws it"),
         ):

@@ -22,6 +22,7 @@ import StepSceneLayers, { releaseStepRuntime } from "./scene/StepSceneLayers.jsx
 import StepPreviewLayers from "./scene/StepPreviewLayers.jsx";
 import { displayRecordExplodedViewTranslation } from "./scene/useStepExplode.js";
 import { createStepScene, stepSceneView } from "./scene/stepScene.js";
+import { lookSubjectForReference } from "./scene/lookAtReference.js";
 import { useStepViewPolicy, viewDrawsHairlines } from "./scene/useStepViewPolicy.js";
 import {
   viewerHiddenPartIdsForRenderPane, viewerPickModeForRenderPane, viewerSelectedPartIdsForRenderPane,
@@ -128,7 +129,7 @@ import { useViewerHost } from "../../host/context.js";
 import { useWorkspaceDocument } from "../workspace/useWorkspaceDocument.js";
 import { createCadPromptContext } from "./file-view/promptContext.js";
 import { modelMenuDescriptor, partMenuDescriptor, topologyMenuDescriptor } from "./file-view/stepMenus.js";
-import { nodeCopyText, selectionCopyPayload } from "./file-view/stepCopy.js";
+import { selectionCopyPayload } from "./file-view/stepCopy.js";
 import { referenceLabel, referencesFromCopyText, resolveSelectorSelection } from "./file-view/hostReference.js";
 import { applySourceAppearanceToMeshData, sourceAppearanceGeometry } from "@text-to-cad/core/common/sourceSidecar.js";
 import { stepPartNameFromFile } from "@text-to-cad/core/lib/step/productName.js";
@@ -797,6 +798,7 @@ function StepSurfaceBody({ view, data }) {
   const runtimeRefRef = useRef(null);
   const layersApiRef = useRef(null);
   const pickAtRef = useRef(null);
+  const topologyAtRef = useRef(null);
   const lodSelectedPartIdsRef = useRef(EMPTY_LIST);
   // Declared here, above the LOD scheduler that is handed it: it reads only refs, so it is
   // safe this early, and a `const` read before its declaration is a TDZ crash, not undefined.
@@ -1729,6 +1731,15 @@ function StepSurfaceBody({ view, data }) {
     try { await host.clipboard.writeText(text); return true; }
     catch (error) { shellRef.current?.reportActionError(error instanceof Error ? error.message : "Could not copy reference"); return false; }
   }, [canonicalCopySelectionLines, stepInteractionBlocked, host.clipboard]);
+  // What Annotate's ink touches at a point of the view: the part, with the face and the edge under
+  // it as prompt references, as copying a selection of them writes them.
+  const inkTopology = useCallback((clientX, clientY) => {
+    const found = topologyAtRef.current?.(clientX, clientY);
+    if (!found?.part) return [];
+    const refOf = id => (id ? copyTextLines(selectionCopyPayload(copyContext, { referenceIds: [id], partIds: [] }).lines, fileRefPrefix)[0] || "" : "");
+    const touches = [found.face, found.edge].map(refOf).filter(Boolean).map(ref => ({ part: found.part, ref }));
+    return touches.length ? touches : [{ part: found.part }];
+  }, [copyContext, fileRefPrefix]);
   // The tip teaches reference syntax, so it fires on the first pick that yields
   // a reference to copy — a component, a subassembly, or a face/edge. Gating it
   // on topology alone would hide it from anyone who only ever clicks parts.
@@ -2630,10 +2641,9 @@ function StepSurfaceBody({ view, data }) {
   // A waiting press belongs to the filter, tool and file it was made under.
   useEffect(() => { setPendingTopologyPick(null); }, [selectionFilter, tabToolMode, selectedKey]);
 
-  const doubleCopyReference = useRef(null);
   // `activated`: the gesture's first click activated (its second never does), so the selection
   // that click found comes back first; the double-click then acts on it as it always has.
-  const handleModelReferenceDoubleActivate = useCallback((referenceId, { multiSelect = false, activated = false } = {}) => {
+  const handleModelReferenceDoubleActivate = useCallback((referenceId, { activated = false } = {}) => {
     if (stepInteractionBlocked) return;
     if (activated) restoreSelectionBeforeActivation();
     if (!referenceId) {
@@ -2643,17 +2653,19 @@ function StepSurfaceBody({ view, data }) {
     const reference = effectiveActiveReferenceMap.get(referenceId);
     const topology = reference && isViewerTopologyReference(reference);
     if (topology && selectionFilter !== "parts") {
-      // A double-click copies the face or edge AND leaves it selected: selected here if the
-      // selection it found lacks it — the way a single click would select it.
-      if (!selectedReferenceIdsRef.current.includes(referenceId)) handleModelReferenceActivate(referenceId, { multiSelect });
-      doubleCopyReference.current?.(referenceId);
+      // A double-click turns the view square to the face or edge — CAD's "Normal To"
+      // (`kit/camera/lookAt.js`) — and selects nothing: the selection is as its first click found it.
+      const selectorRuntime = layersApiRef.current?.activeSelectorRuntime;
+      const subject = lookSubjectForReference(runtimeRefRef.current?.current, selectorRuntime,
+        selectorReferenceForId(selectorRuntime, referenceId) || reference);
+      if (subject) viewerRef.current?.lookAt?.(subject);
       return;
     }
     if (isAssemblyView) {
       const partId = topology ? referencePartId(reference) : referenceId;
       focusStepTreeNode(resolvePickedAssemblyPartId(partId), { reveal: false });
     }
-  }, [stepInteractionBlocked, effectiveActiveReferenceMap, selectionFilter, isAssemblyView, handleModelReferenceActivate,
+  }, [stepInteractionBlocked, effectiveActiveReferenceMap, selectionFilter, isAssemblyView,
     restoreSelectionBeforeActivation, referencePartId, focusStepTreeNode, handleExitIsolate, resolvePickedAssemblyPartId]);
 
   const handleViewportContextMenuOpenChange = useCallback((open) => {
@@ -2795,39 +2807,6 @@ function StepSurfaceBody({ view, data }) {
       reportActionError(error instanceof Error ? error.message : "Failed to copy reference");
     }
   }, [deliverReferenceText, fileRefPrefix, retainedPreviousStepMeshError, stepInteractionBlocked]);
-
-  const copyStepTreeContextMenuReference = useCallback(async (id, { topology = false } = {}) => {
-    if (stepInteractionBlocked) {
-      reportActionError(retainedPreviousStepMeshError
-        ? "Selection unavailable because the STEP update failed."
-        : "STEP update in progress. Please wait.");
-      return;
-    }
-    const normalizedId = String(id || "").trim();
-    if (!normalizedId) {
-      reportActionError("No selector ref is available for this node");
-      return;
-    }
-    const copyText = nodeCopyText(copyContext, normalizedId, { topology });
-    if (!copyText) {
-      reportActionError("No selector ref is available for this node");
-      return;
-    }
-    try {
-      await deliverReferenceText(copyText);
-    } catch (error) {
-      reportActionError(error instanceof Error ? error.message : "Failed to copy reference");
-    }
-  }, [
-    deliverReferenceText,
-    copyContext,
-    retainedPreviousStepMeshError,
-    stepInteractionBlocked
-  ]);
-
-  doubleCopyReference.current = id => copyStepTreeContextMenuReference(id, {
-    topology: Boolean(effectiveActiveReferenceMap.get(id) && isViewerTopologyReference(effectiveActiveReferenceMap.get(id)))
-  });
 
   const selectViewerContextMenuNode = useCallback((menu) => {
     const referenceId = String(menu?.referenceId || "").trim();
@@ -3251,7 +3230,8 @@ function StepSurfaceBody({ view, data }) {
     // Under another tool a pick takes up Select (`ensureSelectTool`): it waits the double-click
     // window first, so a double-click there isolates and leaves the tool as it was.
     deferActivation: !selectionToolActive,
-    pickAtRef
+    pickAtRef,
+    topologyAtRef
   };
   const viewPolicyResolved = useStepViewPolicy({
     meshData: selectedDisplayMeshData, themeSettings: resolvedThemeSettings, displaySettings: resolvedScene.display,
@@ -3414,7 +3394,7 @@ function StepSurfaceBody({ view, data }) {
   return <RendererShell shell={shell} tools={tools} subToolbar={modelEffects.subToolbar} sidebar={stepSidebar} previewView={previewView}
     references={selectionActionVisible ? promptSelection : EMPTY_LIST} referenceChips={referenceChips} nameReference={nameReference}
     onClearReferences={clearSelected} copySelection={copySelection} onSelectPress={selectPress} onSelectHover={selectHover}
-    selectsAnnotations={selects(selectFilter, "annotation")}
+    selectsAnnotations={selects(selectFilter, "annotation")} inkTopology={inkTopology}
     contextMenuItems={selectionToolActive
       ? press => viewportContextMenuItems(press, pickAtRef.current?.(press.clientX, press.clientY) || "") : null}
     onContextMenuOpenChange={handleViewportContextMenuOpenChange}

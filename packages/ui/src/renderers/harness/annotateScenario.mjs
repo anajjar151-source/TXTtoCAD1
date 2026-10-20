@@ -99,7 +99,7 @@ export async function runAnnotateScenario({ page, pane, errors, update }) {
   const box = await surface.boundingBox();
   const at = (x, y) => [box.x + box.width / 2 + x, box.y + box.height / 2 + y];
 
-  // A pen stroke across the model: red ink in the model, there once the pen lifts.
+  // A pen stroke across the model: red ink on the view's sheet, there once the pen lifts.
   const before = await position();
   await drag(at(-80, 10), at(60, 40));
   const stroke = await until('the stroke is in the model', seen => seen.red > 100);

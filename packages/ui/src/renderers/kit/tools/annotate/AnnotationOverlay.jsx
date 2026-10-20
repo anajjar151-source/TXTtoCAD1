@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { annotationAt, penMark, shapeMarks, textMark, withGroups } from "../../../../annotation/geometry.js";
 import { DEFAULT_OVERLAY_ANNOTATION_COLOR } from "../../../../annotation/toolbar.jsx";
 import { capturePointer } from "../../../../lib/pointerCapture.js";
@@ -65,8 +65,9 @@ function paintOutline(context, ink, { color }) {
  * Annotate's surface over the viewport: every tool's gesture, its ink previewed as it is made (on a
  * canvas of its own, in screen space) and put into the model as it ends (`annotation3d.js`): the pen, the
  * line, the arrow, the rectangle and the ellipse drawn; text written in place; the eraser dragged
- * over ink. Each mark lies on the model or in space, as the session's
- * placement was when it was put down. All of it works on the whole annotation, whatever view each piece
+ * over ink. Every mark lies on the surface it starts on (`annotation3d.js`'s `levelOf`: that
+ * surface's plane), each point on the surface under it or on that plane, by the session's `placement`. What each
+ * mark touches comes from `topologyAt` (the renderer's `inkTopology`). All of it works on the whole annotation, whatever view each piece
  * was drawn from. Picking ink is the viewer's Select's, not Annotate's (`RendererShell.jsx`); ink Select
  * picked is restyled on its selection's bar, and Delete deletes it here too.
  * The camera is the person's between strokes: the wheel zooms, a right or middle drag orbits (the
@@ -80,10 +81,10 @@ function paintOutline(context, ink, { color }) {
  * into the viewport's scene (`runtimeRef`).
  *
  * @param {{ annotation: import("../../../../annotation/session.js").AnnotationSession, runtimeRef?: { current: any },
- *   viewOf?: (() => object | null) | null, surface?: { place(marks: object[], size: { width: number, height: number }): object[],
+ *   viewOf?: (() => object | null) | null, topologyAt?: ((clientX: number, clientY: number) => { part: string, ref?: string }[]) | null, surface?: { place(marks: object[], size: { width: number, height: number }): object[],
  *     onScreen(items: readonly object[], size: { width: number, height: number }): object[], view(): Element | null } | null }} props
  */
-export default function AnnotationOverlay({ annotation, runtimeRef = null, viewOf = null, surface = null }) {
+export default function AnnotationOverlay({ annotation, runtimeRef = null, viewOf = null, topologyAt = null, surface = null }) {
   const root = useRef(null);
   const canvas = useRef(null);
   const gesture = useRef(null);
@@ -115,14 +116,20 @@ export default function AnnotationOverlay({ annotation, runtimeRef = null, viewO
   viewOfRef.current = viewOf;
   // The view ink is going down in, as the session labels it.
   const viewNow = () => annotationRef.current.noteView?.(viewOfRef.current?.() ?? null);
-  // Each mark put down lies where the session's placement says: on the model, or in space.
+  const topologyAtRef = useRef(topologyAt);
+  topologyAtRef.current = topologyAt;
+  // Each mark put down lies on the surface it starts on (`annotation3d.js`), and names what it touches.
   const put = marks => {
     const runtime = runtimeRef?.current, session = annotationRef.current, flat = surfaceRef.current;
     if ((!flat && !runtime) || !marks.length) return;
-    const placement = session.placement ?? "surface", view = viewNow();
-    const placed = marks.map(mark => ({ ...mark, placement, ...(view ? { view } : {}) }));
-    session.add(flat ? flat.place(placed, size()) : projectAnnotations(runtime, placed, size()));
+    const view = viewNow();
+    const placed = marks.map(mark => ({ ...mark, ...(view ? { view } : {}) }));
+    if (flat) { session.add(flat.place(placed, size())); return; }
+    const rect = root.current.getBoundingClientRect(), lookup = topologyAtRef.current;
+    session.add(projectAnnotations(runtime, placed, size(), { placement: session.placement,
+      topologyAt: lookup ? at => lookup(rect.left + at.x, rect.top + at.y) : null }));
   };
+
   // A mark drawn stays on the preview until the frame after the one that draws it in the model,
   // so it never blinks out between the two.
   const land = marks => {

@@ -32,7 +32,7 @@ test('on a narrow view Annotate\'s controls are two aligned rows, and on a phone
     assert.equal(layout.count, 14);
     assert.ok(layout.top.slice(0, 7).every(y => y === layout.top[0]), `${width}px: seven tools on the first row`);
     assert.ok(layout.top.slice(7).every(y => y === layout.top[7]) && layout.top[7] > layout.top[0], `${width}px: seven settings/actions on the second row`);
-    assert.deepEqual(layout.x.slice(0, 7), layout.x.slice(7), `${width}px: the two rows align`);
+    assert.deepEqual(layout.x.slice(0, 7), layout.x.slice(7), `${width}px: the two rows align, column for column`);
   }
   // A phone: no row under the strip; the chevron after Annotate's tile holds its controls.
   await page.setViewportSize({ width: 390, height: 700 });

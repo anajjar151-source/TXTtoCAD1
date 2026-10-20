@@ -19,6 +19,8 @@ const FRONT_LAYER_DISTANCE_MIN = 0.02;
 const EDGE_OCCLUSION_EPSILON_FACTOR = 0.75;
 const EDGE_OCCLUSION_EPSILON_MIN = 0.08;
 const EDGE_PICK_MAX_SCREEN_DISTANCE_PX = 10;
+// Ink drawn this near an edge on the screen touches it.
+const INK_EDGE_PX = 4;
 const EDGE_PICK_MAX_SCREEN_DISTANCE_WITH_FACE_PX = EDGE_PICK_MAX_SCREEN_DISTANCE_PX;
 const EDGE_HOVER_MAX_SCREEN_DISTANCE_PX = 6;
 const EDGE_HOVER_MAX_SCREEN_DISTANCE_WITH_FACE_PX = EDGE_HOVER_MAX_SCREEN_DISTANCE_PX;
@@ -242,6 +244,10 @@ export function useStepPicking({
   // What is under a point of the screen right now, for the viewport menu: set while the
   // listeners are bound, null otherwise. (clientX, clientY, pointerType) -> reference id or "".
   pickAtRef = null,
+  // What the model is under a point of the screen, for Annotate's ink (what a mark touches): set
+  // while the listeners are bound. (clientX, clientY) -> { part, face, edge } reference ids ("" for
+  // none), the face and the edge whatever Select's filter picks.
+  topologyAtRef = null,
   onMeasurePick,
   onMeasureHoverPoint,
   viewerReadyTick,
@@ -710,6 +716,39 @@ export function useStepPicking({
       };
     }
 
+    // The part, face and edge under a point, as Select would find them with every kind pickable:
+    // the front face the ray meets, and the edge within a few pixels of the point that nothing hides.
+    function topologyAtPosition(clientX, clientY) {
+      setPointerFromPosition(clientX, clientY);
+      const intersections = intersectVisibleModelMeshes();
+      const selectorRuntime = selectorRuntimeRef.current;
+      const part = pickPartReferenceFromIntersections(intersections) || "";
+      let face = "";
+      for (const intersection of frontMostModelIntersections(intersections)) {
+        const row = Number(intersection?.object?.userData?.faceIds?.[Number(intersection?.faceIndex)]);
+        const reference = Number.isInteger(row) ? selectorRuntime?.faceReferenceByRowIndex?.get?.(row) : null;
+        if (reference?.id) { face = String(reference.id); break; }
+      }
+      let edge = "";
+      if (runtime.edgePickLines && runtime.raycaster?.params?.Line) {
+        const threshold = currentPickThreshold(runtime.edgePickThreshold || 1, 1, INK_EDGE_PX, intersections);
+        runtime.raycaster.params.Line.threshold = threshold;
+        const nearestSurfaceDistance = Number(intersections?.[0]?.distance);
+        const allowance = Math.max(EDGE_OCCLUSION_EPSILON_MIN, threshold * EDGE_OCCLUSION_EPSILON_FACTOR);
+        const hits = filterClippedIntersections(runtime, runtime.raycaster.intersectObject(runtime.edgePickLines, false))
+          .filter(hit => !Number.isFinite(nearestSurfaceDistance) || Number(hit?.distance) <= nearestSurfaceDistance + allowance);
+        const best = chooseBestEdgeIntersection(hits, hit => edgeScreenDistance(hit, clientX, clientY));
+        if (best && edgeScreenDistance(best, clientX, clientY) <= INK_EDGE_PX) {
+          const segment = Math.floor(Number(best.index) / 2);
+          const row = Number(best.object?.userData?.edgeIds?.[segment]);
+          const reference = Number.isInteger(row) ? selectorRuntime?.edgeReferenceByRowIndex?.get?.(row) : null;
+          if (reference?.id) edge = String(reference.id);
+        }
+        runtime.raycaster.params.Line.threshold = runtime.edgePickThreshold || 1;
+      }
+      return { part, face, edge };
+    }
+
     function pickReferenceAtPosition(clientX, clientY, { hover = false, touch = false } = {}) {
       return resolveViewerReferencePick({
         pickMode: pickModeRef.current,
@@ -1122,6 +1161,7 @@ export function useStepPicking({
     }
 
     if (pickAtRef) pickAtRef.current = (clientX, clientY, pointerType = "") => pickActivationReference(clientX, clientY, pointerType) || "";
+    if (topologyAtRef) topologyAtRef.current = topologyAtPosition;
     container.addEventListener("pointerdown", handlePointerDownCapture, true);
     container.addEventListener("pointermove", handlePointerMoveCapture, true);
     container.addEventListener("pointerup", handlePointerUpCapture, true);
@@ -1140,6 +1180,7 @@ export function useStepPicking({
 
     return () => {
       if (pickAtRef) pickAtRef.current = null;
+      if (topologyAtRef) topologyAtRef.current = null;
       container.removeEventListener("pointerdown", handlePointerDownCapture, true);
       container.removeEventListener("pointermove", handlePointerMoveCapture, true);
       container.removeEventListener("pointerup", handlePointerUpCapture, true);

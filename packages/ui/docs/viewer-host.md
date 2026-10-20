@@ -502,9 +502,9 @@ remain in the host implementation.
 A STEP's selection copy (a chip's click, the copy shortcut) and Annotate's
 copy shortcut (the view with its annotations) use `ClipboardPort` directly, including on
 desktop: the references as text, the view with its ink as a PNG through
-`writeImage`. Their copy shortcut and double-click topology copy follow the same
-path. Double-clicking a component or subassembly isolates it instead; only
-non-isolatable topology references use double-click copying. The host supplies
+`writeImage`. Their copy shortcut follows the same path. A double-click copies
+nothing: on a face or edge it turns the view square to it, on a component or
+subassembly it isolates it. The host supplies
 `environment.platform` for the ⌘C / Ctrl+C hint; the web host derives that field
 from its browser environment.
 

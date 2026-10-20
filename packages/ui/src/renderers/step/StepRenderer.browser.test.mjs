@@ -1461,7 +1461,7 @@ test('mobile touch: a tap selects, and a two-finger pinch zooms without selectin
   assert.deepEqual(errors, []);
 });
 
-test('a click selects at once, and a double-click ends where it did when a click waited: the part isolated, isolation left, or the face copied and kept, on the selection its first click found', async () => {
+test('a click selects at once, and a double-click ends where it did when a click waited: the part isolated, isolation left, or the view turned square to the face, selecting nothing, on the selection its first click found', async () => {
   // Files are named by their absolute paths, and every copy says so.
   const view = await open({ init: () => { window.__cadPromptDestination = 'clipboard'; } });
   const { page, box, at, errors } = view;
@@ -1528,7 +1528,11 @@ test('a click selects at once, and a double-click ends where it did when a click
   assert.deepEqual(await selection(), { parts: ['o1.1'], refs: [], isolated: [] });
 
   // Under Faces, with both parts' faces loaded (a press on each loads its part's faces and picks
-  // one), a double-click copies the face and leaves it selected...
+  // one), a double-click turns the view square to the face (`kit/camera/lookAt.js`) and selects
+  // nothing: the selection is as its first click found it. The opening camera, where `at`
+  // projects, comes back before each next press.
+  const turned = () => page.waitForFunction(previous => window.__cadCamera().position.some((value, index) => Math.abs(value - previous[index]) > 1e-3), opening.position);
+  const back = async () => { await page.evaluate(camera => window.cadHarness.a.controller.setCamera(camera), opening); await restingCamera(page); };
   await view.chooseSelectMode('Faces');
   for (const [point, part] of [[[15, 0, 4], 'o1.2'], [[6, 6, 5], 'o1.1']]) {
     await page.mouse.click(...at(point));
@@ -1537,33 +1541,35 @@ test('a click selects at once, and a double-click ends where it did when a click
   await page.keyboard.press('Escape');
   await cleared();
   await page.mouse.dblclick(...at([15, 0, 4]));
-  await page.waitForFunction(() => window.__clipboardWrites.length === 1);
+  await turned();
   await settle(page);
+  assert.deepEqual((await selection()).refs, [], 'a double-click focuses the face and selects nothing');
+  await back();
+  // A click selects the face; a double-click on it keeps the selection as it was, not toggled off.
+  await page.mouse.click(...at([15, 0, 4]));
+  await page.waitForFunction(() => window.cadHarness.a.controller.readState().selectedReferenceIds.length === 1);
   const armFace = (await selection()).refs;
-  assert.equal(armFace.length, 1, `the double-clicked face is the selection: ${JSON.stringify(armFace)}`);
   assert.match(armFace[0], /\|o1\.2\.f\d+$/);
-  assert.match(await page.evaluate(() => window.__clipboardWrites[0]), /^\/models\/hinge_block\.step#o1\.2\.f\d+$/);
-  // ...also when it was selected already: the two clicks it is made of do not toggle it off.
   await page.mouse.dblclick(...at([15, 0, 4]));
-  await page.waitForFunction(() => window.__clipboardWrites.length === 2);
+  await turned();
   await settle(page);
-  assert.deepEqual((await selection()).refs, armFace, 'a second double-click keeps the face selected');
-  // With Shift, the double-clicked face joins the selection; a second shift double-click keeps it.
+  assert.deepEqual((await selection()).refs, armFace, 'a double-click on a selected face keeps the selection as it was');
+  await back();
+  // Shift-click adds the other part's face; a shift double-click on it keeps the two as they were.
   await page.keyboard.down('Shift');
-  await page.mouse.dblclick(...at([6, 6, 5]));
+  await page.mouse.click(...at([6, 6, 5]));
   await page.keyboard.up('Shift');
-  await page.waitForFunction(() => window.__clipboardWrites.length === 3);
-  await settle(page);
+  await page.waitForFunction(() => window.cadHarness.a.controller.readState().selectedReferenceIds.length === 2);
   const both = (await selection()).refs;
-  assert.equal(both.length, 2, `shift adds the double-clicked face: ${JSON.stringify(both)}`);
   assert.equal(both[0], armFace[0]);
   assert.match(both[1], /\|o1\.1\.f\d+$/);
   await page.keyboard.down('Shift');
   await page.mouse.dblclick(...at([6, 6, 5]));
   await page.keyboard.up('Shift');
-  await page.waitForFunction(() => window.__clipboardWrites.length === 4);
+  await turned();
   await settle(page);
-  assert.deepEqual((await selection()).refs, both, 'a shift double-click on a selected face keeps it');
+  assert.deepEqual((await selection()).refs, both, 'a shift double-click keeps the selection as it was');
+  await back();
   assert.deepEqual((await selection()).isolated, [], 'a topology double-click never isolates');
   // A double-click on empty space with no isolation to leave (as on a single-part STEP, whose
   // faces are what a press picks): its first click cleared the selection, and the double-click
@@ -1572,12 +1578,12 @@ test('a click selects at once, and a double-click ends where it did when a click
   await page.waitForFunction(() => window.cadHarness.a.controller.readState().selectedReferenceIds.length === 2);
   await settle(page);
   assert.deepEqual((await selection()).refs, both, 'an empty-space double-click keeps the selection its first click found');
-  assert.equal(await copies(), 4, 'and copies nothing');
+  assert.equal(await copies(), 0, 'and a double-click copies nothing');
   // ⌘C / Ctrl+C copies the whole selection, both parts' faces, from Quick Edit's empty note as from the view.
   assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), 'Describe your changes');
   await page.keyboard.press('ControlOrMeta+c');
-  await page.waitForFunction(() => window.__clipboardWrites.length === 5);
-  const copiedSelection = parseCadRefToken(await page.evaluate(() => window.__clipboardWrites[4]));
+  await page.waitForFunction(() => window.__clipboardWrites.length === 1);
+  const copiedSelection = parseCadRefToken(await page.evaluate(() => window.__clipboardWrites[0]));
   assert.equal(copiedSelection.cadPath, '/models/hinge_block.step');
   assert.deepEqual([...copiedSelection.selectors].sort(), both.map(reference => reference.split('|').at(-1)).sort());
 

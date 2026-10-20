@@ -119,8 +119,8 @@ class DxfSnapshotRefusalTests(unittest.TestCase):
         )
 
     def test_ink_and_measurements_are_drawn_over_a_drawing(self) -> None:
-        annotation = {"units": "mm", "parts": {}, "marks": [
-            {"id": "1", "kind": "stroke", "part": None, "points": [0, 0, 0, 10, 10, 0], "color": "#ff2d55", "width": 2}]}
+        annotation = {"units": "mm", "marks": [
+            {"id": "1", "kind": "stroke", "points": [0, 0, 0, 10, 10, 0], "color": "#ff2d55", "width": 2}]}
         mark = {"start": [0, 0, 0], "end": [100, 0, 0], "label": "100.00 mm", "color": "#d59090"}
         _, prepared = self.prepare(self.job(camera=PLAN, annotation=annotation, measurements=[mark]))
         self.assertEqual(annotation, prepared[0].job["annotation"])

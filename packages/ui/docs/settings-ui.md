@@ -297,9 +297,9 @@ picker closes), **Stroke width** (Thin, Medium, Bold — a shape's 1, 2 or 4px, 
 look the same weight, its glyph a dot 3, 5 or 7px across) and **Line style** (Solid, Dashed,
 Dotted — a shape's line; the pen's freehand ink is always solid; its glyph a diagonal line
 drawn in the style), each a row of glyphs alone, the current one marked, and **Placement**
-(**Draw on surface**, the default, its glyph a sphere: ink carried with the part under it;
-**Draw on plane**, on a plane facing the view through the orbit point, on no part, its glyph a
-plane), its glyphs with their names; then **Annotation history** — **Undo**, **Redo** — and
+(On surface, the default, or On plane: whether each point of the next mark lies on the
+visible surface under it or on the plane of the surface the mark starts on; its glyph a sphere or
+a sheet; a name and glyph per row, the current one marked; a flat view, a DXF, has none; on a phone it is a submenu of the chevron's menu); then **Annotation history** — **Undo**, **Redo** — and
 **Clear annotations** (the trash), each disabled while there is nothing for it, with no rule
 before them. In a view narrower than 32rem the seven tools and the seven after them are two
 rows, column for column, with no rule. Annotate has no Select or Pan of its own (Select picks
@@ -687,8 +687,9 @@ then, hovering such a part lights the whole part.
 Shift-click adds to a selection in the viewport; Shift, Ctrl or Cmd does in a
 tree (robots select several links this way). Double-click, or a row's Isolate,
 isolates a component or subassembly; double-click on empty space leaves
-isolation, as do the isolation bar's Exit and the lit Isolate. Only topology that
-cannot be isolated copies on double-click, and it stays selected.
+isolation, as do the isolation bar's Exit and the lit Isolate. A double-click on a face,
+an edge or ink turns the view square to it (CAD's Normal To, `kit/camera/lookAt.js`) and
+selects nothing: the selection is as its first click found it.
 
 ## Quick Edit
 

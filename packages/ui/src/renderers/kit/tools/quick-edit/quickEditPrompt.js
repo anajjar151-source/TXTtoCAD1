@@ -26,7 +26,7 @@ export function pastedLines(pasted, copied = null) {
   const text = String(pasted || "");
   // The annotation, as its chip copies it: its annotation file's JSON, over several lines.
   const whole = parsedJson(text);
-  if (whole && !Array.isArray(whole) && Array.isArray(whole.marks) && whole.parts && typeof whole.parts === "object") return [{ annotation: whole }];
+  if (whole && !Array.isArray(whole) && Array.isArray(whole.marks) && typeof whole.units === "string") return [{ annotation: whole }];
   return text.split(/\r?\n/).map(line => (copied?.has(line.trim()) ? { chip: copied.get(line.trim()), token: line.trim() } : null)
     ?? parsePromptReference(line) ?? pastedMeasurement(line) ?? line);
 }

@@ -265,6 +265,7 @@ export default function StepSceneLayers({ viewport, stepScene, policy, props: su
     onDoubleActivateReference,
     deferActivation,
     pickAtRef: props.pickAtRef,
+    topologyAtRef: props.topologyAtRef,
     onMeasurePick: handleMeasurePick,
     onMeasureHoverPoint: handleMeasureHoverPoint,
     viewerReadyTick,

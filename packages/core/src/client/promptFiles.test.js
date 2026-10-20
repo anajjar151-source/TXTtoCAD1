@@ -10,7 +10,7 @@ test("a prompt saves JSON in one request without polling; a JSON file is read by
   ];
   const files = createHttpPromptFiles({ origin: 'http://cad.invalid',
     fetch: async (url, options = {}) => { calls.push({ url, method: options.method || 'GET', headers: options.headers, body: options.body }); return replies.shift(); } });
-  const request = { name: 'a.step', input: '/m/a.step', views: [{ label: 'current' }], annotation: { units: 'mm', parts: {}, marks: [] } };
+  const request = { name: 'a.step', input: '/m/a.step', views: [{ label: 'current' }], annotation: { units: 'mm', marks: [] } };
   assert.deepEqual(await files.create(request),
     { snapshot: '/tmp/p/a-1.snapshot.json' });
   assert.deepEqual(calls.map(call => `${call.method} ${call.url}`), [

@@ -12,8 +12,8 @@ import { ToolSettingsMenu } from '../renderers/kit/tools/ToolModeMenu.jsx';
 
 /**
  * Annotate's sub-toolbar (`AnnotationToolbar`): its tools — the pen, each shape, the eraser — the colour,
- * weight and line style of what is drawn next and where it is drawn (on the model or in space), and
- * its history and Clear, all the annotation session's (`session.js`). The same colour, weight and line
+ * weight, line style and placement (on the surface under each point, or on the plane of the surface the mark starts on) of what is drawn next, and its
+ * history and Clear, all the annotation session's (`session.js`). The same colour, weight and line
  * style dropdowns (`AnnotationStylePickers`) restyle the ink Select has picked, on its selection's bar.
  */
 
@@ -82,8 +82,8 @@ export const ANNOTATION_STROKE_STYLES = [
   { value: 'dashed', label: 'Dashed' },
   { value: 'dotted', label: 'Dotted' },
 ];
-// Where ink lies, as its glyph: a sphere, in three dimensions, for ink drawn on the model's surface;
-// a flat sheet seen in perspective, a CAD tool's plane, for ink drawn on a plane.
+// How ink lies, as its glyph: a sphere, in three dimensions, for ink drawn on the surface under it; a
+// flat sheet seen in perspective for ink drawn on a plane.
 const GLYPH = { viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeLinecap: 'round', strokeLinejoin: 'round' };
 function SurfaceGlyph({ strokeWidth = 2, ...props }) {
   return <svg {...GLYPH} strokeWidth={strokeWidth} {...props}>
@@ -98,13 +98,13 @@ function PlaneGlyph({ strokeWidth = 2, ...props }) {
     <path d="M14.5 6.5l-5 11M5 12h14" strokeWidth={1.25} strokeOpacity="0.5" />
   </svg>;
 }
-/** @typedef {'surface' | 'space'} AnnotationPlacement */
-// Where ink lies: on the model under it (carried with its part), or in space, on a plane facing the
-// view through the orbit point, on no part. Only what is drawn next: ink already down stays put.
+/** @typedef {'surface' | 'plane'} AnnotationPlacement */
+// How ink lies: on the surface of the model under each point, or on the plane of the surface the mark
+// starts on (`annotation3d.js`'s `levelOf`). Only what is drawn next: ink already down stays put.
 /** @type {readonly { value: AnnotationPlacement, label: string, Icon: typeof Pencil }[]} */
 export const ANNOTATION_PLACEMENTS = [
-  { value: 'surface', label: 'Draw on surface', Icon: SurfaceGlyph },
-  { value: 'space', label: 'Draw on plane', Icon: PlaneGlyph },
+  { value: 'surface', label: 'On surface', Icon: SurfaceGlyph },
+  { value: 'plane', label: 'On plane', Icon: PlaneGlyph },
 ];
 const placementGlyph = placement => {
   const { Icon } = ANNOTATION_PLACEMENTS.find(option => option.value === placement) ?? ANNOTATION_PLACEMENTS[0];
@@ -232,9 +232,9 @@ const icon = Icon => <Icon className="size-3" strokeWidth={2} aria-hidden="true"
  * its tools, every one a button — the pen, the line, the arrow, the rectangle, the ellipse, text,
  * the eraser; then what is drawn next — its colour (`annotationColors`, for the viewer's
  * `colorScheme`, or any from the wheel), weight, line style and placement, each a dropdown — and
- * Undo, Redo (the annotation's history, `history`) and Clear, with no rule between them. In a view
- * too narrow for the row, the seven tools and the seven after them are two rows.
- * A flat view, where ink has nowhere to lie but the sheet, has no placement to choose (`placements={false}`).
+ * Undo, Redo (the annotation's history, `history`) and Clear, with no rule between them: two rows,
+ * the seven tools over the seven after them. A flat view, where ink has nowhere to lie but the
+ * drawing, has no placement to choose (`placements={false}`).
  * @param {{ annotation: import('./session.js').AnnotationSession, colorScheme?: 'light' | 'dark', placements?: boolean,
  *   history: { canUndo: boolean, canRedo: boolean, undo(): void, redo(): void } }} props
  */
@@ -244,16 +244,16 @@ export function AnnotationToolbar({ annotation, history, colorScheme = 'light', 
     active={!disabled && annotation.tool === id} aria-pressed={!disabled && annotation.tool === id} onClick={() => annotation.selectTool(id)}>
     {icon(Icon)}
   </ToolbarButton>;
-  // Seven tools, then seven settings and actions: two rows of seven, one over the other, their
-  // buttons column for column — the sub-toolbars' one width (`SUB_TOOLBAR_WIDTH_CLASS`), whatever
-  // the view's.
+  // Seven tools, then seven settings and actions: two rows, one over the other, their buttons column
+  // for column — the sub-toolbars' one width (`SUB_TOOLBAR_WIDTH_CLASS`), whatever the view's.
   return <SubToolbar label="Annotation controls" data-annotation-controls=""
     className={cn("text-to-cad-annotation-toolbar flex-col flex-nowrap items-stretch", SUB_TOOLBAR_WIDTH_CLASS)}>
     <div role="group" aria-label="Annotation tools" className="flex items-center gap-1">{[PEN, ...ANNOTATION_SHAPE_TOOLS, ERASER].map(toolButton)}</div>
 
     <div className="flex items-center gap-1">
       <AnnotationStylePickers label="Annotation style" className="contents" disabled={disabled} colors={annotationColors(colorScheme)}
-        color={annotation.color} width={annotation.strokeWidth ?? 2} dash={annotation.strokeStyle ?? 'solid'} placement={placements ? annotation.placement ?? 'surface' : null}
+        color={annotation.color} width={annotation.strokeWidth ?? 2} dash={annotation.strokeStyle ?? 'solid'}
+        placement={placements ? annotation.placement ?? 'surface' : null}
         onColor={annotation.selectColor} onWidth={annotation.selectStrokeWidth} onDash={annotation.selectStrokeStyle} onPlacement={annotation.selectPlacement} />
       <div role="group" aria-label="Annotation history" className="contents">
         <ToolbarButton tooltip={false} label="Undo" disabled={disabled || !history.canUndo} onClick={() => history.undo()}>{icon(Undo2)}</ToolbarButton>

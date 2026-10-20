@@ -858,8 +858,8 @@ function boundsRadius(bounds) {
 }
 
 // The job's annotation (`job.annotation`, the ink a person drew with the viewer's Annotate tool), drawn over this
-// output with the viewer's own code (`annotation.js`): each mark on its part as the scene now has it,
-// cut by the same clip planes. Its ink is as heavy against this output's height as it was against a
+// output with the viewer's own code (`annotation.js`): each mark where it was drawn, in model
+// coordinates, cut by the same clip planes. Its ink is as heavy against this output's height as it was against a
 // viewer `ANNOTATION_REFERENCE_HEIGHT_PX` tall, so one layer serves every output of that height and is
 // rebuilt only for an output of another.
 function syncViewportAnnotation(viewport, job, { height }) {
@@ -877,7 +877,7 @@ function syncViewportAnnotation(viewport, job, { height }) {
     viewport.annotationLayer = { layer, lineScale };
   }
   if (viewport.renderer) viewport.renderer.localClippingEnabled = true;
-  viewport.annotationLayer.layer.place(viewport.model.root, viewport.clipRuntime?.activeClipPlanes || viewport.sceneClip?.planes || []);
+  viewport.annotationLayer.layer.place(viewport.clipRuntime?.activeClipPlanes || viewport.sceneClip?.planes || []);
 }
 
 export async function captureModel(viewport, captureOptions = {}) {

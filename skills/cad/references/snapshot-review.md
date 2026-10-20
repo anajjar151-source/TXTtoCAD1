@@ -181,8 +181,14 @@ cadgen snapshot STEP/bracket_v2.step --job views.job.json
 ### Annotations and Quick Edit views
 
 `--annotation FILE` (a job's `annotation`: a path or the object) draws a person's ink
-over the model as they drew it in the CAD Viewer: each mark sits on its part,
-follows it when the view explodes or poses the model, and is cut by a clip.
+over the model as they drew it in the CAD Viewer: its marks are in model
+coordinates and stay put whatever explodes or poses the model, and are cut by a clip; what
+the model hides of them is drawn faint through it. A mark lies on the surface it was
+drawn on, or on that surface's plane (flat across a curved face, carried on in the air past the
+model's edge), so its points need not be coplanar.
+Each mark's `touches` says what it was drawn over, most first: the faces and edges
+as `@cad[...]` references (`ref`) where the Viewer could name them, each with its
+part — read those to know what a mark is about.
 A DXF annotation lies on the drawing plane; `--mode list` takes none.
 
 A Quick Edit prompt carries a snapshot packet captured only when Copy, Queue or

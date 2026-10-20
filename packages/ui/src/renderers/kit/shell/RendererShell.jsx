@@ -85,6 +85,9 @@ function ViewControl({ label, disabled = false, tooltipSide = "top", onClick, ch
   </ToolbarButton>;
 }
 
+// Two presses on the same ink this close together are one double-click.
+const DOUBLE_PRESS_MS = 600;
+
 /**
  * The frame every file-family renderer draws itself in: the viewport box with the tool strip at
  * its top centre and the tool stack under it, the file sidebar down its left side, Quick Edit at
@@ -158,6 +161,9 @@ function ViewControl({ label, disabled = false, tooltipSide = "top", onClick, ch
  *   down): the renderer lights its own overlay under it, and returns true when there is one.
  *   `selectsAnnotations`: whether Select picks the annotation's ink, as the renderer's Select filter says; the
  *   ink is drawn either way.
+ *   `inkTopology`: what the model is under a point of the view, `(clientX, clientY) => [{ part, ref? }]` —
+ *   the part, with the face or edge there as a prompt reference where the renderer can name one: what
+ *   Annotate records a mark as touching. Without it, a mark touches parts alone.
  *   `previewView`: Preview's own, while it is open (`shell.previewing`), for a 3D view: the scene the
  *   renderer built for it (`scene`, its family's builder over the editor's geometry, null until it can be
  *   drawn), what drives that scene from inside Preview's viewport (`overlay(viewport, drawn)`, given
@@ -167,7 +173,7 @@ function ViewControl({ label, disabled = false, tooltipSide = "top", onClick, ch
  */
 export default function RendererShell({ shell, tools, toolPanels = null, subToolbar = null, sidebar = null, references = null, referenceChips = null, nameReference = null, onClearReferences = null, copySelection = null, contextMenuItems = null,
   onContextMenuOpenChange = null, viewportOverlay = null, previewView = null,
-  frameProvider = null, onCanvasPointerDown = null, onSelectPress = null, onSelectHover = null, selectsAnnotations = true }) {
+  frameProvider = null, onCanvasPointerDown = null, onSelectPress = null, onSelectHover = null, selectsAnnotations = true, inkTopology = null }) {
   const { t } = useI18n();
   const frame = shell.frame;
   const mobile = useViewerMobile();
@@ -269,6 +275,9 @@ export default function RendererShell({ shell, tools, toolPanels = null, subTool
   // drawn with it) or the renderer's overlay, and the part under it is not.
   const [hoveredAnnotation, setHoveredAnnotation] = useState(null);
   const overSelectable = useRef(false);
+  // The ink a press under Select last picked, and the ink picked before it: a double-click on it
+  // puts that back, as it selects nothing.
+  const inkPress = useRef(null);
   // The pointer cursor over them, as a renderer shows over a part.
   const [pointing, setPointing] = useState(false);
   const selectHover = useRef(onSelectHover);
@@ -468,11 +477,28 @@ export default function RendererShell({ shell, tools, toolPanels = null, subTool
         if (!id) { if (!event.shiftKey && session.selected.length) session.select([]); return; }
         event.stopPropagation();
         event.preventDefault();
+        // The second press of a double-click keeps what the first found.
+        const again = inkPress.current?.id === id && event.timeStamp - inkPress.current.at < DOUBLE_PRESS_MS;
+        inkPress.current = { id, before: again ? inkPress.current.before : session.selected, at: event.timeStamp };
         const picked = event.shiftKey
           ? (session.selected.includes(id) ? session.selected.filter(other => other !== id) : [...session.selected, id])
           : [id];
         if (!event.shiftKey) onClearReferences?.();
         session.select(withGroups(picked, session.items));
+      }}
+      // Under Select a double-click on ink turns the view square to it (`ShellViewport.jsx`'s
+      // `lookAtAnnotation`), as one on a face or edge does, and selects nothing: the ink picked is as
+      // its first click found it. Never on to the part under it.
+      onDoubleClickCapture={event => {
+        if (!frame.selecting || !selectsAnnotations || !frame.annotation.items.length) return;
+        if (!(event.target instanceof Element) || !event.target.closest("canvas")) return;
+        const id = frame.viewerRef.current?.annotationAt?.(event.clientX, event.clientY, event.nativeEvent?.pointerType || "");
+        if (!id) return;
+        event.stopPropagation();
+        event.preventDefault();
+        if (inkPress.current?.id === id) frame.annotation.select(inkPress.current.before);
+        inkPress.current = null;
+        frame.viewerRef.current?.lookAtAnnotation?.(id);
       }}
       onPointerMoveCapture={hoverSelectable}
       onPointerLeave={() => { if (overSelectable.current || hoveredAnnotation) leaveSelectHover(); }}
@@ -521,6 +547,7 @@ export default function RendererShell({ shell, tools, toolPanels = null, subTool
                     annotation={frame.annotation}
                     hoveredAnnotation={hoveredAnnotation}
                     annotationView={frame.currentView}
+                    annotationTopology={inkTopology}
                     onPerspectiveChange={frame.handlePerspectiveChange}
                     onPresentationChange={frame.handlePresentationChange}
                     onViewerAlertChange={frame.setRuntimeAlert}

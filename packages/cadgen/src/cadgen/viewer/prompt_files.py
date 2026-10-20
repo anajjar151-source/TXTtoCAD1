@@ -30,7 +30,7 @@ MAX_VIEWS = 16
 INLINE_SNAPSHOT_BYTES = 1024
 _REQUEST_KEYS = frozenset({"name", "input", "views", "annotation", "measurements", "acceptInline"})
 _VIEW_KEYS = frozenset({"label", "camera", "display", "kinematics", "jointValues", "animation", "selection", "width", "height"})
-_ANNOTATION_KEYS = frozenset({"units", "parts", "marks"})
+_ANNOTATION_KEYS = frozenset({"units", "marks"})
 _UNSAFE = re.compile(r"[^A-Za-z0-9._-]+")
 _FILE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\.json")
 
@@ -88,7 +88,7 @@ class PromptFiles:
         kind, data = request.get("kind"), request.get("data")
         if kind == "annotation":
             if type(data) is not dict or not set(data) <= _ANNOTATION_KEYS or type(data.get("marks")) is not list:
-                raise ValueError("an annotation is an object of units, parts and marks (a list)")
+                raise ValueError("an annotation is an object of units and marks (a list)")
             content, suffix = data, "annotation"
         elif kind == "measurement":
             from cadgen.snapshot_cli import normalize_measurements
@@ -215,7 +215,7 @@ def _checked(request) -> tuple[str, str, list[dict], dict | None, list | None]:
     annotation = request.get("annotation")
     if annotation is not None:
         if type(annotation) is not dict or not set(annotation) <= _ANNOTATION_KEYS or type(annotation.get("marks")) is not list:
-            raise ValueError("annotation is null or an object of units, parts and marks (a list)")
+            raise ValueError("annotation is null or an object of units and marks (a list)")
         if not all(type(mark) is dict for mark in annotation["marks"]):
             raise ValueError("annotation.marks lists objects")
     # Measure's results: their shape is snapshot's to check, with the job (`_accepted`).

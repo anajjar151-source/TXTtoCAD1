@@ -5,7 +5,7 @@ import { cn } from "@text-to-cad/ui/utils";
 import { FLOATING_CHROME_SURFACE_CLASS } from "../../../../lib/floatingSurface.js";
 import { ANNOTATION_STROKE_WIDTHS, AnnotationStylePickers, annotationColors } from "../../../../annotation/toolbar.jsx";
 import { fillMarkAt, interiorPoint, penWidth } from "../../../../annotation/geometry.js";
-import { annotationsOnScreen, annotationWorldPoints, partObjects, projectAnnotations } from "./annotation3d.js";
+import { annotationsOnScreen, annotationWorldPoints, projectAnnotations } from "./annotation3d.js";
 
 // How far the bar keeps from the ink it is about, and from the viewport's edges, in px.
 const GAP = 10;
@@ -16,14 +16,35 @@ const strokeSetting = item => {
   const drawn = item.widths ? item.width / penWidth(1) : item.width;
   return ANNOTATION_STROKE_WIDTHS.reduce((best, option) => (Math.abs(option.value - drawn) < Math.abs(best.value - drawn) ? option : best)).value;
 };
+// The plane a shape's own points lie on (Newell's method, a fit), or null where they do not lie on one
+// (drawn across a curved face, say) or lie on a line.
+function planeOfShape(runtime, item) {
+  const points = annotationWorldPoints(runtime, item);
+  if (points.length < 3) return null;
+  const { THREE } = runtime;
+  const centre = points.reduce((sum, point) => sum.add(point), new THREE.Vector3()).divideScalar(points.length);
+  const normal = new THREE.Vector3();
+  points.forEach((point, index) => {
+    const next = points[(index + 1) % points.length];
+    normal.x += (point.y - next.y) * (point.z + next.z);
+    normal.y += (point.z - next.z) * (point.x + next.x);
+    normal.z += (point.x - next.x) * (point.y + next.y);
+  });
+  if (normal.lengthSq() < 1e-18) return null;
+  normal.normalize();
+  const extent = Math.max(...points.map(point => point.distanceTo(centre)));
+  const tolerance = Math.max(1e-3 * extent, 1e-4 * (Number(runtime.modelRadius) || 1), 1e-6);
+  return points.every(point => Math.abs(point.clone().sub(centre).dot(normal)) <= tolerance)
+    ? { point: centre.toArray(), normal: normal.toArray() } : null;
+}
 const closedShape = item => item.kind === "stroke" && item.closed && !item.widths;
 
 /**
  * The ink Select has picked, its bar: a small floating toolbar just above it (below it where there
- * is no room above), following it as the camera and its parts move — the tool strip's surface, a
+ * is no room above), following it as the camera moves — the tool strip's surface, a
  * size smaller. Colour, and for strokes their weight, and for shapes their line style
  * (`AnnotationStylePickers`' dropdowns, each choice one step); Fill for a closed
- * shape (its interior, as it falls on the screen now, lying where the shape does, one step; again
+ * shape (its interior, as it falls on the screen now, lying where the shape does — on its plane, or on the surface under it — one step; again
  * to take it away); and Delete, which deletes everything Select has picked (`onDelete`), a
  * measurement too.
  *
@@ -37,26 +58,22 @@ export default function AnnotationSelectionBar({ annotation, colorScheme = "ligh
   itemsRef.current = items;
   const [box, setBox] = useState(/** @type {{ left: number, top: number, right: number, bottom: number, width: number, height: number } | null} */ (null));
   const key = items.map(item => item.id).join(",");
-  // Each frame, where the picked ink falls on the screen, recomputed only when the camera or one of
-  // its parts has moved since.
+  // Each frame, where the picked ink falls on the screen, recomputed only when the camera has moved since.
   useEffect(() => {
     if (!key) { setBox(null); return undefined; }
-    let frame = 0, last = null, parts = null;
+    let frame = 0, last = null;
     const tick = () => {
       frame = globalThis.requestAnimationFrame(tick);
       const runtime = runtimeRef.current, canvas = runtime?.renderer?.domElement;
       if (!runtime?.camera || !canvas) return;
-      if (!parts || [...parts.values()].some(object => !object.parent)) parts = partObjects(runtime);
       runtime.camera.updateMatrixWorld();
-      const owners = itemsRef.current.map(item => (item.part != null ? parts.get(String(item.part)) : null)).filter(Boolean);
-      const signature = [canvas.clientWidth, canvas.clientHeight, ...runtime.camera.matrixWorld.elements, ...runtime.camera.projectionMatrix.elements,
-        ...owners.flatMap(object => { object.updateWorldMatrix(true, false); return [object.visible ? 1 : 0, ...object.matrixWorld.elements]; })];
+      const signature = [canvas.clientWidth, canvas.clientHeight, ...runtime.camera.matrixWorld.elements, ...runtime.camera.projectionMatrix.elements];
       if (last && last.length === signature.length && last.every((value, index) => value === signature[index])) return;
       last = signature;
       const width = canvas.clientWidth, height = canvas.clientHeight;
       let left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
       for (const item of itemsRef.current) {
-        for (const point of annotationWorldPoints(runtime, item, parts)) {
+        for (const point of annotationWorldPoints(runtime, item)) {
           const ndc = point.project(runtime.camera);
           if (ndc.z > 1) continue;
           const x = ((ndc.x + 1) / 2) * width, y = ((1 - ndc.y) / 2) * height;
@@ -96,7 +113,10 @@ export default function AnnotationSelectionBar({ annotation, colorScheme = "ligh
       const seed = outline && interiorPoint(outline.points);
       const mark = seed && fillMarkAt(seed, [outline], shape.color);
       if (!mark) continue;
-      annotation.fill(shape.id, projectAnnotations(runtime, [{ ...mark, placement: shape.placement ?? "surface", ...(shape.view ? { view: shape.view } : {}) }], view));
+      // Where the shape lies, its fill lies: on the shape's own plane if it has one, else on the surface under it.
+      const plane = planeOfShape(runtime, shape);
+      annotation.fill(shape.id, projectAnnotations(runtime, [{ ...mark, ...(shape.view ? { view: shape.view } : {}) }], view,
+        { placement: plane ? "plane" : "surface", level: plane }));
     }
   };
 
