@@ -133,6 +133,8 @@ export function createCompletedPackageCache({ maxEntries = MAX_PACKAGES, maxByte
           || context.meshHash !== entryMeshAssetSignature(entry)) return false;
       const components = Object.entries(context.descriptor?.components || {});
       if (!components.length || components.length !== Object.keys(context.componentMeshDataByCid || {}).length) return false;
+      // A load that deferred a component is not complete geometry: its reload must ask again.
+      if (Object.values(context.componentMeshDataByCid).some((mesh) => mesh?.placeholder)) return false;
       const componentLodLevelByCid = {}, componentKeyByCid = {};
       for (const [cid, component] of components) {
         const mesh = context.componentMeshDataByCid[cid], identity = context.componentIdentityByCid?.[cid];

@@ -3,7 +3,41 @@ import { failedStepArtifact, stepArtifactHasRenderableGlb, stepArtifactStatusMes
 import { fileKey } from "./entryPaths.js";
 import { failureAlert, isViewerServiceFailure, noGeometryAlert } from "../../kit/status/loadAlerts.js";
 
-export function buildViewerMeshAlert(entry, hasMeshData, loadError, artifact = null, { partial = false } = {}) {
+const MIB = 1024 * 1024;
+
+// Components a load deferred because the memory envelope refused them (`deferUnadmittable` in
+// packageProgressiveLoad.js): the rest of the model is on screen, so this is a warning beside it.
+export function deferredComponentsAlert(fileRef, deferredComponents) {
+  const deferred = Array.isArray(deferredComponents) ? deferredComponents.filter((item) => item?.cid) : [];
+  if (!deferred.length) return null;
+  const label = (item) => `“${item.name || item.cid}”`;
+  const named = deferred.length <= 3
+    ? deferred.map(label).join(", ")
+    : `${deferred.slice(0, 3).map(label).join(", ")} and ${deferred.length - 3} more`;
+  const boxed = deferred.every((item) => item.placeholder);
+  const shown = boxed ? "shown as a bounding box" : deferred.some((item) => item.placeholder)
+    ? "shown as a bounding box where its size is known, and otherwise left out" : "left out";
+  const one = deferred.length === 1;
+  return {
+    severity: "warning",
+    blocking: false,
+    summary: one ? "Part not loaded" : "Parts not loaded",
+    title: one ? "A part was too large to load" : "Some parts were too large to load",
+    message: `${named} ${one ? "needs" : "need"} more memory than the viewer can set aside, so ${one ? "it is" : "they are"} ${shown}. The rest of the model loaded.`,
+    recovery: "Close other models or browser tabs to free memory, then Retry.",
+    details: [
+      `File: ${fileRef}`,
+      "Operation: loading geometry",
+      ...deferred.map((item) => `Component ${item.cid}${item.name ? ` (${item.name})` : ""}: estimated ${
+        Math.ceil((Number(item.requestedBytes) || 0) / MIB)} MiB, ${
+        Math.floor((Number(item.availableBytes) || 0) / MIB)} MiB available${item.placeholder ? "; placeholder shown" : ""}`),
+    ].join("\n"),
+    reload: true,
+  };
+}
+
+export function buildViewerMeshAlert(entry, hasMeshData, loadError, artifact = null,
+  { partial = false, deferredComponents = null } = {}) {
   const fileRef = fileKey(entry);
   if (!fileRef) {
     return null;
@@ -50,6 +84,11 @@ export function buildViewerMeshAlert(entry, hasMeshData, loadError, artifact = n
 
   if (!hasMeshData) {
     return noGeometryAlert(fileRef);
+  }
+
+  const deferredAlert = deferredComponentsAlert(fileRef, deferredComponents);
+  if (deferredAlert) {
+    return deferredAlert;
   }
 
   if (!partial && artifact?.settled === true && artifact.status === "compiled" && !entryHasMesh(entry)) {

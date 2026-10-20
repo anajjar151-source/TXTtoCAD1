@@ -38,6 +38,42 @@ oversized component may start coarse. A component above the concurrent decode
 cap runs alone only when the shared Viewer memory envelope can reserve its
 complete estimate.
 
+**One component never fails the file.** A component the envelope still refuses
+once nothing else is in flight and recovery has run is deferred
+(`deferUnadmittable`, `packageProgressiveLoad.js`): it is never decoded, every
+other component loads, and a translucent box over its bounds stands in for each
+of its occurrences. The box comes from the face boxes in its SURF index
+(`surfIndexBounds`), a read charged to the envelope and skipped when even that
+does not fit, in which case the component is left out. A warning beside the
+model names the part and asks to free memory and Retry; the degraded model is
+never cached as complete, so Retry and a reopen ask for the part again. Only a
+load that defers every component, with nothing to draw, still fails. A staged
+same-file replacement is the exception: it keeps the complete model on screen
+rather than replace it with a degraded revision, so there the refusal fails the
+revision and the current view is kept.
+
+A cold component's decode estimate splits its SURF in two (`initialDisplayLodPlan`,
+`initialDisplayLod.js`). The float payload (NURBS poles, knots) is charged at the
+tier's expansion ratio, 32x coarse and 64x standard; the JSON index (selectors and
+analytic surface parameters) at its own, 8x coarse and 32x standard. The cold
+reservation doubles the estimate for worker scratch. The index length comes from
+the SURF's 12-byte header, read with one ranged GET that also answers the SURF's
+length (`surfSizeHint`, `useCadAssets.js`; `readPrefix`, `core/client/resources.js`).
+A server that ignores Range answers 200, and the body past the header is
+cancelled unread. The header is read only for a SURF whose whole-file estimate
+clears the 64 MiB floor. A provider without `readPrefix`, or a failed or malformed
+read, falls back to a HEAD and charges the whole SURF at the tier ratio.
+
+The index multiples come from 188 SURFs: the repo models' sources (whole parts
+and their solids), the SURF fixtures, and the dense PCB boards. They are the
+smallest that keep every part over 100 KB at 1.25x its decoded bytes and its
+doubled estimate above its worker peak (SURF, parsed index, decoded mesh twice,
+cache entry), rounded up about 1.5x. An analytic-heavy part sets them: a
+retaining ring, 94% index, decodes 14x its index at the standard tier. Charging
+the whole SURF overestimated index-heavy parts several-fold. PCBs are about 88%
+index; the 85x85-hole board's 22.6 MB SURF asked for 690 MiB coarse, reserved
+twice over the envelope, and is now charged 235 MiB, inside the in-flight cap.
+
 Coarse geometry is a temporary preview: visible components automatically reach
 at least the standard level, preserving its angular smoothness even when
 projected chord error alone would permit a coarser mesh. Close inspection can
@@ -99,8 +135,9 @@ backing allocation, including unused sections of packed buffers. GPU charges
 use uploaded view sizes; CPU-only edge inputs and picking allocations are
 accounted for separately.
 
-A component that cannot fit even at the coarse level reports a limitation and
-preserves the current view. **Estimates and sampled resource totals are a soft
+A component that cannot fit even at the coarse level reports a limitation; a
+progressive load defers it behind a placeholder (section 1), and a refinement
+or staged replacement preserves the current view. **Estimates and sampled resource totals are a soft
 budget, not a hard browser RSS limit.**
 
 ## 4. The replacement batch

@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   buildViewerEditAlert,
   buildViewerMeshAlert,
+  deferredComponentsAlert,
 } from "./viewerAlerts.js";
 
 const step = { file: "STEP/moonwatch.step", kind: "part" };
@@ -199,4 +200,32 @@ test("progressive geometry is valid while loading but cannot mask a failed first
   assert.notEqual(failed.blocking, false);
   assert.equal(failed.severity, "error");
   assert.doesNotMatch(failed.message, /existing model remains visible/);
+});
+
+test("a part deferred for memory is a dismissible warning beside the model, naming it and how to retry", () => {
+  const assembly = { file: "STEP/D09_PCB_facing_rear.step", kind: "assembly" };
+  const deferred = [{ cid: "5568eee155a2cc79", name: "PCB", placeholder: true,
+    requestedBytes: 1290 * 1024 * 1024, availableBytes: 1024 * 1024 * 1024 }];
+  const alert = buildViewerMeshAlert(assembly, true, "", null, { deferredComponents: deferred });
+  assert.equal(alert.severity, "warning");
+  assert.equal(alert.blocking, false);
+  assert.equal(alert.reload, true);
+  assert.match(alert.title, /too large to load/);
+  assert.match(alert.message, /“PCB” needs more memory .* shown as a bounding box\. The rest of the model loaded\./);
+  assert.match(alert.recovery, /Retry/);
+  assert.match(alert.details, /Component 5568eee155a2cc79 \(PCB\): estimated 1290 MiB, 1024 MiB available; placeholder shown/);
+
+  const failure = buildViewerMeshAlert(assembly, true, "Network down", null, { deferredComponents: deferred });
+  assert.equal(failure.severity, "error", "a load error outranks the warning");
+  assert.equal(buildViewerMeshAlert(assembly, true, "", null, { deferredComponents: [] }), null);
+});
+
+test("several deferred parts are counted, and one without a placeholder is said to be left out", () => {
+  const parts = ["a", "b", "c", "d", "e"].map((name, i) => ({ cid: `c${i}`, name, placeholder: i !== 4 }));
+  const alert = deferredComponentsAlert("STEP/board.step", parts);
+  assert.match(alert.title, /Some parts/);
+  assert.match(alert.message, /“a”, “b”, “c” and 2 more need more memory/);
+  assert.match(alert.message, /otherwise left out/);
+  const unnamed = deferredComponentsAlert("STEP/board.step", [{ cid: "abc", placeholder: false }]);
+  assert.match(unnamed.message, /“abc” needs more memory .* it is left out\./);
 });

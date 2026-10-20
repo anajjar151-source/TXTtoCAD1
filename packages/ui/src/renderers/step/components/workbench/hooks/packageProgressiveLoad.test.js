@@ -25,6 +25,10 @@ import {
   shouldRetainCompleteSameFileMesh,
   tolerantAnimationClip,
   createDecodeSizeEstimator,
+  deferredComponentsOf,
+  meshStateHasDeferredComponents,
+  placeholderComponentMeshData,
+  surfIndexBounds,
   PROGRESSIVE_LOAD_MAX_INFLIGHT_BYTES,
   PROGRESSIVE_LOAD_UNMEASURED_SHARE
 } from "./packageProgressiveLoad.js";
@@ -1254,4 +1258,197 @@ test("a transient global miss waits for admitted work and leaves no stale limita
   assert.equal(policy.snapshot().lastLimitation, null);
   assert.equal(policy.snapshot().reservationCount, 0);
   assert.ok(loader.peakInFlight() <= 2, "the global 200-byte owned limit admits two 100-byte estimates");
+});
+
+// Issue #626: one component the shared envelope cannot reserve, even alone after recovery, used to
+// fail the whole file. With `deferUnadmittable` it is deferred: never decoded, its siblings load,
+// and a placeholder stands in for it.
+function deferralLoader({ componentCount = 4, oversized = ["c1"], placeholder = null, extra = {} } = {}) {
+  const descriptor = makeDescriptor({ componentCount, occurrenceCount: componentCount });
+  const policy = createViewerMemoryPolicy({ budgetBytes: 1000, gpuHeadroomBytes: 0 });
+  const started = [];
+  const deferrals = [];
+  const limitations = [];
+  const publications = [];
+  const loader = createProgressivePackageLoader({
+    descriptor,
+    concurrency: 4,
+    maxInFlightBytes: 100,
+    allowOversizedSingle: true,
+    sourceExpansionRatio: 100,
+    sizeHint: async (cid) => (oversized.includes(cid) ? 50 : 0.1),
+    reserveLoad: ({ cid, estimatedBytes }) => policy.reserve({
+      category: "workerInFlight", bytes: estimatedBytes, label: cid, recordLimitation: false,
+    }),
+    releaseLoad: (token) => policy.release(token),
+    recoverMemoryPressure: async () => false,
+    loadComponent: async (cid) => {
+      started.push(cid);
+      return fakeComponent(cid);
+    },
+    deferUnadmittable: true,
+    placeholderComponent: placeholder,
+    onComponentDeferred: (deferral) => deferrals.push(deferral),
+    onMemoryLimitation: (detail) => limitations.push(detail),
+    onPublish: (publication) => publications.push(publication),
+    ...extra,
+  });
+  return { descriptor, policy, loader, started, deferrals, limitations, publications };
+}
+
+test("an unadmittable component is deferred to a placeholder while every sibling loads", async () => {
+  const placeholders = [];
+  const { loader, policy, started, deferrals, limitations, publications } = deferralLoader({
+    placeholder: async (cid, _component, detail) => {
+      placeholders.push([cid, detail.decodedEstimateBytes]);
+      return placeholderComponentMeshData(cid, { min: [0, 0, 0], max: [10, 5, 2] });
+    },
+  });
+  const result = await loader.run();
+
+  assert.deepEqual(started.sort(), ["c0", "c2", "c3"], "the refused component is never decoded");
+  assert.deepEqual(result.deferred, ["c1"]);
+  assert.equal(result.loaded, 3);
+  assert.equal(placeholders.length, 1);
+  assert.equal(placeholders[0][0], "c1");
+  assert.ok(placeholders[0][1] > 1000, "the refused estimate is the one handed to the placeholder");
+  assert.equal(deferrals.length, 1);
+  assert.equal(deferrals[0].cid, "c1");
+  assert.equal(deferrals[0].placeholder, true);
+  assert.equal(deferrals[0].error.code, "VIEWER_MEMORY_LIMIT", "the refusal itself is unchanged");
+  assert.equal(limitations.length, 1, "the limitation is still reported");
+
+  const last = publications.at(-1);
+  assert.equal(last.final, true);
+  assert.equal(last.loaded, last.total, "progress counts the deferred component as settled");
+  assert.deepEqual(last.deferred, [{ cid: "c1", detail: deferrals[0].detail, placeholder: true }]);
+  assert.deepEqual(last.meshData.deferredComponentIds, ["c1"]);
+  assert.equal(last.meshData.missingComponentIds.length, 0, "the placeholder stands in for every occurrence");
+  assert.equal(last.componentMeshDataByCid.c1.placeholder, true);
+  assert.equal(policy.snapshot().reservationCount, 0);
+});
+
+test("a deferred component without a placeholder is left out and named as missing", async () => {
+  const { loader, publications } = deferralLoader({ placeholder: async () => null });
+  const result = await loader.run();
+  assert.deepEqual(result.deferred, ["c1"]);
+  const last = publications.at(-1);
+  assert.equal(last.final, true);
+  assert.deepEqual(last.meshData.missingComponentIds, ["c1"]);
+  assert.deepEqual(last.deferred.map(({ cid, placeholder }) => [cid, placeholder]), [["c1", false]]);
+});
+
+test("a placeholder that throws degrades to no placeholder, never to a failed load", async () => {
+  const { loader, publications } = deferralLoader({
+    placeholder: async () => { throw new Error("SURF unreadable"); },
+  });
+  const result = await loader.run();
+  assert.equal(result.loaded, 3);
+  assert.deepEqual(publications.at(-1).meshData.missingComponentIds, ["c1"]);
+});
+
+test("a load that defers every component with nothing to draw still fails with the refusal", async () => {
+  const { loader, started, publications } = deferralLoader({
+    componentCount: 2, oversized: ["c0", "c1"], placeholder: async () => null,
+  });
+  await assert.rejects(loader.run(), (error) => error.code === "VIEWER_MEMORY_LIMIT"
+    && /would exceed the viewer memory envelope/.test(error.message));
+  assert.deepEqual(started, []);
+  assert.deepEqual(publications, []);
+  assert.equal(loader.retainedComponentCount(), 0);
+});
+
+test("without deferUnadmittable the refusal still fails the load (staged replacement keeps its view)", async () => {
+  const { loader, started } = deferralLoader({ extra: { deferUnadmittable: false } });
+  await assert.rejects(loader.run(), (error) => error.code === "VIEWER_MEMORY_LIMIT");
+  assert.ok(!started.includes("c1"));
+  assert.equal(loader.retainedComponentCount(), 0);
+});
+
+test("a decode that outgrows its admitted estimate stays fatal even with deferral on", async () => {
+  const { loader } = deferralLoader({
+    oversized: [],
+    extra: { loadComponent: async (cid) => fakeComponent(cid, { floats: cid === "c2" ? 40 : 9 }) },
+  });
+  await assert.rejects(loader.run(), (error) => error.code === "VIEWER_MEMORY_LIMIT"
+    && error.detail.actualDecodedBytes > 100);
+  assert.equal(loader.retainedComponentCount(), 0);
+});
+
+test("placeholder geometry is a closed, outward-wound box over the component bounds", () => {
+  const mesh = placeholderComponentMeshData("c9", { min: [-1, 2, 3], max: [4, 6, 9] });
+  assert.equal(mesh.placeholder, true);
+  assert.equal(mesh.vertices.length, 24 * 3);
+  assert.equal(mesh.indices.length, 36);
+  assert.deepEqual(mesh.bounds, { min: [-1, 2, 3], max: [4, 6, 9] });
+  assert.equal(mesh.parts[0].triangleCount, 12);
+  assert.ok(mesh.parts[0].opacity < 1, "drawn translucent, so it reads as a stand-in");
+  for (let i = 0; i < mesh.vertices.length; i += 3) {
+    const [x, y, z] = mesh.vertices.subarray(i, i + 3);
+    assert.ok([-1, 4].includes(x) && [2, 6].includes(y) && [3, 9].includes(z));
+  }
+  const center = [1.5, 4, 6];
+  for (let t = 0; t < mesh.indices.length; t += 3) {
+    const [a, b, c] = [...mesh.indices.subarray(t, t + 3)].map((i) => [...mesh.vertices.subarray(i * 3, i * 3 + 3)]);
+    const ab = a.map((v, k) => b[k] - v), ac = a.map((v, k) => c[k] - v);
+    const n = [ab[1] * ac[2] - ab[2] * ac[1], ab[2] * ac[0] - ab[0] * ac[2], ab[0] * ac[1] - ab[1] * ac[0]];
+    const out = a.map((v, k) => v - center[k]);
+    assert.ok(n[0] * out[0] + n[1] * out[1] + n[2] * out[2] > 0, `triangle ${t / 3} faces outward`);
+    const vertexNormal = [...mesh.normals.subarray(mesh.indices[t] * 3, mesh.indices[t] * 3 + 3)];
+    assert.ok(n[0] * vertexNormal[0] + n[1] * vertexNormal[1] + n[2] * vertexNormal[2] > 0);
+  }
+  assert.equal(placeholderComponentMeshData("c9", null), null);
+  assert.equal(placeholderComponentMeshData("c9", { min: [1, 0, 0], max: [0, 1, 1] }), null);
+  assert.equal(placeholderComponentMeshData("c9", { min: [0, 0, NaN], max: [1, 1, 1] }), null);
+});
+
+function surfBuffer(index, floatCount = 4) {
+  const json = new TextEncoder().encode(JSON.stringify(index));
+  const buffer = new ArrayBuffer(12 + json.length + floatCount * 4);
+  const view = new DataView(buffer);
+  view.setUint32(0, 0x46525553, true);
+  view.setUint32(4, 2, true);
+  view.setUint32(8, json.length, true);
+  new Uint8Array(buffer, 12, json.length).set(json);
+  return buffer;
+}
+
+test("a SURF's bounds are the union of its face boxes, read from the index alone", () => {
+  const bounds = surfIndexBounds(surfBuffer({
+    version: 2,
+    faces: [
+      { ord: 1, bbox: [0, 0, 0, 0, 67.5, 1.6] },
+      { ord: 2, bbox: [-2, 1, 0.5, 3, 2, 4] },
+      { ord: 3 },
+    ],
+  }));
+  assert.deepEqual(bounds, { min: [-2, 0, 0], max: [3, 67.5, 4] });
+  assert.equal(surfIndexBounds(surfBuffer({ version: 2, faces: [] })), null);
+  assert.equal(surfIndexBounds(new TextEncoder().encode("glTF....").buffer), null);
+  assert.equal(surfIndexBounds(new ArrayBuffer(4)), null);
+});
+
+test("deferred components are named for the alert and mark the model as degraded", () => {
+  const descriptor = makeDescriptor({ componentCount: 2, occurrenceCount: 2 });
+  const meshData = buildComposedPackageMeshData(descriptor, {
+    c0: fakeComponent("c0"),
+    c1: placeholderComponentMeshData("c1", { min: [0, 0, 0], max: [1, 1, 1] }),
+  });
+  const named = deferredComponentsOf(meshData, [
+    { cid: "c1", placeholder: true, detail: { requestedBytes: 2048, availableBytes: 1024 } },
+  ], descriptor);
+  assert.deepEqual(named, [{ cid: "c1", name: "part_1", placeholder: true, requestedBytes: 2048, availableBytes: 1024 }]);
+  assert.deepEqual(deferredComponentsOf({ parts: [] }, [{ cid: "c0" }], descriptor).map(({ name }) => name), ["part_0"],
+    "a deferred component with no placeholder is named from the descriptor");
+
+  const degraded = { file: "a.step", meshHash: "h1", meshData, assemblyDeferredComponents: named };
+  assert.equal(meshStateHasDeferredComponents(degraded), true);
+  assert.equal(meshStateIsComplete(degraded), true, "every occurrence is drawn");
+  assert.equal(shouldRetainCompleteSameFileMesh(degraded, { kind: "assembly", file: "a.step" }, "h2"), false,
+    "the next revision loads progressively instead of failing whole to keep a placeholder");
+  const whole = { file: "a.step", meshHash: "h1", meshData: buildComposedPackageMeshData(descriptor, {
+    c0: fakeComponent("c0"), c1: fakeComponent("c1"),
+  }) };
+  assert.equal(meshStateHasDeferredComponents(whole), false);
+  assert.equal(shouldRetainCompleteSameFileMesh(whole, { kind: "assembly", file: "a.step" }, "h2"), true);
 });

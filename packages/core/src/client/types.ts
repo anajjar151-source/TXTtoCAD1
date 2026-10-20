@@ -105,6 +105,8 @@ export interface CadResourceProvider {
   readText(url: string, options?: CadRequestOptions): Promise<string>;
   readBytes(url: string, options?: CadResourceReadOptions): Promise<ArrayBuffer>;
   byteLength(url: string, options?: CadRequestOptions): Promise<number | null>;
+  /** Optional: the body's first `length` bytes (fewer when it is shorter) and its whole length, null when unknown. */
+  readPrefix?(url: string, options: CadRequestOptions & { length: number }): Promise<{ bytes: ArrayBuffer; byteLength: number | null }>;
   resolveDependency(source: string, reference: string, options?: { kind?: 'relative' | 'package' | 'robot' }): string;
   workerTicket(url: string, options?: CadResourceReadOptions): Promise<CadWorkerResourceTicket>;
 }

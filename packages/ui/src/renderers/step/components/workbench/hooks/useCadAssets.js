@@ -36,15 +36,26 @@ import {
 } from "./packageDescriptorCache.js";
 import {
   createProgressivePackageLoader,
+  deferredComponentsOf,
   orderComponentsForProgressiveLoad,
+  placeholderComponentMeshData,
   PROGRESSIVE_LOAD_MAX_INFLIGHT_BYTES,
   progressiveLoadProgress,
   publishMeshCostAccounting,
   awaitingSameFileRevision,
   meshStateAfterCancelledLoad,
-  shouldRetainCompleteSameFileMesh
+  shouldRetainCompleteSameFileMesh,
+  surfIndexBounds
 } from "./packageProgressiveLoad.js";
-import { createInitialDisplayPlans, initialDisplayLodPlan, probeInitialDisplayLod } from "../../../render/initialDisplayLod.js";
+import {
+  DEFAULT_SURF_DECODE_EXPANSION_ESTIMATE,
+  INITIAL_DECODE_ESTIMATE_FLOOR_BYTES,
+  SURF_HEADER_BYTES,
+  createInitialDisplayPlans,
+  initialDisplayLodPlan,
+  probeInitialDisplayLod,
+  surfIndexBytesFromHeader,
+} from "../../../render/initialDisplayLod.js";
 import { createSurfaceTicketBatches, createTessellationBodyBatches } from "./packageBatchReads.js";
 import {
   matchingDisplayedPackageContext,
@@ -104,6 +115,9 @@ const REFERENCE_PRIORITY_NEW_PARTS = 8;
 
 const GPU_BUFFER_ESTIMATE_MULTIPLIER = 1.15;
 const SURF_WORKER_TEMP_ESTIMATE_MULTIPLIER = 2;
+// Reading a deferred component's SURF index for its placeholder box holds the bytes, their
+// decoded text and the parsed JSON at once: charged at this multiple of the SURF's length.
+const SURF_INDEX_PARSE_ESTIMATE_MULTIPLIER = 6;
 
 function syncAssetCacheMemory(excludeBuffers = []) {
   const caches = renderAssetCacheStatsWithPackages({ excludeBuffers: lodStagingBuffers(excludeBuffers) });
@@ -181,6 +195,27 @@ async function surfContentLength(url, signal, resources) {
   }
 }
 
+// A cold SURF's byte length and its JSON index length, for the split decode estimate. One ranged
+// read of the header answers both: a 206 names the length in its content-range, and a server that
+// ignores Range answers 200 with a content-length and the rest of the body cancelled unread. The
+// header is read only when the SURF is big enough for its estimate to clear the floor; without a
+// prefix read, or when it fails, the HEAD's length alone, charged at the tier ratio as before.
+async function surfSizeHint(url, knownBytes, signal, resources) {
+  const known = Number.isSafeInteger(knownBytes) && knownBytes > 0 ? knownBytes : null;
+  const worthIndex = known === null
+    || known * DEFAULT_SURF_DECODE_EXPANSION_ESTIMATE > INITIAL_DECODE_ESTIMATE_FLOOR_BYTES;
+  if (typeof resources?.readPrefix === "function" && worthIndex) {
+    try {
+      const { bytes, byteLength } = await resources.readPrefix(url, { length: SURF_HEADER_BYTES, signal });
+      const total = known ?? byteLength;
+      if (total) return { byteLength: total, indexBytes: surfIndexBytesFromHeader(bytes, total) };
+    } catch (error) {
+      if (isAbortError(error) || signal?.aborted) throw error;
+    }
+  }
+  return { byteLength: known ?? await surfContentLength(url, signal, resources), indexBytes: null };
+}
+
 function resolvePackageAssetUrl(source, reference, resources) {
   return resources.resolveDependency(source, reference, { kind: "package" });
 }
@@ -222,6 +257,7 @@ function detailSwapMeshState(current, entry, meshData) {
     assemblyInteractionReady: current.assemblyInteractionReady !== false,
     assemblyBackgroundError: current.assemblyBackgroundError || "",
     assemblyBackgroundErrorMeshHash: current.assemblyBackgroundErrorMeshHash || "",
+    ...(current.assemblyDeferredComponents ? { assemblyDeferredComponents: current.assemblyDeferredComponents } : {}),
   };
 }
 
@@ -399,7 +435,9 @@ export function useCadAssets({
       .map(([cid, component]) => {
         const bounds = componentMeshDataByCid[cid]?.bounds;
         const identity = componentIdentityByCid[cid] || component;
-        if (!bounds?.min || !bounds?.max || !identity?.surfaceObject) {
+        // A deferred component's placeholder is no detail level to refine from: the memory
+        // envelope refused its decode, and only a reload asks for it again.
+        if (!bounds?.min || !bounds?.max || !identity?.surfaceObject || componentMeshDataByCid[cid]?.placeholder) {
           return null;
         }
         const center = [
@@ -963,10 +1001,10 @@ export function useCadAssets({
             meshData.lodLevel = componentPlan.level;
             return meshData;
           },
-          // Byte-aware admission: the .surf's content-length (a HEAD, no body)
-          // sizes the component before its decode is admitted; null when the
-          // server does not answer, and the loader falls back to its running
-          // mean.
+          // Byte-aware admission: the .surf's length and its header's JSON index
+          // length (`surfSizeHint`, no body) size the component before its decode
+          // is admitted; null when the server does not answer, and the loader
+          // falls back to its running mean.
           sizeHint: async (cid, component, {
             rejectedCacheObjects = new Set(),
             skipCacheProbes = false,
@@ -1008,12 +1046,15 @@ export function useCadAssets({
             } else {
               ticket = await surfaceTickets.ticket(cid, component);
             }
-            const hint = ticket.byteLength || await surfContentLength(ticket.surfUrl, controller.signal, resources);
+            const size = await surfSizeHint(ticket.surfUrl, ticket.byteLength, controller.signal, resources);
             const plan = initialDisplayLodPlan({
               componentCount: componentEntries.length,
-              surfBytes: hint,
+              surfBytes: size.byteLength,
+              indexBytes: size.indexBytes,
               maxInFlightBytes: PROGRESSIVE_LOAD_MAX_INFLIGHT_BYTES,
             });
+            // Geometry-equivalent bytes: the loader scales them by the plan's ratio and calibrates on them.
+            const hint = plan.sourceBytes;
             initialPlanByCid.set(cid, plan);
             componentIdentityByCid.set(cid, Object.freeze({ ...component, ...ticket }));
             // A tier revised by the exact SURF size may already be warm. The package's probe of
@@ -1061,6 +1102,29 @@ export function useCadAssets({
             return released;
           },
           onMemoryLimitation: publishMemoryLimitation,
+          // One component the envelope cannot reserve, even alone after recovery, no longer
+          // fails the file: it is deferred and its siblings load. A staged replacement is the
+          // exception -- the complete model on screen is kept rather than replaced by a
+          // degraded revision, so the refusal stays fatal to that revision.
+          deferUnadmittable: !stageWholeReplacement,
+          // The deferred component's box, from its SURF index: a bounded read charged to the
+          // envelope, skipped (no placeholder) when the envelope cannot take even that.
+          placeholderComponent: async (cid, component) => {
+            const surfUrl = componentIdentityByCid.get(cid)?.surfUrl || staticSurfUrl(component);
+            const surfBytes = surfUrl ? await surfContentLength(surfUrl, controller.signal, resources) : null;
+            if (!(surfBytes > 0)) return null;
+            const reservation = viewerMemoryPolicy.reserve({
+              category: "workerInFlight", bytes: surfBytes * SURF_INDEX_PARSE_ESTIMATE_MULTIPLIER,
+              label: `${cid} placeholder`, kind: "allocate", recordLimitation: false,
+            });
+            if (!reservation.ok) return null;
+            try {
+              const bytes = await resources.readBytes(surfUrl, { signal: controller.signal, maxBytes: surfBytes });
+              return placeholderComponentMeshData(cid, surfIndexBounds(bytes));
+            } finally {
+              viewerMemoryPolicy.release(reservation.token);
+            }
+          },
           // Revision replacement is a transaction: loaded component arrays
           // are accounted beside the current complete scene, but only the
           // final composition is published.
@@ -1090,7 +1154,7 @@ export function useCadAssets({
           swappedComponents: () => (
             lodPackageRef.current?.requestId === requestId ? publishedLodContext(lodPackageRef.current).componentMeshDataByCid : null
           ),
-          onPublish: ({ meshData, componentMeshDataByCid, loaded, total, final, publishCount }) => {
+          onPublish: ({ meshData, componentMeshDataByCid, loaded, total, final, publishCount, deferred = [] }) => {
             if (final) viewerMemoryPolicy.clearLimitation();
 
             // window.__cadMeshCost for the headless memory harness; not React state.
@@ -1100,6 +1164,8 @@ export function useCadAssets({
             // interaction-ready: the workspace keeps the "loading" overlay
             // with the per-batch count until the final publish flips it.
             nextState.assemblyInteractionReady = final;
+            // The components left undecoded, named for the alert beside the model.
+            if (deferred.length) nextState.assemblyDeferredComponents = deferredComponentsOf(meshData, deferred, packageDescriptor);
             const ctx = lodPackageRef.current;
             const componentLodLevelByCid = Object.fromEntries(
               Object.entries(componentMeshDataByCid).map(([cid, componentMeshData]) => [
