@@ -1586,6 +1586,17 @@ test('a click selects at once, and a double-click ends where it did when a click
   // Hover is untouched: under Faces the face under the pointer lights, under Edges the edge does.
   await page.keyboard.press('Escape');
   await cleared();
+  // An Escape in the same moment as a pick lets go of it: Escape reads the selection as it stands, not
+  // as the last render had it (on a slow runner, a pick landing just before Escape once stayed picked).
+  await page.evaluate(([x, y]) => {
+    const canvas = document.querySelector('[data-testid="one"] [aria-busy] > div > canvas');
+    const at = { bubbles: true, clientX: x, clientY: y, pointerId: 1, pointerType: 'mouse', isPrimary: true, button: 0 };
+    canvas.dispatchEvent(new PointerEvent('pointerdown', { ...at, buttons: 1 }));
+    canvas.dispatchEvent(new PointerEvent('pointerup', { ...at, buttons: 0 }));
+    if (!window.cadHarness.a.controller.readState().selectedReferenceIds.length) throw new Error('the press picked nothing');
+    canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+  }, at([15, 0, 4]));
+  await cleared();
   await page.mouse.move(...empty);
   const faces = await restingFrame(view);
   await page.mouse.move(...at([6, 6, 5]));

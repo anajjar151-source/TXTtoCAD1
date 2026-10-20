@@ -3096,7 +3096,9 @@ function StepSurfaceBody({ view, data }) {
     if (!previewing && tabToolMode !== TAB_TOOL_MODE.REFERENCES) { shellRef.current?.selectTool(TAB_TOOL_MODE.REFERENCES); return true; }
     // Then what Select has picked: measurements, then the parts and references.
     if (measure.selected.length > 0) { measure.select([]); return true; }
-    if (selectedPartIds.length > 0 || selectedReferenceIds.length > 0) { clearAssemblySelection(); return true; }
+    // As the selection stands NOW (its refs move with every pick, before the render that shows it), so
+    // an Escape right after a pick lets go of it rather than finding the last render's empty selection.
+    if (selectedPartIdsRef.current.length > 0 || selectedReferenceIdsRef.current.length > 0) { clearAssemblySelection(); return true; }
     // Then isolation: Escape backs out one layer at a time, selection first.
     if (focusedAssemblyNodeIds.length > 0) { handleExitIsolate(); return true; }
     return false;
