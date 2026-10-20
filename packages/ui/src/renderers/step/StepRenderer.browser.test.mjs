@@ -1543,6 +1543,9 @@ test('a click selects at once, and a double-click ends where it did when a click
   const turned = () => page.waitForFunction(previous => window.__cadCamera().position.some((value, index) => Math.abs(value - previous[index]) > 1e-3), opening.position);
   const back = async () => { await page.evaluate(camera => window.cadHarness.a.controller.setCamera(camera), opening); await restingCamera(page); };
   await view.chooseSelectMode('Faces');
+  // Leaving isolation moved the camera; `at` projects through the opening one, so it comes back, at
+  // rest, before the first press too (a press mid-move lands off the face it aims at).
+  await back();
   for (const [point, part] of [[[15, 0, 4], 'o1.2'], [[6, 6, 5], 'o1.1']]) {
     await page.mouse.click(...at(point));
     await explained(`no face of ${part} was picked`, page.waitForFunction(id => new RegExp(`\\|${id.replace('.', '\\.')}\\.f\\d+$`).test(window.cadHarness.a.controller.readState().selectedReferenceIds.join()), part));
