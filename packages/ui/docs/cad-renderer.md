@@ -460,6 +460,28 @@ STEP renderer does not match `.glb`.
   acknowledged without changing the view, and live state reports `selectedNodes`.
 - **State**: the shell record under `[path, "glb"]`. Records written under
   `[path, "cad"]` are not migrated.
+- **A CAM result** (`<stem>.cam.glb`, `cadgen cam plan`): a GLB whose scene says
+  `generator: "cadgen cam"` and carries the job in its extras (`cam`, schema 1) loads
+  the CAM viewer, its own chunk (`glb/camView.jsx`; a plain GLB never fetches it), before
+  it is framed; should the chunk fail, it is drawn as a plain GLB. Its tools are a GLB's,
+  less Explode (its nodes are the part, the stock and the toolpaths). It adds **Job**, a
+  file sidebar section (`glb/CamJobPanel.jsx`, id `job`): the verdict first, its errors
+  in plain words, then each setup and its operations (word, tool, time), the tools, and
+  **Show**, a row with an eye for each thing the file draws beyond its surfaces (Toolpaths,
+  Rapids, Tool, Stock, Fixtures, Part; the renderer's one slice of the file's view, `cam`).
+  A row isolates its paths (the rest dimmed) until it is chosen again, and is Quick Edit's
+  chip (`camChips`) beside the picked nodes: the part the job names (`document`), its faces
+  as a selector or the whole part, and its sentence as the reference's `summary`. The
+  file's LINES (`_CAM_T`, `_CAM_OP`, which GLTFLoader lowercases) are redrawn as
+  screen-space lines, one per operation and kind (`glb/cam/lines.js`): feed moves in the
+  operation's colour, rapids thin and dashed. They, the riding tool and the fixtures hang
+  from a group of their own in the model group, placed where the scene's root is and never
+  inside the scene, so Preview's sibling, Select's picks and Clip's caps never meet them;
+  Clip cuts the part and the stock, not the paths. The file's routines gain **Simulate**
+  (and one per setup), played from the Animation section in the tools view, which draws the
+  paths up to the moment and rides a tool along them (`glb/cam/playback.js`,
+  `glb/cam/tool.js`), a readout at the view's foot. Preview shows the part as the view had
+  it, without the paths, and has no CAM routine.
 
 ## Mesh renderer
 
