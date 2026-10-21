@@ -26,6 +26,7 @@
 import { ShapeUtils, Vector2 } from "three";
 
 import { evaluateCurve3, evaluatePCurve, evaluateSurface, evaluateSurfaceNormal } from "./evaluate.js";
+import { triangulateShape as triangulateShapeIndexed } from "./earcut.js";
 // Deterministic sin/cos: these decide refinement and therefore the emitted
 // triangles, so they may not vary with the engine (see trig.js).
 import { cos, sin } from "./trig.js";
@@ -546,6 +547,8 @@ function clipPolygonToCell(points, cu0, cu1, cv0, cv1) {
   return output;
 }
 
+const MANY_HOLES = 32;
+
 function gridTriangulate(face, floats, loops, chordLimit, angleLimit = Infinity, { flip = true } = {}) {
   let minU = Infinity;
   let maxU = -Infinity;
@@ -598,6 +601,7 @@ function gridTriangulate(face, floats, loops, chordLimit, angleLimit = Infinity,
       }
     }
   }
+  const segmentIndex = buildSegmentIndex(segments, segmentsByCell, { minU, maxU, minV, maxV, du, dv, stepsU, stepsV, cellOf });
 
   const uvVerts = [];
   const vertexIds = new Map();
@@ -625,8 +629,10 @@ function gridTriangulate(face, floats, loops, chordLimit, angleLimit = Infinity,
       if (Math.abs(u - gridU) <= epsilonU) u = gridU;
       if (Math.abs(v - gridV) <= epsilonV) v = gridV;
     }
-    const key = `${u}:${v}`;
-    let id = vertexIds.get(key);
+    // Keyed by u, then v: number keys compare like the `${u}:${v}` strings
+    // they replace (-0 is 0) without formatting two doubles per lookup.
+    let row = vertexIds.get(u);
+    let id = row?.get(v);
     if (id !== undefined) return id;
     const cu = Math.floor(u / epsilonU);
     const cv = Math.floor(v / epsilonV);
@@ -654,7 +660,8 @@ function gridTriangulate(face, floats, loops, chordLimit, angleLimit = Infinity,
         list.push(id);
       }
     }
-    vertexIds.set(key, id);
+    if (!row) vertexIds.set(u, (row = new Map()));
+    row.set(v, id);
     return id;
   };
 
@@ -704,7 +711,11 @@ function gridTriangulate(face, floats, loops, chordLimit, angleLimit = Infinity,
         .map((points) => points.map(([x, y]) => new Vector2(x, y)));
       let cellFaces;
       try {
-        cellFaces = ShapeUtils.triangulateShape(contour, holes);
+        // earcut's hole elimination walks the whole ring per hole; past a few
+        // dozen holes (a PCB face) the copy that indexes it takes over.
+        cellFaces = holes.length > MANY_HOLES
+          ? triangulateShapeIndexed(contour, holes)
+          : ShapeUtils.triangulateShape(contour, holes);
       } catch {
         continue;
       }
@@ -727,7 +738,77 @@ function gridTriangulate(face, floats, loops, chordLimit, angleLimit = Infinity,
     uvVerts,
     triangles,
     vertexIds,
-    segmentIndex: { segments, segmentsByCell, cellOf, stepsV },
+    segmentIndex,
+  };
+}
+
+// The tessellation grid follows curvature, so a plane is ONE cell: its bucket
+// holds every trim segment, and each lookup — one per boundary vertex when
+// pinning, one per boundary mesh edge when attributing — scanned them all. A
+// board with thousands of holes made that quadratic (minutes per face). Each
+// grid cell is therefore split again into a sub-grid sized by its segment
+// count, used only for lookups; the grid and its crossed cells are untouched.
+//
+// A sub-cell lists the segments of its grid cell whose bounding box, padded by
+// `pad`, touches it. Every consumer only accepts a segment within `reach` of
+// the query point, so for reach well under the pad the sub-cell's list is the
+// grid cell's list minus segments that could never match, in the same order:
+// first-match and best-match results are identical. A larger reach falls back
+// to the grid cell's list.
+const SEGMENT_SUBGRID_MAX = 256;
+
+function buildSegmentIndex(segments, segmentsByCell, grid) {
+  const { minU, maxU, minV, maxV, du, dv, stepsU, stepsV, cellOf } = grid;
+  const coarse = (u, v) => {
+    const [cu, cv] = cellOf(u, v);
+    return segmentsByCell.get(cu * stepsV + cv);
+  };
+  const perCell = segments.length / (stepsU * stepsV);
+  const clampSub = (n) => Math.min(SEGMENT_SUBGRID_MAX, Math.max(1, Math.ceil(n)));
+  const subU = clampSub(Math.sqrt(perCell * (du / dv)));
+  const subV = clampSub(Math.sqrt(perCell * (dv / du)));
+  if (!(perCell > 16) || subU * subV < 4) return { segments, candidatesAt: coarse };
+
+  const pad = Math.max(Math.abs(minU), Math.abs(maxU), Math.abs(minV), Math.abs(maxV), 1) * 16e-7;
+  // Monotone in u for a fixed grid column, so a point inside a padded box
+  // always lands in one of the box's sub-columns.
+  const subOfU = (u, cu) => Math.min(subU - 1, Math.max(0, Math.floor(((u - minU) / du - cu) * subU)));
+  const subOfV = (v, cv) => Math.min(subV - 1, Math.max(0, Math.floor(((v - minV) / dv - cv) * subV)));
+  const subCells = subU * subV;
+  const fine = new Map();
+  for (let segIndex = 0; segIndex < segments.length; segIndex += 1) {
+    const [x0, y0, x1, y1] = segments[segIndex];
+    const lowU = Math.min(x0, x1);
+    const highU = Math.max(x0, x1);
+    const lowV = Math.min(y0, y1);
+    const highV = Math.max(y0, y1);
+    const [ca0, cb0] = cellOf(lowU, lowV);
+    const [ca1, cb1] = cellOf(highU, highV);
+    for (let cu = ca0; cu <= ca1; cu += 1) {
+      const su0 = subOfU(lowU - pad, cu);
+      const su1 = subOfU(highU + pad, cu);
+      for (let cv = cb0; cv <= cb1; cv += 1) {
+        const sv0 = subOfV(lowV - pad, cv);
+        const sv1 = subOfV(highV + pad, cv);
+        const base = (cu * stepsV + cv) * subCells;
+        for (let su = su0; su <= su1; su += 1) {
+          for (let sv = sv0; sv <= sv1; sv += 1) {
+            const key = base + su * subV + sv;
+            let list = fine.get(key);
+            if (!list) fine.set(key, (list = []));
+            list.push(segIndex);
+          }
+        }
+      }
+    }
+  }
+  return {
+    segments,
+    candidatesAt(u, v, reach) {
+      if (!(reach * 2 <= pad)) return coarse(u, v);
+      const [cu, cv] = cellOf(u, v);
+      return fine.get((cu * stepsV + cv) * subCells + subOfU(u, cu) * subV + subOfV(v, cv));
+    },
   };
 }
 
@@ -783,11 +864,18 @@ function flipSlivers(face, floats, uvVerts, triangles, degenerateLimit) {
   const rootE = Math.sqrt(E);
   const shear = F / rootE;
   const height = Math.sqrt(det) / rootE;
-  const plane = uvVerts.map(([u, v]) => [rootE * u + shear * v, height * v]);
+  const n = uvVerts.length;
+  const px = new Float64Array(n);
+  const py = new Float64Array(n);
+  for (let i = 0; i < n; i += 1) {
+    const [u, v] = uvVerts[i];
+    px[i] = rootE * u + shear * v;
+    py[i] = height * v;
+  }
   // sin(alpha + beta) < 0 for the angles at c and d over edge (a, b), scaled
   // by the four (positive) edge lengths: the classic Delaunay test.
   const angleSumPastPi = (a, b, c, d) => {
-    const [ax, ay] = plane[a], [bx, by] = plane[b], [cx, cy] = plane[c], [dx, dy] = plane[d];
+    const ax = px[a], ay = py[a], bx = px[b], by = py[b], cx = px[c], cy = py[c], dx = px[d], dy = py[d];
     const cax = ax - cx, cay = ay - cy, cbx = bx - cx, cby = by - cy;
     const dax = ax - dx, day = ay - dy, dbx = bx - dx, dby = by - dy;
     const value = Math.abs(cax * cby - cay * cbx) * (dax * dbx + day * dby) +
@@ -798,42 +886,84 @@ function flipSlivers(face, floats, uvVerts, triangles, degenerateLimit) {
   const orient = (a, b, c) =>
     (uvVerts[b][0] - uvVerts[a][0]) * (uvVerts[c][1] - uvVerts[a][1]) -
     (uvVerts[c][0] - uvVerts[a][0]) * (uvVerts[b][1] - uvVerts[a][1]);
-  const pairKey = (p, q) => (p < q ? p * 0x100000000 + q : q * 0x100000000 + p);
-  // edge -> the (up to two) triangle offsets that use it.
-  const owners = new Map();
+  // Edges are slots, found through their lower vertex's (upper, slot) list; a
+  // slot outlives its edge so the work stack can name it. Each slot keeps the
+  // triangle offsets that use the edge in insertion order: two inline, any
+  // more (a non-manifold edge) in `extra`. A board face flips a million
+  // times, so an edge is found by vertex index, not a Map of float keys.
+  const adjacency = new Array(n);
+  const slotLo = [];
+  const slotHi = [];
+  const ownerA = [];
+  const ownerB = [];
+  const ownerCount = [];
+  const extra = new Map();
+  const slotOf = (p, q) => {
+    const lo = p < q ? p : q;
+    const hi = p < q ? q : p;
+    let list = adjacency[lo];
+    if (!list) adjacency[lo] = list = [];
+    for (let k = 0; k < list.length; k += 2) if (list[k] === hi) return list[k + 1];
+    const slot = slotLo.length;
+    list.push(hi, slot);
+    slotLo.push(lo);
+    slotHi.push(hi);
+    ownerA.push(-1);
+    ownerB.push(-1);
+    ownerCount.push(0);
+    return slot;
+  };
   const own = (t) => {
     for (let k = 0; k < 3; k += 1) {
-      const key = pairKey(triangles[t + k], triangles[t + ((k + 1) % 3)]);
-      let list = owners.get(key);
-      if (!list) owners.set(key, (list = []));
-      list.push(t);
+      const slot = slotOf(triangles[t + k], triangles[t + ((k + 1) % 3)]);
+      const count = ownerCount[slot]++;
+      if (count === 0) ownerA[slot] = t;
+      else if (count === 1) ownerB[slot] = t;
+      else {
+        let more = extra.get(slot);
+        if (!more) extra.set(slot, (more = []));
+        more.push(t);
+      }
     }
   };
   const disown = (t) => {
     for (let k = 0; k < 3; k += 1) {
-      const key = pairKey(triangles[t + k], triangles[t + ((k + 1) % 3)]);
-      const list = owners.get(key);
-      list.splice(list.indexOf(t), 1);
-      if (!list.length) owners.delete(key);
+      const slot = slotOf(triangles[t + k], triangles[t + ((k + 1) % 3)]);
+      const more = extra.get(slot);
+      if (ownerA[slot] === t) {
+        ownerA[slot] = ownerB[slot];
+        ownerB[slot] = more?.length ? more.shift() : -1;
+      } else if (ownerB[slot] === t) {
+        ownerB[slot] = more?.length ? more.shift() : -1;
+      } else {
+        more.splice(more.indexOf(t), 1);
+      }
+      ownerCount[slot] -= 1;
     }
   };
   for (let t = 0; t < triangles.length; t += 3) own(t);
-  const pending = [...owners.keys()];
-  const queued = new Set(pending);
+  const pending = [];
+  const queued = [];
+  for (let slot = 0; slot < slotLo.length; slot += 1) {
+    pending.push(slot);
+    queued[slot] = true;
+  }
   // Planar Delaunay flipping terminates; the budget only guards against float
   // noise at the margin.
   let budget = triangles.length * 4;
   while (pending.length && budget > 0) {
-    const key = pending.pop();
-    queued.delete(key);
-    const list = owners.get(key);
-    if (!list || list.length !== 2) continue;
-    const [t1, t2] = list;
+    const slot = pending.pop();
+    queued[slot] = false;
+    if (ownerCount[slot] !== 2) continue;
+    const t1 = ownerA[slot];
+    const t2 = ownerB[slot];
+    const lo = slotLo[slot];
+    const hi = slotHi[slot];
     // Rotate t1 so its edge (a, b) is the shared one and c is opposite.
     let a = -1, b = -1, c = -1;
     for (let k = 0; k < 3; k += 1) {
       const p = triangles[t1 + k], q = triangles[t1 + ((k + 1) % 3)];
-      if (pairKey(p, q) === key) {
+      if ((p === lo && q === hi) || (p === hi && q === lo)) {
         a = p; b = q; c = triangles[t1 + ((k + 2) % 3)];
       }
     }
@@ -868,10 +998,9 @@ function flipSlivers(face, floats, uvVerts, triangles, degenerateLimit) {
     own(t1);
     own(t2);
     budget -= 1;
-    for (const [p, q] of [[a, d], [d, b], [b, c], [c, a]]) {
-      const next = pairKey(p, q);
-      if (!queued.has(next)) {
-        queued.add(next);
+    for (const next of [slotOf(a, d), slotOf(d, b), slotOf(b, c), slotOf(c, a)]) {
+      if (!queued[next]) {
+        queued[next] = true;
         pending.push(next);
       }
     }
@@ -917,7 +1046,7 @@ function attributeBoundaryEdges(triangles, uvVerts, segmentIndex, epsilon) {
       counts.set(key, (counts.get(key) || 0) + 1);
     }
   }
-  const { segments, segmentsByCell, cellOf, stepsV } = segmentIndex;
+  const { segments, candidatesAt } = segmentIndex;
   const epsilonSq = epsilon * epsilon;
   const ordCache = new Map();
   const ordOfMeshEdge = (p, q) => {
@@ -928,8 +1057,7 @@ function attributeBoundaryEdges(triangles, uvVerts, segmentIndex, epsilon) {
     ord = 0;
     const [pu, pv] = uvVerts[p];
     const [qu, qv] = uvVerts[q];
-    const [cu, cv] = cellOf((pu + qu) / 2, (pv + qv) / 2);
-    const candidates = segmentsByCell.get(cu * stepsV + cv) || [];
+    const candidates = candidatesAt((pu + qu) / 2, (pv + qv) / 2, epsilon) || [];
     for (const segIdx of candidates) {
       const [x0, y0, x1, y1, segOrd] = segments[segIdx];
       if (!segOrd) continue;
@@ -1212,11 +1340,11 @@ function tessellateFaceRaw(face, floats, scale, options = {}, sharedEdges = null
       spanVPin = Math.max(spanVPin, Math.abs(v));
     }
     const eps = Math.max(spanUPin, spanVPin, 1) * 1e-7;
-    const { segments, segmentsByCell, cellOf, stepsV } = segmentIndex;
+    const { segments, candidatesAt } = segmentIndex;
     for (let i = 0; i < uvVerts.length; i += 1) {
       const [u, v] = uvVerts[i];
-      const [cu, cv] = cellOf(u, v);
-      const candidates = segmentsByCell.get(cu * stepsV + cv);
+      // Reach: the corner fallback below accepts an endpoint within 4 eps.
+      const candidates = candidatesAt(u, v, eps * 4);
       if (!candidates) continue;
       // A vertex can lie on SEVERAL model edges (a corner lies on both of the
       // edges that meet there); keep the best match PER EDGE, or conformity
@@ -1639,11 +1767,18 @@ function conformBoundaries(rawFaces, sharedEdges, floats, mergeTolerance = 0) {
   // the exact curve (edgePointAt), until none crosses. The new points join the
   // union BEFORE any face consumes it, so the neighbours on the other side of
   // those edges take the same points through the fan split below.
+  // The last round of a face that ends with no split computed exactly the
+  // loops the re-triangulation below needs; keep them while no later split
+  // (on any face) changes a union.
+  let unionEdits = 0;
+  const settledLoops = new Map();
   for (const { face, raw } of rawFaces) {
     if (face.surface.kind !== "plane") continue;
     for (let round = 0; round < DEFAULT_OPTIONS.maxRefineDepth; round += 1) {
       let split = false;
-      for (const meta of crossingSegments(planarLoops(face, raw).loops)) {
+      const planar = planarLoops(face, raw);
+      settledLoops.set(raw, { planar, unionEdits });
+      for (const meta of crossingSegments(planar.loops)) {
         const union = fractionsByOrd.get(meta.ord);
         const lo = Math.min(meta.f0, meta.f1);
         const hi = Math.max(meta.f0, meta.f1);
@@ -1654,6 +1789,7 @@ function conformBoundaries(rawFaces, sharedEdges, floats, mergeTolerance = 0) {
         let at = 0;
         while (at < union.length && union[at] < mid) at += 1;
         union.splice(at, 0, mid);
+        unionEdits += 1;
         split = true;
       }
       if (!split) break;
@@ -1667,7 +1803,8 @@ function conformBoundaries(rawFaces, sharedEdges, floats, mergeTolerance = 0) {
       // Re-triangulate the complete planar region from its final exact trim
       // points instead. Planar UV is an exact inverse, unlike interpolating a
       // rational pcurve's parameters or its old polygon chords.
-      const { loops, vertices } = planarLoops(face, raw);
+      const settled = settledLoops.get(raw);
+      const { loops, vertices } = settled?.unionEdits === unionEdits ? settled.planar : planarLoops(face, raw);
       const built = gridTriangulate(face, floats, loops, Infinity);
       if (built?.triangles.length) {
         Object.assign(raw, built, { boundary: new Map(), loops });
