@@ -24,7 +24,8 @@ const URL_RESOLUTION_BASE = "http://cad-viewer.local";
 // paths inside the package; nothing escapes the package directory.
 /** @param {unknown} baseDir @param {unknown} relPath @returns {string} */
 export function resolvePackageDirRef(baseDir, relPath) {
-  const segments = String(baseDir).split("/");
+  const base = String(baseDir);
+  const segments = base.split("/");
   for (const part of String(relPath).split("/")) {
     if (part === "" || part === ".") {
       continue;
@@ -32,7 +33,9 @@ export function resolvePackageDirRef(baseDir, relPath) {
     segments.push(part);
   }
   const joined = segments.join("/");
-  return joined.startsWith("/") ? joined : `/${joined}`;
+  // `file` is a filesystem path, not a URL pathname: a Windows drive is
+  // already absolute, and adding a leading slash would hide it from the server.
+  return joined.startsWith("/") || /^[a-z]:[\\/]/i.test(base) ? joined : `/${joined}`;
 }
 
 /** @param {unknown} packageAssetUrl @param {unknown} relPath @returns {string} */
