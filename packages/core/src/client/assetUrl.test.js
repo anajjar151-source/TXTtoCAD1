@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { resolvePackageAssetUrl, resolvePackageDirRef } from "./assetUrl.js";
+import { createHttpCadResourceProvider } from "./resources.js";
 
 test("resolvePackageDirRef joins self-contained package refs", () => {
   assert.equal(
@@ -37,4 +38,27 @@ test("resolvePackageAssetUrl repoints the file param on query-style (local-fs) U
 test("resolvePackageAssetUrl returns empty for missing inputs", () => {
   assert.equal(resolvePackageAssetUrl("", "assembly.json"), "");
   assert.equal(resolvePackageAssetUrl("/__cad/asset?file=%2Fx", ""), "");
+});
+
+test("package asset URLs preserve absolute Windows drive paths", () => {
+  for (const directory of ["C:/models/part.step", "d:\\models\\part.step"]) {
+    for (const origin of ["", "http://127.0.0.1:3250"]) {
+      const resources = createHttpCadResourceProvider({ origin });
+      const query = new URLSearchParams({ file: directory, v: "version-1" });
+      const source = `${origin}/__cad/asset?${query}`;
+      for (const reference of ["assembly.json", "components/abc.glb"]) {
+        const result = resolvePackageAssetUrl(source, reference);
+        assert.equal(resources.resolveDependency(source, reference, { kind: "package" }), result);
+        const parsed = new URL(result, "http://viewer.local");
+        assert.equal(parsed.searchParams.get("file"), `${directory}/${reference}`);
+        assert.equal(parsed.searchParams.get("v"), "version-1");
+        assert.equal(parsed.origin, origin || "http://viewer.local");
+      }
+    }
+  }
+  // A drive-relative path is not a drive-qualified absolute path. Keep the
+  // existing relative/POSIX behavior, including literal backslashes on POSIX.
+  assert.equal(resolvePackageDirRef("C:models", "assembly.json"), "/C:models/assembly.json");
+  assert.equal(resolvePackageDirRef("C:", "assembly.json"), "/C:/assembly.json");
+  assert.equal(resolvePackageDirRef("/models/odd\\name", "assembly.json"), "/models/odd\\name/assembly.json");
 });
