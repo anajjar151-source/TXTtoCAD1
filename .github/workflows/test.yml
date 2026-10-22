@@ -148,8 +148,9 @@ jobs:
       - name: Check the tracked tree
         run: scripts/github-workflows/check-builds.sh --tree-only
 
-  # The cadgen package suite, CAD Viewer backend included, on both platforms -- or the
-  # files of it a change selected (a test edited, a document a test reads).
+  # The cadgen package suite, CAD Viewer backend included, and usd-brep-build123d's (which
+  # judges its solids against build123d, cadgen's kernel), on both platforms -- or the files of
+  # them a change selected (a test edited, a document a test reads).
   cadgen-linux:
     name: cadgen (Linux)
     needs: changes
@@ -170,6 +171,7 @@ jobs:
         uses: ./.github/actions/setup-deps
         with:
           npm: packages/core
+          usd-brep: "true"
 
       - name: Check cadgen types (basic)
         run: python -m pyrefly check --config packages/cadgen/pyproject.toml --output-format full-text-with-github
@@ -207,6 +209,7 @@ jobs:
         uses: ./.github/actions/setup-deps
         with:
           npm: packages/core
+          usd-brep: "true"
 
       - name: Check cadgen types (basic)
         run: python -m pyrefly check --config packages/cadgen/pyproject.toml --output-format full-text-with-github
