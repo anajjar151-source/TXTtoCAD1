@@ -50,6 +50,9 @@ from cadgen._internal.doors import document_snapshot
 from cadgen._internal.snapshot_door import (
     DRAWING_IS,
     DRAWING_NO_VIEW_NAME,
+    PLOT_APPEARANCE_HINT,
+    PLOT_KINDS,
+    PLOT_PLAN_VIEW,
     drawing_camera_refusal,
     drawing_mode_refusal,
     drawing_scene_refusal,
@@ -72,6 +75,8 @@ from cadgen.cli_progress import cli_progress_line
 from cadgen.results import SnapshotResult
 from cadgen.snapshot_core import (
     BatchSnapshotRenderer,
+    PLOT_DISPLAY_KEYS,
+    PLOT_INPUT_KINDS,
     SELECTION_KEYS,
     SUPPORTED_JOB_KEYS,
     SnapshotError,
@@ -285,6 +290,12 @@ def option_display_modes(options: SnapshotOptions) -> frozenset[str] | None:
     return display_modes_for_kind(input_kind(Path(options.input))) if options.input else None
 
 
+def _job_input_kind(job: Mapping[str, object], *, cwd: Path) -> str:
+    """A job's input kind as far as its name says, for loading its display; '' when it names none."""
+    raw_input = str(job.get("input") or "").strip()
+    return input_kind(resolve_input_path(raw_input, cwd=cwd)) if raw_input else ""
+
+
 def load_annotation_option(value: object, *, cwd: Path) -> tuple[dict[str, object], str]:
     """``annotation`` in job form: the annotation object, and the file it was read from ("" inline).
 
@@ -356,7 +367,10 @@ def apply_option_overrides_to_job(job: object, options: SnapshotOptions, *, cwd:
     if options.joint_values_specified:
         next_job["jointValues"] = parse_joint_values_option(options.joint_values)
     if options.display_specified:
-        next_job["display"] = load_display_option(options.display, cwd=cwd)
+        kind = _job_input_kind(next_job, cwd=cwd)
+        next_job["display"] = load_display_option(
+            options.display, cwd=cwd, modes=display_modes_for_kind(kind) if kind else None, kind=kind
+        )
     if options.grid:
         # The grid joins whatever display the job asks for.
         shown = load_display_option(next_job["display"] if next_job.get("display") is not None else {}, cwd=cwd)
@@ -458,7 +472,7 @@ def load_job_from_options(options: SnapshotOptions, *, cwd: Path | None = None) 
         job["output"] = output_settings
     if options.display_specified:
         job["display"] = load_display_option(
-            options.display, cwd=resolved_cwd, modes=option_display_modes(options)
+            options.display, cwd=resolved_cwd, modes=option_display_modes(options), kind=input_kind(Path(options.input))
         )
     if options.grid:
         job["display"] = ValidatedDisplay({**job.get("display", {}), "grid": True})
@@ -488,6 +502,8 @@ def input_kind(file_path: Path) -> str:
         return "stp"
     if suffix == ".dxf":
         return "dxf"
+    if suffix == ".kicad_pcb":
+        return "kicad_pcb"
     if suffix == ".py":
         # DOCUMENTS-ONLY: a model script is a program. The kind survives only so
         # the resolver can refuse it by naming the run.
@@ -1054,8 +1070,13 @@ def prepare_render_job(
         job["display"] if job.get("display") is not None else {},
         cwd=resolved_cwd,
         modes=display_modes_for_kind(kind),
+        kind=kind,
     )
     validate_display_for_kind(display, kind=kind, input_label=input_path.name)
+    if kind in PLOT_INPUT_KINDS and "mode" not in display:
+        # A board's default is its Board mode, not a scene's Solid: the page reads the
+        # same object the viewer's Display keeps (`plot2d/boardDisplay.js`).
+        display = ValidatedDisplay({"mode": "board", **display})
     job["display"] = display
     mode = normalize_render_mode(job.get("mode"))
     if "preview" in job and not isinstance(job["preview"], bool):
@@ -1362,9 +1383,14 @@ def resolve_step_render_job(
 # `cadgen.drawing_payload` the CAD Viewer's DXF pane paints, with the same
 # core code (@text-to-cad/core/lib/drawing2d), so the CLI cannot show a picture
 # the viewer cannot. Everything below is what that costs the option surface.
+# A PLOT is drawn too -- a KiCad board, from its file, by the viewer's board
+# view code (@text-to-cad/core/lib/plot2d) -- and costs the same, but its display
+# is the viewer's board Display (which layers, the pours, the side:
+# `cadgen.snapshot_core.PLOT_DISPLAY_KEYS`), not a scene's.
 #
 # `appearance` is the whole of a drawing's display: it picks the background,
-# and therefore the colour of an entity with no pen of its own (ACI 7).
+# and therefore the colour of an entity with no pen of its own (ACI 7). A plot's
+# sheet keeps KiCad's colours; its appearance is the surround it sits on.
 DRAWING_DISPLAY_KEYS = frozenset({"appearance"})
 # Output settings that still mean something for a picture with no scene.
 DRAWING_OUTPUT_SETTINGS_KEYS = frozenset({"sizeProfile", "renderScale", "transparent"})
@@ -1378,6 +1404,17 @@ DRAWING_OUTPUT_SETTING_REASONS = {
     "tightFrame": (
         "a tight frame re-fits a camera to projected geometry; a drawing is already "
         "framed on the bounds of what it draws"
+    ),
+}
+PLOT_OUTPUT_SETTING_REASONS = {
+    "padding": (
+        "a board is fitted with the fixed gutter the viewer leaves around it, "
+        "and its one camera is the plan view a job frames it with"
+    ),
+    "viewLabels": "a board's view is a window on its sheet, with no view name to burn into the image",
+    "tightFrame": (
+        "a tight frame re-fits a camera to projected geometry; a board is already "
+        "framed on its outline"
     ),
 }
 
@@ -1410,27 +1447,30 @@ def _plan_vector(value: object) -> list[float] | None:
 _PLAN_TOLERANCE = 1e-6
 
 
-def drawing_plan_view(camera: object, label: str) -> dict[str, object]:
+def drawing_plan_view(
+    camera: object, label: str, *, refusal: Callable[[str], str] = drawing_camera_refusal
+) -> dict[str, object]:
     """A drawing's camera, checked: its plan view (``DRAWING_PLAN_VIEW``), or the refusal.
 
     The window the Viewer's DXF pane shows, in the camera shape every job speaks: what a
     Quick Edit's views carry, so ``cadgen snapshot --job`` frames each picture as the person
     framed it. Anything else -- a preset, a tilt, a perspective -- describes a model in space.
+    A board's plan view is checked the same way, refused in its words (``refusal``).
     """
     if not is_plain_object(camera) or not set(camera) <= {"position", "target", "up", "orthographicHalfHeight"}:
-        raise SnapshotError(drawing_camera_refusal(label))
+        raise SnapshotError(refusal(label))
     position, target = _plan_vector(camera.get("position")), _plan_vector(camera.get("target"))
     up = _plan_vector(camera.get("up", [0, 1, 0]))
     half = camera.get("orthographicHalfHeight")
     if position is None or target is None or up is None or isinstance(half, bool) \
             or not isinstance(half, (int, float)) or not math.isfinite(float(half)) or half <= 0:
-        raise SnapshotError(drawing_camera_refusal(label))
+        raise SnapshotError(refusal(label))
     look = [position[axis] - target[axis] for axis in range(3)]
     length = math.sqrt(sum(value * value for value in look))
     up_length = math.sqrt(sum(value * value for value in up))
     if length <= 0 or up_length <= 0 or abs(look[0]) > _PLAN_TOLERANCE * length or abs(look[1]) > _PLAN_TOLERANCE * length \
             or look[2] <= 0 or abs(up[0]) > _PLAN_TOLERANCE * up_length or abs(up[2]) > _PLAN_TOLERANCE * up_length or up[1] <= 0:
-        raise SnapshotError(drawing_camera_refusal(label))
+        raise SnapshotError(refusal(label))
     return {"position": position, "target": target, "up": [0.0, 1.0, 0.0], "orthographicHalfHeight": float(half)}
 
 
@@ -1504,6 +1544,69 @@ def check_drawing_render_job(
         subject="DXF drawings",
         pose_hint="a DXF drawing has no kinematics",
         tessellation_hint="a DXF drawing is line work, not a tessellated surface",
+    )
+
+
+def check_plot_render_job(
+    job: Mapping[str, object], *, kind: str, input_path: Path, mode: str, **_context: object
+) -> None:
+    """What a board cannot be asked for: what a drawing cannot, in a board's words.
+
+    `cadgen pcb snapshot` takes none of it (its signature is a drawing's, plus
+    the board's own ``display``: :data:`cadgen.snapshot_core.PLOT_DISPLAY_KEYS`),
+    and this is the path a job packet and `cadgen snapshot` route a board
+    through, so a request for a scene, a camera that is not a plan view or a
+    render mode is refused by name rather than drawn as if it had not been made.
+
+    What a board DOES take is what the Viewer's board view can show and a Quick
+    Edit's views carry: a plan view to frame (``drawing_plan_view``, its window on
+    the sheet: the payload's millimetres with y up, mirrored from below), the
+    board's Display, the annotation drawn over it (its marks on the board, in the
+    sheet's millimetres, y down) and Measure's results (the same frame).
+    """
+    plot = PLOT_KINDS[kind]
+    label = input_path.name
+    refusal = functools.partial(drawing_camera_refusal, is_=plot.is_, noun=plot.noun, plan_view=PLOT_PLAN_VIEW)
+    display = job.get("display") if is_plain_object(job.get("display")) else {}
+    scene = sorted(f"display.{key}" for key in set(display) - PLOT_DISPLAY_KEYS)
+    if job.get("preview") is not None:
+        scene.insert(0, "preview")
+    if scene:
+        raise SnapshotError(
+            drawing_scene_refusal(", ".join(scene), label, plural=len(scene) != 1, is_=plot.is_, hint=PLOT_APPEARANCE_HINT)
+        )
+    if _drawing_output_cameras(job):
+        raise SnapshotError(refusal(label))
+    if job.get("camera") is not None:
+        job["camera"] = drawing_plan_view(job["camera"], label, refusal=refusal)
+    if mode != "view":
+        raise SnapshotError(drawing_mode_refusal(label, is_=plot.is_))
+    if job.get("scale") is not None:
+        raise SnapshotError(
+            f"scale picks the units a 3D scene is lit and framed for (cad or urdf); {plot.is_} "
+            f"in millimetres, so {label} has no scene to scale."
+        )
+    labels = _drawing_output_labels(job)
+    if labels:
+        raise SnapshotError(
+            f"an output's {' and '.join(labels)} names the view burnt into the image; {plot.is_} "
+            f"and {label} has no view to name."
+        )
+    settings = job.get("output") if is_plain_object(job.get("output")) else {}
+    unsupported = sorted(set(settings) - DRAWING_OUTPUT_SETTINGS_KEYS)
+    if unsupported:
+        reasons = "; ".join(f"{key} — {PLOT_OUTPUT_SETTING_REASONS.get(key, plot.is_)}" for key in unsupported)
+        named = ", ".join(f"output.{key}" for key in unsupported)
+        raise SnapshotError(
+            f"{named} {'has' if len(unsupported) == 1 else 'have'} no meaning for {plot.noun} "
+            f"({reasons}). A board's output takes: "
+            f"{', '.join(sorted(DRAWING_OUTPUT_SETTINGS_KEYS))}."
+        )
+    refuse_cad_model_requests(
+        job,
+        subject=plot.plural,
+        pose_hint=f"{plot.noun} has no kinematics",
+        tessellation_hint=f"{plot.noun} is drawn from its file, not a tessellated surface",
     )
 
 
@@ -1581,6 +1684,96 @@ def drawing_payload_file(source: Path) -> Path:
     return payload_path
 
 
+def resolve_plot_render_job(
+    job: dict[str, object],
+    *,
+    kind: str,
+    input_path: Path,
+    **_kind_context: object,
+) -> dict[str, object]:
+    """Resolve a plot (a KiCad board): its payload, on a path the page can fetch.
+
+    The page draws the SAME payload the Viewer's `GET /__cad/plot` answers with
+    (:func:`cadgen.plot.plot_payload_bytes`): the board is read from its file
+    once, the store caches the payload by the file's bytes, and the page draws
+    its layers with the viewer's own code. The job the page sees is a `plot`
+    job; which file it came from is `inputKind`. A display naming layers the
+    board does not have is refused here, with the board's own layer ids: the
+    page would otherwise draw a picture quietly missing them.
+    """
+    payload_path = plot_payload_file(input_path)
+    display = job.get("display") if is_plain_object(job.get("display")) else {}
+    if isinstance(display.get("layers"), list):
+        check_plot_display_layers(display["layers"], payload_path, input_name=input_path.name)
+    serve_root = payload_path.parent
+    resolved: dict[str, object] = {
+        "rootPath": str(serve_root),
+        "inputPath": str(input_path),
+        "kind": "plot",
+        "inputKind": kind,
+        "plotUrl": asset_url_for_path(payload_path, serve_root),
+    }
+    if bool(job.get("debug")):
+        resolved["debug"] = {"plotSource": {"kind": kind, "payloadBytes": payload_path.stat().st_size}}
+    return {**job, "resolved": resolved}
+
+
+def check_plot_display_layers(layers: Sequence[object], payload_path: Path, *, input_name: str) -> None:
+    """``display.layers`` against the layers the board's payload holds."""
+    try:
+        payload = json.loads(payload_path.read_bytes())
+        sheets = payload.get("sheets") if is_plain_object(payload) else None
+        held = [
+            layer.get("id") for sheet in (sheets or []) if is_plain_object(sheet)
+            for layer in (sheet.get("layers") or []) if is_plain_object(layer)
+        ]
+    except (OSError, ValueError, AttributeError):
+        held = []
+    missing = [str(layer) for layer in layers if layer not in held]
+    if missing:
+        raise SnapshotError(
+            f"display.layers names {'a layer' if len(missing) == 1 else 'layers'} {input_name} does not have: "
+            f"{', '.join(missing)}. Its layers are {', '.join(str(layer) for layer in held) or 'none'}."
+        )
+
+
+def plot_payload_file(source: Path) -> Path:
+    """The document's plot payload, written where the render can fetch it.
+
+    Beside the drawings' payloads (one directory per process, removed at exit),
+    named by the payload's own content hash. A document that is not a readable
+    board is refused with the plotter's own sentence, which names the file.
+    """
+    from hashlib import sha256
+
+    from cadgen._internal.atomic_replace import write_bytes_atomic
+
+    kind = input_kind(source)
+    if kind not in PLOT_KINDS:
+        suffixes = [plot.suffix for plot in PLOT_KINDS.values()]
+        raise SnapshotError(
+            f"snapshot input must be a {', '.join(suffixes[:-1])} or {suffixes[-1]} document: {source}"
+        )
+    if not source.is_file():
+        raise _missing(f"snapshot input does not exist: {source}")
+    data = _plot_payload_bytes(source)
+    payload_path = _drawing_payload_dir() / f"{sha256(data).hexdigest()}.plot.json"
+    if not payload_path.is_file():
+        write_bytes_atomic(payload_path, data)
+    return payload_path
+
+
+def _plot_payload_bytes(source: Path) -> bytes:
+    """A plot's payload (``cadgen.plot``, as the Viewer's `GET /__cad/plot` draws it); its
+    refusals as snapshot errors."""
+    from cadgen.plot import PlotError, plot_payload_bytes
+
+    try:
+        return plot_payload_bytes(source)
+    except PlotError as error:
+        raise SnapshotError(str(error)) from None
+
+
 # Kind dispatch for render-job resolution. Every resolver takes the same
 # signature (job plus the resolved input-kind context) and returns the common
 # normalized job shape with a kind-specific ``resolved`` payload — adding a new
@@ -1588,6 +1781,7 @@ def drawing_payload_file(source: Path) -> Path:
 _STEP_KIND = (check_step_render_job, resolve_step_render_job)
 _MESH_KIND = (check_mesh_render_job, resolve_mesh_render_job)
 _ROBOT_KIND = (check_robot_render_job, resolve_robot_render_job)
+_PLOT_KIND = (check_plot_render_job, resolve_plot_render_job)
 _KINDS: dict[str, tuple[Callable[..., object], Callable[..., dict[str, object]]]] = {
     "step": _STEP_KIND,
     "stp": _STEP_KIND,
@@ -1595,6 +1789,7 @@ _KINDS: dict[str, tuple[Callable[..., object], Callable[..., dict[str, object]]]
     "stl": _MESH_KIND,
     "3mf": _MESH_KIND,
     "dxf": (check_drawing_render_job, resolve_drawing_render_job),
+    "kicad_pcb": _PLOT_KIND,
     "urdf": _ROBOT_KIND,
     "srdf": _ROBOT_KIND,
     "sdf": _ROBOT_KIND,
@@ -1612,10 +1807,13 @@ KIND_LABELS: dict[str, str] = {
     "step": ".step", "stp": ".stp",
     "glb": ".glb", "stl": ".stl", "3mf": ".3mf",
     "dxf": ".dxf",
+    "kicad_pcb": ".kicad_pcb",
     "urdf": ".urdf", "srdf": ".srdf", "sdf": ".sdf",
 }
 
-_KIND_HELP_ORDER = ("step", "stp", "3mf", "glb", "stl", "dxf", "urdf", "srdf", "sdf")
+_KIND_HELP_ORDER = (
+    "step", "stp", "3mf", "glb", "stl", "dxf", "kicad_pcb", "urdf", "srdf", "sdf",
+)
 
 
 def enabled_kinds(kinds: Sequence[str]) -> frozenset[str]:

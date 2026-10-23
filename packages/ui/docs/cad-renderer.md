@@ -20,7 +20,8 @@ modules around it (see the end of [Shell](#shell)). Applications use the registr
 `src/renderers/kit` is the format-blind half of the viewer: small modules a
 renderer composes, none of which asks what it is showing. There is one renderer
 per file family, each a vertical slice over the kit: `src/renderers/dxf`
-([DXF renderer](#dxf-renderer)), `src/renderers/glb` ([GLB renderer](#glb-renderer)),
+([DXF renderer](#dxf-renderer)), `src/renderers/board` (KiCad boards, [Board renderer](#board-renderer)),
+`src/renderers/glb` ([GLB renderer](#glb-renderer)),
 `src/renderers/mesh` (STL and 3MF, [Mesh renderer](#mesh-renderer)),
 `src/renderers/robot` (URDF, SRDF and SDF, [Robot renderer](#robot-renderer)) and
 `src/renderers/step` (STEP and STP, [STEP renderer](#step-and-source-separation)). The kit imports itself, shared UI
@@ -36,7 +37,7 @@ the reverse.
 | `look/` | `stageEffects` (lighting rig scaled to the model, floor, glow and shadow catcher, grid and origin axes), the Render studio boundary (`renderStudioChunk`, `studioEnvironmentCache` and its worker). `chromeBackdrop` and `useChromeBackdropColor` (the frame colour around a scene). The surface LOOK is data the viewport resolves and a scene applies to its own materials: `@text-to-cad/core/lib/viewer/surfaceLook.js` (`createSurfaceLook(THREE, root).apply(look)`) does it for any authored material tree. The viewport resolves it with core's `resolveSceneSurfaceLook` (`common/sceneSettings.js`), the resolver the snapshot CLI dresses the same scenes with. |
 | `view-settings/` | The settings model and store (`viewSettingsStore`, `useViewSettings`, `viewerDisplaySettings`, `renderState`), applying a change to a viewport (`useAppliedViewSettings`, `viewUpdateCoordinator`, `viewUpdateGate`, `viewUpdatePlan`), the content of Display's dropdown (`DisplayModeOptions`: the modes and the Grid switch's icons; `DisplayPopover` draws it), and Preview's settings form (`PreviewRenderSettings`). |
 | `tools/` | `FloatingToolBar` (the dumb strip: the tools it is handed, in groups parted by one thin rule, then, only where the host has no navbar, the view's controls, which end the last section the tools have with no rule of their own; after a rule only where the tools are a single group), `SubToolbar` (the tool in hand's one row under the strip, its groups parted by `SubToolbarSeparator`; `SLIDER_SUB_TOOLBAR_CLASS`, the one width of a slider tool's row), `toolModes` (the tool-mode state machine), `ToolModeMenu` (`ToolSettingsMenu`: a tool's settings dropdown, from a chevron right after its button on the strip, or a sliders button in a panel's heading), `ToolPopover` (an ordinary dropdown from its button, on a `side` and `align`ed start or end: the Animation section's Playback settings), `FileSidebar` (the file's sections, whatever the tool: a tile each at the top-left, a tile opening its section in a panel under them, one at a time, sized from its bottom-right grip; on a phone one tile, `phone`, opening one panel with the sections as tabs and its one X; Preview offers its Position and Animation alone, `sections`, its tiles `bare`), `ToolStack` (the bounded column under the strip and sub-toolbar for a renderer's own `toolPanels`, which scrolls only when what cannot give way still does not fit), `ToolPanel` (one panel of the stack, or one section of the sidebar: `fit` says how it gives way when the viewer is short, `resizable` makes a stack panel the person's to size by the grip in its bottom-right corner alone, moving only it, and a panel with a heading can fold to it; its `footer`, a `ToolPanelFooterButton`, is a full-row action under the body that never scrolls), `ResizeGrip` (the one resize grip of a box over the viewport, in a bottom corner: the sidebar's and a resizable panel's at the bottom-right, Quick Edit's at its bottom-left), `toolStackLayout` (every panel's width, each sidebar section's and the resizable panels' sizes, and the folded stack panels: defaults, bounds and their stored record), and the format-blind tools: `annotate/` (`AnnotationOverlay`, the surface the drawing tools' gestures land on; `annotation3d`, its ink projected into the model; `AnnotationSelectionBar`, the bar of the annotations Select picked), `PreviewChrome` (Preview's chrome: the tools view's controls hidden and inert while it is up, and its own corner, `end`, with its settings panel under it, `panel`), `PlaybackMenu` (the Playback settings — Speed, Loop, Autoplay — and `ORBIT_SPEEDS`, Preview's Orbit speeds), `playbar/` (`AnimationSection`, the file sidebar's Animation section: Reset in its heading, the routine where there are several, Play/Pause, the scrubber, Playback settings; `AnimationTimeControl`, the scrubber, and `animationControlsHaveContent`; `animationClock`, `usePlaybackFrames`, `playbackPreferences`: the file's playback settings — Orbit's speed, Autoplay, and the chosen Speed and Loop), `pose/` (the handle overlay, canvas, drag mathematics), `select/` (`SelectFilterMenu`, Select's selection filter on its chevron; `selectFilter`, its pure toggles; `usePointerPick`: taps and hover through a scene's own `pick`, each with where the pointer was; `useSceneSelection` and `sceneReferences`: the parts a scene's pick names, selected, lit and handed to Quick Edit as references), `measure/` (Measure, for any 3D view: `useMeasureSession`, the session; `useMeasureOverlay`, its drawing; `MeasurementCard`; `measurementChips`, its chips and its row under the strip (`MeasurementsBar`); `measureSelection`, Select's press and hover on a measurement; `SceneMeasure`, two points on a scene's surface, and the model's size row), `model-effects/` (Explode and Clip, for any scene that opts in: `ModelTools`, their strip tools and slider rows; `useSceneEffects`, the viewport applying them to the scene; `motionExclusion`, one motion at a time), `sceneTools` (the tools a scene's renderer composes around the shell: the tool in hand, Pencil and Shapes, Measure and the model effects), `quick-edit/` (`QuickEdit`, the note to the agent, and `quickEditPrompt`, the context it builds and the text it copies). Screenshot capture is `@text-to-cad/core/lib/viewer/screenshotCapture.js`. |
-| `inspector/` | `FileSheet` and its row and section primitives, `modelTreeSearch` (`useTreeSearch`, the ranked flat search every tree shares), `VirtualRows` (a long tree's rows, windowed), `referenceRows` (`InfoRow`, `MonoValue`, `CoordValue`), `kinematicsControls` (the `Pose` row that heads every Position section: Default, the named poses, Custom). The tree row and filter box are `primitives/tree-row` and `primitives/tree-filter`. |
+| `inspector/` | `FileSheet` and its row and section primitives, `modelTreeSearch` (`useTreeSearch`, the ranked flat search every tree shares), `VirtualRows` (a long tree's rows, windowed), `referenceRows` (`InfoRow`, `MonoValue`, `CoordValue`), `kinematicsControls` (the `Pose` row that heads every Position section: Default, the named poses, Custom), `treeExpansion` (`openUntilChoice`: how every tree opens, until there is a choice), `layerRows` (a Layers section's rows: one glyph each, on the title's line). The tree row and filter box are `primitives/tree-row` and `primitives/tree-filter`. |
 | `status/` | `LoadingIndicator` and `ViewerLoadingOverlay`, `ViewerAlertCard` (the card over the viewport for every alert, and `useAlertDismissal`: a card put away, and its icon in the navbar that brings it back) and `reportIssue` (`alertIssueUrl`: its Report Issue's new issue), `ViewUpdateStatus`, `loadingState` (`viewerLoadingState`), `loadAlerts` (`failureAlert`, `noGeometryAlert`). |
 | `shell/` | The host glue every renderer needs that is not about its scene: see [Shell](#shell). |
 
@@ -238,8 +239,13 @@ returns the live catalog entry of the prepared file, the prompt `resource`, the
 `useDeclinedSelectReference` consumes a host's request to select a reference in
 a file that has none without changing the view. A renderer is then its
 scene hook, its tool list, its tools' rows and its sidebar sections, if it has any
-(`glb/GlbRenderer.jsx`, `mesh/MeshRenderer.jsx`, `robot/RobotRenderer.jsx`). The DXF renderer uses the workspace module without the
-shell: it has no scene, so it reaches the same catalog entry and commands directly.
+(`glb/GlbRenderer.jsx`, `mesh/MeshRenderer.jsx`, `robot/RobotRenderer.jsx`). The flat views — a
+drawing, a board — use the workspace module without the shell: they have no scene, so they reach
+the same catalog entry and commands directly, through the kit's flat frame (`FlatViewFrame.jsx`:
+the strip, its row, the sidebar, Quick Edit, the loading cover and the alert card, laid out as the
+shell lays out a 3D view's; `useFlatView.js`: the tools and the handover — the host's commands,
+Quick Edit's context and its views, the copy key, the live binding; `viewport/useFlatCanvasView.js`:
+the canvas, fit, pan, zoom about the pointer, taps and hover).
 
 The shell's behaviour has one real-browser test,
 `kit/shell/RendererShell.browser.test.mjs` (deferred files, warm reopen, isolated
@@ -293,7 +299,8 @@ viewport, no scene, no Display settings, no Preview. The questions the old
 Material/Bends tabs answered were about a sheet-metal part the viewer was inventing
 from the file; a drawing is not that. What it has is what a person needs to talk about
 a drawing — the kit's chrome, composed around the canvas rather than around
-`ShellViewport` (`DxfRenderer.jsx`): the strip at the top centre, the tool's row under
+`ShellViewport`, in the flat frame a board shares (`DxfRenderer.jsx` over
+`kit/shell/FlatViewFrame.jsx`): the strip at the top centre, the tool's row under
 it, the file sidebar, Quick Edit at the top-right.
 
 - **Tools** (`dxf/tools.js`): **Select** (in hand; the view's hand too: a drag pans, a
@@ -321,7 +328,10 @@ it, the file sidebar, Quick Edit at the top-right.
 - **Layers**, a file-sidebar section, only where the drawing has the structure to read
   (`layersSectionShown`): four or more layers drawn on, or any block reference. Each
   layer's pen, name, entity count and eye (hidden: not drawn, picked or snapped to), and
-  under it the block references placed on it, a click picking one.
+  under it the block references placed on it, a click picking one. A row has one glyph, on the
+  section title's edge (`kit/inspector/layerRows.jsx`): the pen, or, for a layer with block
+  references under it, the chevron that folds them. As every tree, it opens until there is a
+  choice: a layer with one block reference opens on it, one with several stays folded.
 - **Quick Edit** carries the picks and the ink (never the measurements: they are the
   person's); its views are the window on screen as a plan-view camera (`planCamera`: looking
   straight down, `up` +Y, `orthographicHalfHeight` the window's half height), which `cadgen dxf
@@ -362,7 +372,7 @@ it, the file sidebar, Quick Edit at the top-right.
   primitive's inner rings are its holes; merging two overlapping regions of one colour
   into a single path would turn their overlap into a hole as well. Fills go down
   before strokes, which is the one ordering that never hides an edge.
-- **Interaction** (`dxf/useDrawingView.js`): fit on open and on resize until the
+- **Interaction** (`dxf/useDrawingView.js`, over the kit's `viewport/useFlatCanvasView.js`): fit on open and on resize until the
   person moves the view, drag to pan (a primary press, one finger, once it has travelled
   more than a tap's 4 px; a press that lets go before is the tool's tap), wheel or pinch to
   zoom about the pointer, double-click to fit again. The view lives in a REF and the
@@ -401,6 +411,71 @@ it, the file sidebar, Quick Edit at the top-right.
   flip, the red circle, the unfilled island, the hairline at 800%, zoom about the
   pointer, pan, re-fit and the resize rule; `DxfRenderer.test.tsx` asserts that the
   pane has no tab, tool strip or Preview.
+
+## Board renderer
+
+`createBoardRenderer` (`@text-to-cad/ui/renderers/board`, id `board`) shows a `.kicad_pcb`.
+It is a flat view composed as a drawing's is, from the same frame (`kit/shell/FlatViewFrame.jsx`,
+`useFlatView.js`, `kit/viewport/useFlatCanvasView.js`): the strip at the top centre, the tool's
+row under it, the file sidebar at the top-left, Quick Edit at the top-right. What differs is the
+picture and what a person points at.
+
+- **The picture comes from the BACKEND.** `client.plotPayload(file)` is `GET /__cad/plot`
+  (`apps/web/docs/backend.md`): geometry per layer and the board's index, read from the file by
+  cadgen, never by this renderer ([the plot payload](../../core/docs/plot-payload.md)). Drawing is
+  core's (`@text-to-cad/core/lib/plot2d`: `layoutPlot`, `fitPlotTransform`, `drawPlot`), and the
+  snapshot bundle draws the same payload with it (`common/headlessPlotRender.js`), so
+  `cadgen pcb snapshot` cannot show what this view cannot. The board keeps KiCad's colours
+  (`plot2d/theme.js`) on KiCad's background in either theme; the surround is the theme's, and the
+  frame declares its picture dark (`DARK_PICTURE_ATTRIBUTE`), so the chrome inside it tones its
+  backdrop in the light theme (`lib/floatingSurface.js`). The view
+  keeps rasters of what it drew (`board/boardRasters.js`): a pan moves pixels, a zoom shows what it
+  has and draws again once the view rests.
+- **Three frames** (`plot2d/boardView.js`): the SHEET (the payload's millimetres, y down), where
+  ink and measurements are kept; the PLAN, drawing2d's model space for the view (the sheet with y
+  negated, mirrored about its middle from below); the screen. A Quick Edit's view is a plan-view
+  camera (`drawing2d/planView.js`) with the board's Display.
+- **Tools** (`board/tools.js`): **Select** (in hand; the view's hand too: a drag pans, the wheel
+  or a pinch zooms about the pointer, a double-click fits), **Annotate** and **Measure**; then,
+  after the rule, **Display**. Select picks, front to back, a measurement, ink, then the most
+  specific thing under the pointer (`board2d/boardIndex.js`'s `pick`, the side faced first): a
+  pad, then copper (a track or a via: its net's copper there), then a part; Shift adds. Its
+  filter (`SelectFilterMenu`) is Select all, then Parts, Pads and Nets; Nets alone takes the
+  whole net of whatever copper is under the pointer, lit whole, the rest dimmed. Annotate's ink
+  lies on the board in sheet millimetres, on no part, mirrored with it from below
+  (`board/boardAnnotation.js`). Measure is the kit's session over the view's projection
+  (`boardPlanProjection`), snapped (`index.snap`) to pad, via and hole centres, track ends and
+  outline corners, in millimetres. A payload without its index is its picture and its Display
+  alone: no tools, no Board section, no Quick Edit.
+- **References** are the board's (`@text-to-cad/core`'s `lib/boardRefs.js`), in KiCad's own
+  frame: `blinky.kicad_pcb#R1` (a part), `#R1.2` (its pad 2), `#net:VBUS`,
+  `#net:VBUS@x40.1y21.6` (its copper where it was picked), `#@x3.5y3.5` (a point). Quick Edit's
+  chips name them as the board does (`R1`, `R1.2`, `net VBUS`, `VBUS · track`) with the kinds'
+  glyphs of Select's filter, and their cards say what the board says (`board/boardFacts.js`). A
+  click on a chip copies its reference; the copy key copies the selection's, comma-joined after
+  the file (`blinky.kicad_pcb#R1,R1.2`), or, while Annotate is up, the view with its ink.
+- **The sidebar**: **Board** (`board/BoardSection.jsx`), the parts by kind then the nets, each
+  with its pads, headed by its filter, in dense windowed rows (`VirtualRows`), opened until there
+  is a choice (Parts and Nets, a kind with one part, a net with one pad); resting on a row
+  lights what it names, a click selects it, and a part's or a net's eye isolates it, the rest of
+  the board stepping back. **Layers** (`board/LayersSection.jsx`), grouped Front, Inner, Back and
+  Other, each layer's colour, name, count and eye.
+- **Display** (`board/BoardDisplay.jsx`; its rows in
+  [settings-ui.md](settings-ui.md#display-settings-and-section-primitives)): one object,
+  `{ mode, side, poured, layers }` (core's `plot2d/boardDisplay.js`), which Layers' eyes edit
+  too, kept with the file's view, carried by a Quick Edit's views and drawn as it is by
+  `cadgen pcb snapshot --display`.
+- **Host commands**: `select` takes board references and refuses, by name, any the board lacks;
+  `clearSelection` lets go; `resetCamera` fits; `capture` hands over the PNG; `readState` reports
+  `camera: null` and the board's Display (`boardDisplay`). `setCamera` and `setDisplaySettings`
+  are each declined with a sentence that says why.
+- **State** under `[path, "board"]` (`kit/shell/fileView.js`): the transform once the person has
+  moved the view, the board's Display and what is isolated (its slices `board` and `isolated`).
+- **Fixture and tests**: `board/__fixtures__/board.plot.json`, the Python suite's test board as
+  the route answers it (its README says what is on it). `BoardRenderer.test.tsx` holds the strip,
+  picks and the filter, the sections, Display, Measure and the host commands in jsdom;
+  `BoardRenderer.browser.test.mjs` opens it in a real browser and reads the pixels: the fit, the
+  board's background, its track's red, a press on a pad lighting it.
 
 ## GLB renderer
 
@@ -1169,13 +1244,13 @@ ruler (`MeasureIcon`), each badged with its mode (`ToolModeIcon`; none for All).
 (`connectedSelection`); while Select is up the press goes to a measurement first
 (`onSelectPress`, under All), then the annotations (`selectsAnnotations`, under
 All), then a part, and Position's knobs are drawn under All and Position
-(`positionShown`). A change of the geometry chosen sets the tree's expansion
-(`changeSelectFilter`), by the tree's shape (`treeShape`: "all" for Parts with Faces or Edges
-or no geometry, else "parts", "faces" or "edges"): leaving "all" saves the person's
-expansion and coming back restores it (with the owners of selected topology kept open);
-Parts opens every assembly (`collectStepTreeAssemblyNodeIds`) and shuts every part;
-Faces and Edges open every assembly and leave each part to the tree, which asks for a
-part's topology (`onLoadTopology`) and recognition as its row comes on screen (the rows
+(`positionShown`). The geometry chosen never shapes the model tree, which opens by
+the one rule (`kit/inspector/treeExpansion.js`) and is the person's from there. It decides what
+the viewport picks and whose topology loads (`pickExpandedStepTreeNodeIds`, by `treeShape`:
+"all" for Parts with Faces or Edges or no geometry, else "parts", "faces" or "edges"): "all"
+picks what the tree has open; Parts reaches every part (`collectStepTreeAssemblyNodeIds`) and
+loads no topology; Faces and Edges reach every part and leave each part to the tree, which asks
+for a part's topology (`onLoadTopology`) and recognition as its row comes on screen (the rows
 the tree's list reports in view, below). Those requests, and every other
 (`loadInspectionTopology`), cost a lookup for a part already requested; new parts expand
 together at most every 150 ms. The loader behind them (`useCadAssets`'
@@ -1185,14 +1260,13 @@ composed incrementally (only the new parts are built); a part requested while a 
 flight loads beside it rather than after it. While more loads, what is loaded stays
 pickable: a composition serves the request while every part it holds is still requested
 (`topologyCompositionServes`), and Select is "Preparing selection" only with nothing usable yet.
-A new file revision still invalidates everything loaded. Outside the "all" shape the tree's
-disclosure is locked (`data-disclosure-locked`) and the part menus drop Expand/Collapse.
-The one-press load for a part not yet loaded stays in the pick path; the model tree's heading
+A new file revision still invalidates everything loaded. Leaving Faces or Edges
+(`changeSelectFilter`) puts the parts expanded for their topology back as they were, keeping the
+owners of selected topology, so "all" picks a part where it did. The one-press load for a part not yet loaded stays in the pick path; the model tree's heading
 shows `Loading…` while it waits.
 
 **A large tree under Faces and Edges.** Above `LARGE_TREE_ROWS` (300, in `ModelingTree.jsx`) rows
-of assemblies and parts, Faces and Edges keep every assembly open and locked as they do below it,
-but a part row on screen asks for nothing: the viewport asks for the part under a pointer that
+of assemblies and parts, a part row on screen asks for nothing: the viewport asks for the part under a pointer that
 rests on it for `TOPOLOGY_DWELL_MS` (150) or presses it, read from the viewport's hover store
 (`workbench/hoverStore.js`), each part once, and a press on a part not yet loaded loads it and
 picks (above). Below the threshold, and in the "all" and "parts" shapes, nothing of this applies.
@@ -1738,8 +1812,9 @@ row primitive, the filter (`TreeFilterInput`, `primitives/tree-filter`), and the
 flat search of `kit/inspector/modelTreeSearch.js` (`useTreeSearch`). Its X is the section's: it
 closes the panel. The search index also reads a row's `searchAliases`, so a
 link is found by its joint name and the hit shows that joint in place of its
-owners. The root opens, along with a chain of single child links below it;
-everything else starts collapsed. When the tree has exactly one root with
+owners. It opens by the one rule (`kit/inspector/treeExpansion.js`): the root, and every link
+with one child below it, a serial chain to its end; a link with several starts collapsed. When
+the tree has exactly one root with
 children, that root is pinned: no chevron and no indent, so its children start
 at the tree's own left edge. Selecting a hit opens its owners at once and
 scrolls to it when the search ends.

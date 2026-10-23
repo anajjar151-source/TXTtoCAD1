@@ -16,6 +16,7 @@ models/
 ├── examples/         standalone demo PARTS, one script each
 ├── assemblies/       demo ASSEMBLIES, one src/<assembly>/ group each
 ├── drawings/         2D `@dxf` drawings, one script each
+├── electronics/      `@pcb` boards built through KiCad's API
 ├── f1/ f14d/ hypercar/ moonwatch/ motorbike/ qdd_actuator/ radial/ w16/
 ├── tendon_hand/      tendon-driven research hand (source-only)
 ├── falcon_heavy/     SpaceX public-source reconstruction
@@ -73,6 +74,22 @@ For manual edge-case checks and debugging, use [tests/](tests/README.md). Automa
   (`planetary_gear_assembly`, `mars_rover_concept`).
 - [drawings/](drawings/src/README.md): 2D `@dxf` drawings as one cad-project,
   one script each, artifacts in `DXF/`.
+- [electronics/blinky/](electronics/blinky/blinky.py): a `@pcb` board built
+  through KiCad's API: the script, the `fp-lib-table` naming the footprint
+  libraries it uses, and the `blinky.kicad_pcb` (with its `.kicad_pro` and
+  `.kicad_prl`) that KiCad wrote. `python blinky.py` rebuilds it;
+  `cadgen pcb drc blinky.kicad_pcb` checks it.
+- [electronics/servo_power/](electronics/servo_power/servo_power.py): USB-C 5 V
+  through a 2 A polyfuse to three servo headers, with 3.3 V for the logic and the
+  servo signals run as one bus; `.kicad_dru` rules for the 2 A nets and the USB-C
+  land pattern, and `check_servo_power.py` for the checks DRC cannot make.
+- [electronics/usb_uart/](electronics/usb_uart/usb_uart.py): a USB-C to UART
+  adapter on a CH343P with USBLC6 ESD and an FTDI-order header; D+/D- routed as a
+  coupled pair held by `diff_pair_gap`, uncoupled-length and skew rules.
+- [electronics/pi_servo_hat/](electronics/pi_servo_hat/pi_servo_hat.py): a Raspberry
+  Pi HAT for serial bus servos: the Pi's UART made one half-duplex DATA line
+  (74LVC1G126/125 and a PNP), four servo ports on a 5 A VIN bus from a screw
+  terminal with TVS and bulk capacitance, on KiCad's HAT outline.
 
 Automated suites own their own fixtures and never read this tree — the viewer
 launch and browser gates, for instance, generate or commit their STEP fixture

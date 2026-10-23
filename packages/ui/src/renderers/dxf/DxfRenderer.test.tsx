@@ -270,9 +270,19 @@ it('a drawing with layers and blocks has a Layers section: a layer hidden is not
   const list = await waitFor(() => { const element = pane.querySelector('[data-drawing-layers]'); expect(element).not.toBeNull(); return element as HTMLElement; });
   expect([...list.querySelectorAll('[data-layer-row]')].map(row => row.getAttribute('data-layer-row')))
     .toEqual(['CUT', 'BEND', 'ENGRAVE', 'HARDWARE', 'CENTRE', '0']);
+  // One glyph a row, first in it: a layer's pen, or, where block references hang under it, its chevron.
+  const glyphs = (name: string) => {
+    const row = list.querySelector(`[data-layer-row="${name}"]`)!;
+    return [row.firstElementChild!.getAttribute('data-layer-glyph'), row.querySelectorAll('[data-layer-glyph]').length];
+  };
+  expect(glyphs('CUT')).toEqual(['swatch', 1]);
+  expect(glyphs('HARDWARE')).toEqual(['chevron', 1]);
   fireEvent.click(list.querySelector('[data-layer-visibility="CENTRE"]')!);
   await waitFor(() => expect(painted.at(-1)!.hidden).toEqual(['CENTRE']));
-  // HARDWARE holds the two M5_NUT references; a click picks one, as a tap on the drawing would.
+  // HARDWARE holds the two M5_NUT references: a choice, so it opens folded, as every tree does;
+  // opened, a click on one picks it, as a tap on the drawing would.
+  expect(list.querySelectorAll('[data-insert-row]').length).toBe(0);
+  fireEvent.click(within(list).getByRole('button', { name: 'Expand HARDWARE' }));
   const inserts = [...list.querySelectorAll('[data-insert-row]')];
   expect(inserts.map(row => row.getAttribute('data-insert-row'))).toEqual(['99', '9B']);
   fireEvent.click(inserts[0]);

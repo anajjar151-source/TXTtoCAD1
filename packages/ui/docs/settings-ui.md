@@ -180,6 +180,7 @@ none.
 | 3MF | Select, Pencil, Shapes, Measure; Clip, Display and Preview |
 | STL | Select (in hand, the view's navigation: an STL picks nothing), Pencil, Shapes; Clip, Display and Preview |
 | DXF | Select (in hand, and the view's hand: a drag pans, a tap picks an entity), Pencil, Shapes, Measure; no view controls: a drawing is 2D |
+| KiCad board | Select (in hand, and the view's hand: a drag pans, a tap picks a pad, copper or a part), Pencil, Shapes, Measure; Display, the board's one view control (a board without its index: Display alone) |
 
 There is no activity dot. A thin rule parts the tools from the view's controls, which
 are no tools (see [Ownership and layout](#ownership-and-layout)). Position is no tool:
@@ -204,9 +205,9 @@ Explode or Clip with its effect set takes it up again, as it is; unset, it start
 
 | Tool | Pressing it | Its sub-toolbar | Leaving it |
 | --- | --- | --- | --- |
-| Select | The default tool of every 3D file but an STL; picks what its filter ticks, or a GLB's nodes, a 3MF's objects (Shift adds; Delete deletes annotations and measurements); what is picked is Quick Edit's chips | None: its filter is the chevron after its button | The selection stays, lit and in Quick Edit, under any tool |
+| Select | The default tool of every 3D file but an STL, and of a drawing and a board; picks what its filter ticks, or a GLB's nodes, a 3MF's objects (Shift adds; Delete deletes annotations and measurements); what is picked is Quick Edit's chips | None: its filter is the chevron after its button (a board's: All, then Parts, Pads or Nets alone; Nets takes a pad's or a track's whole net) | The selection stays, lit and in Quick Edit, under any tool |
 | Pencil / Shapes | Draws on the view: Pencil with the pen, the highlighter or the eraser, Shapes with the rectangle, line, arrow, ellipse or text; each button is the tool last chosen in it | One row for both: the tools of the one that is up, then Color, Stroke width, Placement and Clear annotations (Undo and Redo are ⌘Z, ⇧⌘Z) | The annotations stay in the model, their chip in Quick Edit; each tool keeps what it draws with, the strip showing its icon |
-| Measure | Arms picking two entities and reading what the pair makes (a STEP's exact vertices, edges and faces, what its filter ticks; on a mesh, two points on its surface, approximately, in its file's unit; a drawing's ends, centres and lines, in the unit it declares, else "units"); each result a chip in its colour | Its measurements, as chips, then Clear measurements; none while nothing is measured | Unfinished picks are cancelled; completed measurements stay, drawn on the model, their row back with the tool |
+| Measure | Arms picking two entities and reading what the pair makes (a STEP's exact vertices, edges and faces, what its filter ticks; on a mesh, two points on its surface, approximately, in its file's unit; a drawing's ends, centres and lines, in the unit it declares, else "units"; a board's pad, via and hole centres, track ends and outline corners, in millimetres); each result a chip in its colour | Its measurements, as chips, then Clear measurements; none while nothing is measured | Unfinished picks are cancelled; completed measurements stay, drawn on the model, their row back with the tool |
 | Explode / Clip | The effect as it is set, or neutral; an edit applies it (Explode's, as a motion: see below) | The slider, its amount beside it, Reset (Clip's: its axis first, whose dropdown holds its settings) | The effect stays on the model |
 
 **One motion at a time.** Every tool's state stands beside every other's — the selection,
@@ -272,13 +273,13 @@ for when it shows again.
 The geometry chosen is picked as one mode (`step/workbench/selectionFilter.js`'s
 `selectGeometryMode`): All, a press takes the face or edge it lands on where the part's
 topology can be picked, and the part elsewhere; Parts, the part; Faces or Edges, that topology
-alone. The mode sets the model tree's shape: under All, or Position (no geometry at all),
-it is the person's own (put back as it
-was when they left it, with the owners of what is still selected kept open); Parts alone
-opens every assembly and shuts every part; Faces or Edges open every assembly. A
-part is a leaf in every shape: nothing opens under it, and a face or edge picked in the
-viewport is revealed at its part's row. Outside the person's own shape the disclosure is
-locked (chevrons shown, not pressable) and Expand/Collapse leave the row menus. Under Faces
+alone. The mode never shapes the model tree (it
+opens as every tree does: [the file sidebar](#the-file-sidebar-and-the-tool-stack)): Parts,
+Faces and Edges reach every part in the viewport whatever the tree has open, a press revealing
+its part's row; under All, or Position (no geometry at all), a press takes what the tree has
+open. A part is a leaf: nothing opens under it, and a face or edge picked in the
+viewport is revealed at its part's row. Leaving Faces or Edges puts the parts whose topology
+loaded for them back as they were (the owners of what is still selected stay loaded). Under Faces
 or Edges a part's topology is asked for as its row comes on screen in the tree, never for a
 whole large assembly at once; a viewport press on a part not yet loaded loads that part and
 picks, and the model tree's heading says "Loading…" meanwhile. In a large assembly (more than 300
@@ -404,15 +405,28 @@ whatever tool is in hand — the strip is for using tools, the sidebar for readi
 assembly's **Model tree** (a part file, whose tree would be its one row, has none), then
 **Position**, where the file has joints to move; a robot's **Links**, an `.sdf`'s **SDF**, then
 **Position**, where a joint can be driven; a drawing's **Layers**, where it has four or more
-layers or any block reference (a flat pattern's CUT and BEND has none): each layer's pen, name,
-entity count and eye, its block references under it; and, after them, the shell's own **Animation** for a
+layers or any block reference (a flat pattern's CUT and BEND has none): each layer's pen (or, for a
+layer with block references, its chevron), name, entity count and eye, its block references under
+it; a board's **Board**, its parts by kind and
+then its nets, each with its pads, headed by its filter (a row selects; a part's or a net's eye
+isolates it, the rest stepping back), and its **Layers**, grouped Front, Inner, Back and Other
+as KiCad stacks them, each layer's colour, name, count and eye (the eyes are the board's
+Display's `layers`); and, after them, the shell's own **Animation** for a
 file with routines (`kit/tools/playbar/AnimationSection.jsx`). A file with none of them has no
 sidebar. It is a toolbar of its own at the view's top-left, 8px in, on the strip's line and of
 its surface, padding and 24px tiles (`data-file-sidebar-tools`, "File sidebar"): one tile per
-section, a tree's a tree icon named for it (Model tree, Links), Position's a spline, Animation's a
-clapperboard, any other section's a page named for it. Preview offers its Position and
+section, a tree's a tree icon named for it (Model tree, Links, Board), Position's a spline, Animation's a
+clapperboard, a Layers section's the layers icon, any other section's a page named for it. Preview offers its Position and
 Animation alone, their tiles bare in its top-left corner; the rest stay mounted, out of sight.
 
+- **How a tree opens, every tree.** Open until there is a choice
+  (`kit/inspector/treeExpansion.js`'s `openUntilChoice`): a tree's roots open, and any node with
+  exactly one child opens too, all the way down, since there is nothing to decide; a node with two
+  or more children stays shut. A board opens on Parts and Nets and each kind's one part; a
+  drawing's layer opens on its one block reference and stays folded on several; a robot opens
+  down its chain of single links; a STEP opens on its one choice. A pick on the model reveals the
+  owners of what was picked, and once the person opens or shuts a row the shape is theirs for the
+  session. Nothing else shapes a tree: not Select's filter, not a tool.
 - **One section at a time.** None is open as a file opens. A tile opens its section in a panel
   under the toolbar, 8px below it, and is pressed while it is open; another tile opens its
   section in the panel instead; a second press of its tile closes it, and so does the X that
@@ -497,7 +511,11 @@ Its panels follow these rules:
   over the viewport, the app menu and Display included, share `FLOATING_SURFACE_CLASS` (the
   background at 75%, blurred), so their text never competes with the model; and the file
   sidebar, mostly text but up for as long as the file is open, is between them
-  (`FILE_SIDEBAR_SURFACE_CLASS`: 55%, a 4px blur).
+  (`FILE_SIDEBAR_SURFACE_CLASS`: 55%, a 4px blur). A view whose picture is dark whatever the
+  theme — a board, on KiCad's own background — says so on its root (`DARK_PICTURE_ATTRIBUTE`),
+  and inside it, in the light theme alone, each surface first tones what it floats over toward
+  its own background (the backdrop's contrast halved, then its brightness raised by a third), so
+  the dark picture never takes the chrome's text. Everywhere else the surfaces are as above.
 - **Scrolling.** Every scroll region in the viewer's chrome — the file sidebar, a panel's
   body, the stack's column, the explorer, a menu, the alert card — is the
   `ScrollArea` primitive (`primitives/scroll-area.jsx`, shadcn's): thin overlay
@@ -517,7 +535,11 @@ column starts 5px in from the row's left end (`TREE_ROW_INSET_PX`), centred unde
 field's search icon and as far in as the icons of a row's actions sit from its right end, in the
 STEP tree and the explorer alike; each level adds
 the explorer's compact indent, 10px (`TREE_INDENT_PX`), its rows hung from a faint line under
-their owner's glyph (`TreeRowGuides`), as the explorer's are; its search box is its section's head. An assembly row's
+their owner's glyph (`TreeRowGuides`), as the explorer's are; its search box is its section's head.
+A Layers section (a drawing's, a board's) is a tree under a title: each row's one glyph is its
+layer's colour box, or, for a layer with block references under it, its disclosure chevron in
+the box's place, and the glyph column starts on the title's edge, a board's group labels with it
+(`kit/inspector/layerRows.jsx`); the names stand on one line after it, the count after the name. An assembly row's
 actions, shown on hover and kept while they are on, are **Isolate** then the **Hide/Reveal** eye; a part file has no
 Isolate. A Links row that draws something — a link with visuals, or one visual —
 has the eye alone, in its search hit too: a link's hides its own visuals, never its
@@ -558,10 +580,25 @@ Preview, and shows the current mode's sphere icon. It opens a stock shadcn dropd
 (`DisplayPopover.jsx`): a muted **Display** label, the modes as a `DropdownMenuRadioGroup`,
 a separator, then **Grid**, a `DropdownMenuCheckboxItem`. On a phone the strip's **More**
 menu has a Display row whose nested submenu is the same list (`DisplayMenuItems`), with no
-label. Checks sit at the row's right end. Choosing a mode closes the menu; ticking Grid
+label; a submenu wider than the room beside More's list slides over the list, as far as it must
+to stay on screen. Checks sit at the row's right end. Choosing a mode closes the menu; ticking Grid
 toggles it and leaves the menu open (`onSelect` prevents the close). Clicking outside or
 pressing Escape closes it. Opening it leaves the active tool and its controls in place. A
-2D view has no Display or Preview control.
+drawing has no Display, and no 2D view has Preview.
+
+A board's Display is its own, because its picture is a choice of layers
+(`renderers/board/BoardDisplay.jsx`): the same stock dropdown and tile, in two groups each
+under a muted label. **Display modes**: the modes as a radio group with their icons —
+**Board** (the board as it is made), **Copper**, **Assembly** and **Placement** (the board
+before it is wired: its pads and every connection as an airwire) — and **Custom** while the
+Layers section's eyes have left the mode's set (choosing a mode goes back to it). A separator,
+then **Settings**: **Copper pours** (while copper is drawn) and **View from below** (the board
+mirrored, its back on top), two switches of their own, kept through a change of mode as Grid is.
+The modes' icons are drawn as the 3D modes' are, outlines in their one line, each what the mode
+shows (`board/boardIcons.jsx`). On a phone it is More's Display row, the same two groups.
+What it shows is one object, `{ mode, side, poured, layers }` (core's `plot2d/boardDisplay.js`),
+kept with the file's view, carried by a Quick Edit's views and drawn as it is by
+`cadgen pcb snapshot --display`.
 
 Display is a choice of mode and the Grid switch, and nothing else: a mode has no settings
 of its own, and there is no settings page. The modes, in order, are **Solid** (shaded with
@@ -725,7 +762,11 @@ measurements, nothing else: a face's area, and a round face's diameter and radiu
 two radii); an edge's length, or a round one's diameter, radius and circumference or arc
 length, with an arc's sweep; a part's size and volume; a subassembly's part count, size and
 volume; a run on one part, one row each. Its rows are the UI font at `text-tiny`, numbers in
-tabular figures — no monospace. A click on a chip copies its references, each naming its file
+tabular figures — no monospace. On a board a chip is named as the board names it (`R1`,
+`R1.2`, `net VBUS`, a net's copper `VBUS · track`, a point), and its card is what the board
+says: a part's value, footprint, side, position, rotation and the script line that placed it; a
+pad's net, number, pin type and position; a net's class and pad count, in KiCad's millimetres. A
+click on a chip copies its references, each naming its file
 by absolute path; resting on it lights its picks; its X drops them.
 
 Viewport picks reach individual faces and edges. In an assembly, faces and edges load per part, when first
@@ -782,7 +823,7 @@ buttons at its bottom-right.
 While the note is empty the box follows what it would carry: it opens when something
 is picked or annotated, and closes when that goes. Every chip leads with its
 icon — the Annotation chip's pen, a reference's pick glyph
-(a part's cube, a face, an edge, a vertex) — then its words, and they stand in the order
+(a part's cube, a face, an edge, a vertex; on a board the part, pad and net of Select's filter) — then its words, and they stand in the order
 they came, whatever their kind. A chip's copy pasted into the note is a pill there,
 drawn as the chip is, 20px like the note's lines so it sits in its rows without spacing
 them out. A click on a pill selects it whole, highlighted in the selection's colour, so

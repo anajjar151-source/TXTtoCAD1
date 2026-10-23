@@ -194,6 +194,7 @@ cache reads and writes.
 | `GET /__cad/asset?file=...` | A CAD file's or sidecar's bytes. |
 | `GET /__cad/store?file=...` | Virtual render assets from the shared store. |
 | `GET /__cad/drawing?file=...` | A `.dxf` flattened to 2D render primitives; the DXF pane's only source. |
+| `GET /__cad/plot?file=...` | A `.kicad_pcb` drawn from its file: geometry per layer and the board's index; the board view's only source. |
 | `GET /__cad/artifact?file=...` | Artifact status and advisory progress. |
 | `POST /__cad/artifact?file=...` | Start importing a foreign STEP and answer at once (`compiling`; `compiled` when there is nothing to build); `&force=1` requests a rebuild. The import is followed through `GET /__cad/artifact`, whose `failed` carries the job's reason until the file's bytes change. |
 | `GET /__cad/recents` | The model library every CAD view shares. |
@@ -312,3 +313,28 @@ Rendering is CPU-bound Python (~0.2 s for 2,000 lines of text, ~1 s for 6,000,
 server's other threads while it runs. If drawings that size become routine, the
 escalation is cadgen's build pool — the same move the STEP import made — not a
 thread pool here.
+
+## `GET /__cad/plot`
+
+A KiCad board drawn from its file, as geometry per layer: `cadgen.plot` reads the
+`.kicad_pcb` (`cadgen.kicad.plot`, with `cadgen.kicad.board_index`) and no KiCad process
+runs — the file is KiCad's own format, and everything the picture needs is in it, the
+filled pours included, because a build refills its zones before it saves. The payload is
+one sheet of layers in millimetres, back to front as seen from the top, then the vias, the
+ratsnest (a draft never looks finished) and the drill holes, with the board's index beside
+it: what a person can point at, for picks and references. Its contract, field by field, is
+the core package's [plot payload](../../../packages/core/docs/plot-payload.md) (schema 3).
+
+`cadgen pcb snapshot` draws the SAME payload: its resolver calls the same builder
+(`plot_payload_bytes`), writes the bytes where the headless page fetches them, and the
+page draws them with `@text-to-cad/core/lib/plot2d`, the module the board view draws with.
+
+`?file=` names the board by its absolute path, as every route does: a relative ref, or
+anything that is not a `.kicad_pcb`, is 400, and a missing file 404. A file that is not a
+readable board is 400 with the reason (`PlotError`), which the view shows on its alert
+card.
+
+The payload is derived data, a function of the board's bytes and its `.kicad_pro`'s,
+cached in the store's `drawing` index under them with the schema and the derivation's
+revision, so a reopen re-serves stored bytes and an edit is a new key. A cold build is
+CPU-bound Python on the request thread (8 ms for `models/electronics/blinky`).

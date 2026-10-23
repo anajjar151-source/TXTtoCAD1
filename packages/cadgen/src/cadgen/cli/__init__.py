@@ -56,6 +56,10 @@ _COMMANDS: dict[str, tuple[str, str]] = {
     # the product, made by running its script (python <drawing>.py), and
     # `dxf snapshot` meshes it on demand.
     "dxf snapshot": ("cadgen.cli.dxf_snapshot", "render a DXF to an image"),
+    # Boards. A board is made by running its script (python <board>.py) through KiCad's
+    # API; these doors read a SAVED board: KiCad's DRC on it, and a picture of it.
+    "pcb drc": ("cadgen.cli.pcb_drc", "check a KiCad board with KiCad's DRC"),
+    "pcb snapshot": ("cadgen.cli.pcb_snapshot", "render a KiCad board to an image"),
     # Robot descriptions
     "urdf validate": ("cadgen.cli.urdf_validate", "validate a URDF robot description"),
     "urdf snapshot": ("cadgen.cli.urdf_snapshot", "render a URDF to an image"),

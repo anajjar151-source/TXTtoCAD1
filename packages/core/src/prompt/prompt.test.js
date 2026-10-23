@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createPromptContext, createPromptDeliveryLedger, referencePart, textPart, validatePromptContext, formatPromptContextText, formatPromptMessage, formatPromptReference, promptReferenceIds, resolveAttachmentPaths } from './index.js';
+import { createPromptContext, createPromptDeliveryLedger, referencePart, textPart, validatePromptContext, formatPromptContextText, formatPromptMessage, formatPromptReference, parsePromptReference, promptReferenceIds, resolveAttachmentPaths } from './index.js';
 
 const reference = { resource: { kind: 'workspace-file', path: '/work/STEP/my part.step', revision: 'v1' }, target: { kind: 'cad-selector', selectors: ['o1.2.f45'] } };
 test('one context retains image/reference relationships and formats canonical references', () => {
@@ -42,6 +42,19 @@ test('a reference names its ids as a person reads them: each selector, a range f
   assert.deepEqual(promptReferenceIds(range), ['1:5–3:1']);
   assert.deepEqual(promptReferenceIds({ ...range, label: 'def plate' }), ['def plate']);
   assert.deepEqual(promptReferenceIds({ ...range, target: { kind: 'whole-resource' } }), []);
+});
+
+test('a KiCad board names its references as board selectors, as the agent resolver reads them', () => {
+  const board = { resource: { kind: 'workspace-file', path: '/work/PCB/servo hat.kicad_pcb' }, target: { kind: 'cad-selector', selectors: ['#U3', '#J4.A4', '#net:"a,b"', '#@x1.5y-2'] } };
+  assert.equal(formatPromptReference(referencePart(board).reference), '"/work/PCB/servo hat.kicad_pcb"#U3,J4.A4,net:"a,b",@x1.5y-2');
+  assert.deepEqual(promptReferenceIds(board), ['#U3', '#J4.A4', '#net:"a,b"', '#@x1.5y-2']);
+  // STEP's grammar is not a board's, and a board's is not STEP's.
+  assert.throws(() => referencePart({ ...board, target: { kind: 'cad-selector', selectors: ['o1.2.f45'] } }), /invalid CAD/);
+  assert.throws(() => referencePart({ ...reference, target: { kind: 'cad-selector', selectors: ['#U3.9'] } }), /invalid CAD/);
+  // A board's copied reference pasted into a note is that reference again, in the board's grammar.
+  assert.deepEqual(parsePromptReference('/work/blinky.kicad_pcb#R1,R1.2,net:VBUS'),
+    { resource: { kind: 'workspace-file', path: '/work/blinky.kicad_pcb' }, target: { kind: 'cad-selector', selectors: ['#R1', '#R1.2', '#net:VBUS'] } });
+  assert.equal(parsePromptReference('/work/blinky.kicad_pcb#R1 and more'), null);
 });
 
 test('invalid bundles fail before delivery, including dangling relationships and unknown targets', () => {
