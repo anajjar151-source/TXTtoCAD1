@@ -395,6 +395,15 @@ src/cadgen/
   kinematics.py          # typed mates vocabulary (revolute/slider/
                          #   cylindrical/fastened, couple, normalize)
   step_scene.py          # read_step and read_scene
+  eng_drawing.py         # @eng_drawing: Sheet, View and assembly_sheets, a PDF
+                         #   projected from a part or an assembly; its engine
+                         #   is _internal/drawing_* (base: sizes, scales, text;
+                         #   sheet: frame, layout, chosen size and scale; views:
+                         #   projection, sections, details, breaks; annotation:
+                         #   dimensions, callouts, hole tables; render: a sheet
+                         #   drawn; report: what is left unstated; features:
+                         #   holes, slots, blends read off the B-rep; assembly:
+                         #   parts list, balloons, the set's sheets)
   assembly.py            # label utilities and softly deprecated AssemblyHelper
   results.py             # the typed Results every verb returns (stdlib-only)
   settings.py            # the person's settings: settings.json in the state

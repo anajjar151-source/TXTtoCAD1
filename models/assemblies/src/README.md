@@ -3,10 +3,10 @@
 The repo's demo assemblies as one cad-project, one group per assembly:
 `src/<assembly>/` holds the root model plus every part model and helper that
 assembly owns, and its artifacts land in `STEP/<assembly>/` (meshes in
-`STL/<assembly>/`, `3MF/<assembly>/`, `GLB/<assembly>/`). Standalone parts
-live in the sibling `models/examples/` project and 2D drawings in
-`models/drawings/`. Nothing here is committed except this `src/` tree — build
-what you need.
+`STL/<assembly>/`, `3MF/<assembly>/`, `GLB/<assembly>/`; engineering drawings
+in `PDF/<assembly>/`). Standalone parts live in the sibling `models/examples/`
+project and 2D drawings in `models/drawings/`. Nothing here is committed except
+this `src/` tree — build what you need.
 
 ```bash
 python models/assemblies/src/flying_car/flying_car.py       # one assembly and whatever is stale beneath it
@@ -42,6 +42,7 @@ One script per group: the assembly is composed inside one model body.
 | `motorcycle_fidgets/motorcycle_shock_fidget.py` | `STEP/motorcycle_fidgets/motorcycle_shock_fidget.step` | Motorcycle shock absorber fidget with a Cherry MX switch socket; the group shares `lib/mx_switch_socket.py` |
 | `motorcycle_fidgets/motorcycle_wheel_fidget.py` | `STEP/motorcycle_fidgets/motorcycle_wheel_fidget.step` | Motorcycle wheel fidget with a Cherry MX switch socket; the group shares `lib/mx_switch_socket.py` |
 | `motorcycle_shock_absorber/motorcycle_shock_absorber.py` | `STEP/motorcycle_shock_absorber/motorcycle_shock_absorber.step` | Motorcycle rear shock absorber (coilover damper) assembly |
+| `motorcycle_shock_absorber/motorcycle_shock_absorber_drawing.py` | `PDF/motorcycle_shock_absorber/motorcycle_shock_absorber_drawing.pdf` | **Assembly drawing** (`@eng_drawing`) of the shock absorber, with example requirements labelled as such: a general arrangement with balloons, a parts list (material, spec, AR items) and flag notes for how each joint is held; a section through every part, hatched by material with a key; a sheet per part, the eye bore's fit given. Run the model above first. |
 | `pelican_riding_bicycle/pelican_riding_bicycle.py` | `STEP/pelican_riding_bicycle/pelican_riding_bicycle.step` | Pelican riding a bicycle (organic + mechanical mix) |
 | `photo_coffee_cup/photo_coffee_cup.py` | `STEP/photo_coffee_cup/photo_coffee_cup.step` | Photo-inspired takeaway coffee cup model |
 | `planetary_gear_assembly/planetary_gear_assembly.py` | `STEP/planetary_gear_assembly/planetary_gear_assembly.step + STL/planetary_gear_assembly/planetary_gear_assembly.stl, 3MF/planetary_gear_assembly/planetary_gear_assembly.3mf, GLB/planetary_gear_assembly/planetary_gear_assembly.glb` | Labeled simplified planetary gear assembly |

@@ -10,6 +10,7 @@
 !/GLB/imported/
 /3MF/*
 !/3MF/imported/
+/PDF/
 /BREP/
 /tmp/
 __pycache__/
