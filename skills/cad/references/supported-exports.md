@@ -44,6 +44,9 @@ and a failure as `{"ok": false, "error": ...}` with exit status 1, as every comm
   every face, edge and vertex, so a STEP read back keeps them. It drops the rest of a
   material's look and physical fields, a face's material (the face keeps its colour),
   and the mechanism: a STEP is placements only, as built or as `--pose` puts them.
+  A part's PMI is written as AP242 semantic PMI on its faces, its general profile on
+  exactly the faces it covers; its notes, views and notes library stay in the `.xbf`
+  ([PMI](pmi.md#export)).
 - **GLB**: glTF 2.0, Y up, in metres. One mesh per part, a node per placement named
   by its occurrence, a PBR material per look (with the glTF extensions for IOR,
   transmission, clear coat, anisotropy and emission where a material has them), and
@@ -54,7 +57,8 @@ and a failure as `{"ok": false, "error": ...}` with exit status 1, as every comm
 - **STL**: binary, every placed triangle, in millimetres.
 - **DXF**: of a planar document only (`$dxf`); a solid is refused.
 - **xbf**: from a STEP (converting a vendor file, below), or a part of a document
-  with `--part`.
+  with `--part` (refused where the document holds PMI the code made: a part written
+  alone carries none of it).
 
 Mesh exports and the viewer draw the same meshes, made at one tolerance: FreeCAD's
 default (a chord deviation of 0.5% of the mean side of each part's bounding box, and

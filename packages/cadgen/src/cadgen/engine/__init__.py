@@ -27,7 +27,8 @@ name, ...)`` a motion, which a GLB export bakes into a clip. ``read_step(path)``
 the model, named, coloured and given its materials as the file has them; ``read_mesh(path)`` reads
 an STL as data -- vertices, triangles, ``bounding_box()`` -- never a shape. ``select(source, ref,
 kind=None)`` is the geometry a ref names -- ``hand/finger.2/f:finger.tip.1``, ``base/face 3`` --
-as build123d shapes in world coordinates (``refs``).
+as build123d shapes in world coordinates (``refs``). ``pmi.annotate(part, pmi.datum(...),
+pmi.diameter(...), ...)`` gives a part semantic PMI, written to STEP as AP242's (``pmi``).
 Importing this package imports no kernel: the names below load on first use. Decoration only declares: imports and definitions never build or exit the caller.
 Imported by a
 script run by its path from inside a package (``python proj/parts/model.py``), it gives the
@@ -39,7 +40,7 @@ from __future__ import annotations
 from typing import Any
 
 __all__ = ["Material", "configuration", "couple", "dxf", "glb", "materials", "memo", "model", "motion", "paint",
-           "read_mesh", "read_step", "read_xbf", "report", "select", "step", "stl", "threemf", "track", "xbf"]
+           "pmi", "read_mesh", "read_step", "read_xbf", "report", "select", "step", "stl", "threemf", "track", "xbf"]
 
 
 def _main_in_a_package() -> None:
@@ -63,10 +64,10 @@ _main_in_a_package()
 
 
 def __getattr__(name: str) -> Any:
-    if name == "materials":
+    if name in ("materials", "pmi"):
         import importlib
 
-        return importlib.import_module("cadgen.engine.materials")
+        return importlib.import_module(f"cadgen.engine.{name}")
     if name == "Material":
         from cadgen.engine.materials import Material
 

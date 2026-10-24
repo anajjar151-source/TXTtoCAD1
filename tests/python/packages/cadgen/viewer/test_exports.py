@@ -100,6 +100,17 @@ class ExportsTest(unittest.TestCase):
             with self.assertRaises(ExportError):
                 specification({"doc": "d", "revision": "v", "pose": pose})
 
+    def test_verification_belongs_to_the_completed_artifact(self):
+        result = {"matched": 7, "total": 7, "problems": [], "sha256": "artifact-digest"}
+        def run(spec, target, progress):
+            target.write_bytes(b"model")
+            return {"files": [{"path": str(target), "pmiVerification": result}]}
+        self.jobs.run = run
+        ident = self.jobs.create(self.request())["id"]
+        ready = self.settled(ident)
+        self.assertEqual(ready["pmiVerification"], result)
+        self.jobs.release(ident)
+
     def test_route_download_and_no_requested_server_path(self):
         self.finish.set()
         ident = self.jobs.create(self.request())["id"]

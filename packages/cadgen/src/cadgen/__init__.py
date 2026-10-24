@@ -3,7 +3,7 @@ and the files they declare.
 
 The root exports the engine's surface -- the decorators (``xbf``, ``step``, ``glb``, ``stl``,
 ``threemf``, ``dxf``), ``memo``, materials (``Material``, ``materials``, ``paint``), the mechanism
-(``configuration``, ``motion``, ``couple``), the readers (``read_step``, ``read_xbf``,
+(``configuration``, ``motion``, ``couple``), PMI (``pmi``), the readers (``read_step``, ``read_xbf``,
 ``read_mesh``), ``select``, progress (``report``, ``track``) -- and its verbs as functions
 (``build``, ``export``, ``snapshot``, ``serve``, ``inspect``, ``status``, ``stop``, ``daemon``),
 every name loaded on first use: ``import cadgen`` imports no CAD kernel.
@@ -50,7 +50,7 @@ del _install_engine_host
 
 # The engine's surface (``cadgen.engine.__all__``) and its verbs as functions (``cadgen.engine.api``).
 _ENGINE = ("model", "xbf", "memo", "step", "glb", "stl", "threemf", "dxf", "Material", "materials", "paint", "configuration",
-           "motion", "couple", "read_step", "read_xbf", "read_mesh", "select", "report", "track")
+           "motion", "couple", "pmi", "read_step", "read_xbf", "read_mesh", "select", "report", "track")
 _VERBS = ("build", "export", "snapshot", "serve", "inspect", "status", "stop", "daemon")
 
 __all__ = [

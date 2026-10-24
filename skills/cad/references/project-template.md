@@ -95,6 +95,7 @@ datums and joint relationships, see [positioning](positioning.md).
 | Left/right geometry | Mirror inline, or separate models for independent files and reuse. |
 | Subassembly | A model that calls its child models. |
 | Motion | build123d joints in the assembly's body, then `configuration`, `couple` and `motion`. See [kinematics](kinematics.md). |
+| Datums, tolerances or GD&T | `pmi.annotate` on the part in its body, then `@step` for AP242. See [PMI](pmi.md). |
 | Materials | `part.material = materials.aluminium_6061`. See [colour and materials](build123d-modeling.md#colour-and-materials). |
 | 2D drawing | A separate drawing model using `$dxf`. |
 | Vendor CAD | The vendor STEP under `vendor/`, converted once with `cadgen export vendor/motor.step vendor/motor.xbf` and read with `read_xbf` (an anchored path). |

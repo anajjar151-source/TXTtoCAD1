@@ -416,14 +416,16 @@ def _exported(order: dict[str, Any], spec: dict[str, Any], shown: Callable[[str]
 def snapshot(source: Any, out: Any, *, display: Any = None, camera: Any = None, grid: bool = False,
              preview: bool = False, pose: Any = None, width: int | None = None, height: int | None = None,
              size_profile: str | None = None, daemon: bool = True, annotation: Any = None,
-             measurements: Any = None) -> Drawn:
+             measurements: Any = None, view: str | None = None) -> Drawn:
     """Draw a document (``.xbf``, ``.step``) or a mesh file (``.glb``, ``.stl``, ``.3mf``) into
     ``out`` (a ``.png``) as the viewer draws it. A ``Model`` (or ``script.py::model``) is built
     first and built code (a ``Built``) is drawn as built: the document drawn is the one its
     worker holds in memory, whether or not an xbf of it is on disk. ``annotation`` (the viewer's
     annotation: its file's path, its object, or the Quick Edit packet that carries it) and
     ``measurements`` are drawn over the model; ``camera="authored"`` draws it from the view the
-    annotation's ink was drawn in, which the packet holds. ``out`` a folder (a path ending in a
+    annotation's ink was drawn in, which the packet holds. ``view`` draws a part's named view
+    (``pmi.view``: ``NAME``, or ``PART/NAME`` where two parts have one): its camera, its section, its
+    PMI (``snapshot.view_of``), refused with ``camera``. ``out`` a folder (a path ending in a
     separator, or one that is there) is given a name inside it, the source's stem and the time
     (``snapshot.picture_path``). A snapshot refused or failed leaves no picture at ``out``
     (``snapshot.nothing_left``)."""
@@ -433,12 +435,12 @@ def snapshot(source: Any, out: Any, *, display: Any = None, camera: Any = None, 
     with drawing.nothing_left(out):
         return _snapshot(source, out, display=display, camera=camera, grid=grid, preview=preview, pose=pose,
                          width=width, height=height, size_profile=size_profile, daemon=daemon, annotation=annotation,
-                         measurements=measurements)
+                         measurements=measurements, view=view)
 
 
 def _snapshot(source: Any, out: Path, *, display: Any, camera: Any, grid: bool, preview: bool, pose: Any,
               width: int | None, height: int | None, size_profile: str | None, daemon: bool, annotation: Any,
-              measurements: Any) -> Drawn:
+              measurements: Any, view: str | None) -> Drawn:
     from cadgen.engine import snapshot as drawing
     from cadgen.engine.model import Model
 
@@ -447,44 +449,45 @@ def _snapshot(source: Any, out: Path, *, display: Any, camera: Any, grid: bool, 
         if out.suffix.lower() != ".png":
             raise drawing.SnapshotRefused(f"a snapshot is a .png; {out.name} is not one")
         spec = _source(source, scripts=True)
-        drawing.options(display, camera, grid, width, height, size_profile)  # refused here, before any build
+        drawing.options(display, camera, grid, width, height, size_profile, view)  # refused here, before any build
         drawing.parse_annotation(annotation)  # refused here, before any build
         if isinstance(annotation, (str, Path)) and not str(annotation).lstrip().startswith("{"):
             annotation = str(Path(annotation).expanduser().resolve())  # read in the worker, beside its packets
         draw = {"out": str(out), "display": display, "camera": camera, "grid": grid, "preview": preview,
                 "pose": drawing.parse_pose(pose) if isinstance(pose, str) else pose, "width": width,
                 "height": height, "size_profile": size_profile, "annotation": annotation,
-                "measurements": drawing.parse_measurements(measurements)}
+                "measurements": drawing.parse_measurements(measurements), "view": view}
         order = {"op": "export", "source": spec, "destinations": [], "draw": draw,
                  "cwd": str(source.cwd) if isinstance(source, Built) else os.getcwd()}
         found = _exported(order, spec, lambda _text: None, daemon)["drawn"]
         return Drawn(out, found["width"], found["height"], found)
-    shown, framed, size = drawing.options(display, camera, grid, width, height, size_profile)
+    shown, framed, size = drawing.options(display, camera, grid, width, height, size_profile, view)
     found = drawing.snapshot(Path(os.fspath(source)), out, display=shown, camera=framed, preview=preview,
                              size=None if width is None and height is None and size_profile is None else size,
                              daemon=daemon, pose=drawing.parse_pose(pose) if isinstance(pose, str) else pose,
                              annotation=drawing.parse_annotation(annotation),
-                             measurements=drawing.parse_measurements(measurements), annotation_source=annotation)
+                             measurements=drawing.parse_measurements(measurements), annotation_source=annotation,
+                             view=view)
     return Drawn(out, found["width"], found["height"], found)
 
 
 def snapshot_job(job: Any, source: Any = None, *, display: Any = None, camera: Any = None, grid: bool = False,
                  preview: bool = False, pose: Any = None, width: int | None = None, height: int | None = None,
                  size_profile: str | None = None, daemon: bool = True, annotation: Any = None,
-                 measurements: Any = None) -> list[Drawn]:
+                 measurements: Any = None, view: str | None = None) -> list[Drawn]:
     """Every picture a job names (``cadgen snapshot --job``): a Quick Edit packet (the
     ``.snapshot.json`` the viewer writes, its path or its object), a job or a list of jobs, each
     job a view drawn as it was -- its camera, display, hidden and isolated parts, pose, the
     packet's ink and dimensions -- at its output settings, into each of its outputs
     (``snapshot.job_pictures``). ``source`` is drawn in place of every job's input; a flag given
-    overrides every job. Every request is checked before anything renders, and a picture that
-    fails leaves none of the job's."""
+    overrides every job (``view``: every job drawn as that view, in place of its camera). Every
+    request is checked before anything renders, and a picture that fails leaves none of the job's."""
     from cadgen.engine import snapshot as drawing
 
     _heard("source", os.fspath(source) if source is not None else drawing.job_input(job))
     pictures = drawing.job_pictures(job, source, display=display, camera=camera, grid=grid, preview=preview, pose=pose,
                                     width=width, height=height, size_profile=size_profile, annotation=annotation,
-                                    measurements=measurements)
+                                    measurements=measurements, view=view)
     return [Drawn(Path(found["output"]), found["width"], found["height"], found)
             for found in drawing.draw_pictures(pictures, daemon=daemon)]
 

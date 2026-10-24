@@ -5,7 +5,8 @@ Every prototype the view places is a part with the document's name, colour, face
 materials and element names; every assembly node of the view's tree is an assembly of its
 own here (two placements of one sub-assembly may stand two ways once posed), each
 component placed in its parent's frame. A part read from a STEP this engine did not
-write takes the geometry key a build would give it, so an xbf of it caches like any.
+write takes the geometry key a build would give it, so an xbf of it caches like any, and a
+whole STEP's GD&T is copied into the xbf as read (``pmi.copy``).
 
 An xbf extracted with ``part`` carries the mechanism's share of the subtree: the links
 every member of which is in it, the pairs between two such links, the configurations'
@@ -116,6 +117,9 @@ def tree_of(view: Any) -> Any:
         tree.mechanism = _mechanism(source.mechanism, view.root)
     elif not view.parted and not view.posed:
         tree.mechanism = source.mechanism
+    if source.foreign and not view.parted and not view.posed and source.structure.get("pmi"):
+        # A STEP another system wrote, whole: its GD&T copied as read (``pmi.copy``).
+        tree.pmi_source = (document.load(source.path), parts)
     return tree
 
 

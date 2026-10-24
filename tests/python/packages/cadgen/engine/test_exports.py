@@ -580,6 +580,23 @@ class CodeTest(unittest.TestCase):
         with self.assertRaisesRegex(api.EngineError, "requires source code"):
             build(base, model="invalid_shape", verify=True)
 
+    def test_shape_build_keeps_its_pmi(self) -> None:
+        """A shape's PMI is its metadata (law 21): annotated, built, its document holds it."""
+        import build123d as bd
+        from cadgen import build, pmi
+
+        plate = bd.Box(40, 20, 4) - bd.Cylinder(3, 4)
+        plate.label = "plate"
+        hole = plate.faces().filter_by(bd.GeomType.CYLINDER)[0]
+        plate = pmi.annotate(plate, pmi.datum("A", plate.faces().sort_by(bd.Axis.Z)[0]),
+                             pmi.diameter("hole", hole, tolerance=pmi.plus_minus(0.1, 0)))
+        built = build(plate, model="shape_pmi", xbf=str(self.folder / "plate.xbf"), daemon=False)
+        self.assertTrue(built.ok, built.report)
+        self.assertEqual((built.report["pmi"]["annotations"], built.report["pmi"]["problems"]), (2, []))
+        found = {entry["id"]: entry for entry in pmi.read(self.folder / "plate.xbf")}
+        self.assertEqual(sorted(found), ["A", "hole"])
+        self.assertEqual(found["hole"]["dimension"]["nominal"]["value"], 6.0)
+
     def test_code_assigns_result_and_its_flags_are_its_files(self) -> None:
         with self.assertRaisesRegex(engine_build.BuildError, "assigns no `result`"):
             self.build("import build123d as bd\nshape = bd.Box(1, 1, 1)\n")

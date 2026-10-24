@@ -124,6 +124,8 @@ function ExportToast({ attempt, service, downloads, reveal, onRemove, onActivity
   const title = delivery === 'saved' ? t('export.saved') : delivery === 'saving' ? t('export.saving')
     : delivery === 'choosing' ? t('export.chooseLocal') : job?.stage || (error ? t('export.unavailable') : t('export.submitting'));
   const seconds = Math.max(0, Math.floor(((job?.finishedAt || now / 1000) - (job?.createdAt || now / 1000))));
+  const verification = job?.pmiVerification;
+  const verified = verification && verification.total > 0 && verification.matched === verification.total && !verification.problems.length;
   return <section className="rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-lg" aria-label={t('export.toast', { name: localName })} data-export-toast="">
     <div className="flex items-start gap-2">
       {failure ? <CircleAlert className="mt-0.5 size-4 shrink-0 text-destructive" /> : working ? <Spinner className="mt-0.5 size-4 shrink-0" />
@@ -134,6 +136,16 @@ function ExportToast({ attempt, service, downloads, reveal, onRemove, onActivity
     {delivery === 'saving' ? <div className="mt-2"><progress className="h-1 w-full" value={bytes} max={job?.bytes || 1} aria-label={t('export.progress')} /><p className="text-tiny text-muted-foreground">{t('export.bytes', { done: size(bytes), total: size(job?.bytes || 0) })}</p></div> : null}
     {connection ? <p className="mt-2 text-tiny">{connection}</p> : null}
     {failure ? <p className="mt-2 break-words text-tiny text-destructive" role="alert">{failure}</p> : null}
+    {verification && job?.state === 'ready' ? <div className="mt-2 space-y-1 border-t border-border pt-2 text-tiny" aria-live="polite">
+      <p>{verification.total === 0 ? t('export.pmiNone') : verified ? t('export.pmiVerified', { matched: verification.matched, total: verification.total }) : t('export.pmiInconclusive')}</p>
+      <p className="text-muted-foreground">{verified ? t('export.pmiMatches') : t('export.pmiReview')}</p>
+      <details className="text-muted-foreground"><summary className="cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('export.pmiDetails')}</summary>
+        {verification.problems.length ? <ul className="mt-1 list-disc space-y-1 pl-4">{verification.problems.map((problem, i) => <li key={i}>{problem}</li>)}</ul> : null}
+        <p className="mt-1">{t('export.pmiLimits')}</p>
+        <p className="mt-1 break-all">{t('export.sha256', { digest: verification.sha256 })}</p>
+      </details>
+      <p className="text-muted-foreground">{t('export.pmiImporter')}</p>
+    </div> : null}
     {job?.state === 'ready' && delivery !== 'saving' ? <p className="mt-2 text-tiny text-muted-foreground">{t('export.until', { time: new Date(job.expiresAt * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })}</p> : null}
     <div className="mt-2 flex justify-end gap-2">
       {(active(job) && !fatal) || delivery === 'saving' ? <Button size="xs" variant="outline" disabled={job?.state === 'cancelling' && delivery !== 'saving'} onClick={() => { void cancel(); }}>{t('export.cancel')}</Button> : null}
@@ -173,6 +185,12 @@ export function ExportControls({ service, downloads, file, children }: {
     return () => controller.abort();
   }, [open, spec, service, downloads?.unavailable]);
   const selected = options?.formats.find(row => row.format === format);
+  // What a STEP leaves in the XBF, said of the kinds the document holds.
+  const held = new Set(selected?.kept || []);
+  const kept = held.has('notes') && held.has('views') ? 'export.pmiKeptNotesViews' : held.has('notes') ? 'export.pmiKeptNotes'
+    : held.has('views') ? 'export.pmiKeptViews' : '';
+  // A format the PMI decided says why it is not offered: one that would not carry the PMI whole.
+  const pmiUnavailable = options?.formats.filter(row => row.pmi && row.reason) || [];
   useEffect(() => {
     if (options && (!selected || selected.reason)) setFormat(options.formats.find(row => !row.reason)?.format || 'step');
   }, [options, selected]);
@@ -207,6 +225,9 @@ export function ExportControls({ service, downloads, file, children }: {
         <p className="text-tiny text-muted-foreground">{snapshot.preview ? t('export.preview') + ' ' : ''}{t('export.geometry')}</p>
         {options ? <label className="block space-y-1"><span>{t('export.format')}</span><Select value={format} onValueChange={setFormat}><SelectTrigger size="sm" aria-label={t('export.format')}><SelectValue /></SelectTrigger><SelectContent>{options.formats.filter(row => !row.reason).map(row => <SelectItem key={row.format} value={row.format}>{row.format === 'original' ? t('export.original') : row.label}</SelectItem>)}</SelectContent></Select></label>
           : !error ? <p role="status" className="flex items-center gap-2 text-tiny"><Spinner className="size-3" />{t('export.checking')}</p> : null}
+        {selected?.format === 'step' && selected.pmi ? <p className="text-tiny text-muted-foreground">{t('export.pmiIncluded')}</p> : null}
+        {selected?.format === 'step' && kept ? <p className="text-tiny text-muted-foreground">{t(kept)}</p> : null}
+        {pmiUnavailable.map(row => <p key={row.format} className="text-tiny text-muted-foreground">{t('export.formatUnavailable', { label: row.label, reason: row.reason })}</p>)}
         <Button className="w-full" size="sm" disabled={!selected || Boolean(selected.reason) || choosing} onClick={() => { void begin(); }}>{choosing ? t('export.choosing') : t('export.start')}</Button>
       </> : <p className="text-tiny text-muted-foreground">{t('export.open')}</p>}
       {error ? <p role="alert" className="text-tiny text-destructive">{error}</p> : null}

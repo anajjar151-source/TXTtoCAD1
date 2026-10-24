@@ -351,9 +351,14 @@ def _subtree(structure: dict[str, Any], part: str) -> tuple[dict[str, Any], tupl
 # --- the one call ------------------------------------------------------------------------------
 
 
-def translate(document: Any, kind: str | None, path: Any, *, pose: Any = None, part: str | None = None) -> int:
+def translate(document: Any, kind: str | None, path: Any, *, pose: Any = None, part: str | None = None,
+              log: Callable[[str], None] | None = None) -> int:
     """Write ``document`` (a ``Source``, or the path of an ``.xbf``/``.step``) to ``path``
-    as ``kind`` (from the suffix when None); returns the file's size."""
+    as ``kind`` (from the suffix when None); returns the file's size. A file that would not carry
+    whole the PMI the code made is refused by name (``pmi.refuse_dropped``); what one of a document
+    another system wrote leaves out is said to ``log``."""
+    from cadgen.engine import pmi
+
     path = Path(path)
     kind = kind or kind_of(path)
     if kind not in KINDS:
@@ -367,6 +372,9 @@ def translate(document: Any, kind: str | None, path: Any, *, pose: Any = None, p
         if not source.foreign and part is None and source.path is not None and source.path.suffix.lower() == ".xbf":
             raise ExportRefused("an xbf is written from another xbf only with --part: the document already is one")
     view = source.view(pose=pose, part=part)
+    pmi.refuse_dropped(view, kind)
+    for entry, why in pmi.dropped(view, kind) if log is not None else ():
+        log(f"warning: pmi: {path.name}: {entry['id']} is not carried whole: {why}")
     path.parent.mkdir(parents=True, exist_ok=True)
     spec = KINDS[kind]
     if not spec.atomic:

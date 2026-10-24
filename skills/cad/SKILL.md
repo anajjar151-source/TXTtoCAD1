@@ -22,6 +22,7 @@ Use the installed local skill files for the current interface.
 | **Measure or check geometry** | A Python check: `read_xbf`, `select` and `cadgen.geometry`. | [Inspection](references/inspection-and-validation.md) |
 | **See a model or a pose** | `cadgen snapshot`. | [Snapshots](references/snapshot-review.md) |
 | **Articulate a model** | build123d joints in the body, then `configuration`, `couple` and `motion`. | [Kinematics](references/kinematics.md) |
+| **Add datums, tolerances, GD&T, notes or views** (a model-based definition) | `pmi.annotate` on the part, in the body. | [PMI](references/pmi.md) |
 | **Open an existing XBF, STEP/STP, STL, 3MF or GLB** | Show it to the user. | [Show the model](#show-the-model) |
 | **Source or commands written for an older cadgen fail** | Their migration. | [Migrations](references/migrations.md) |
 

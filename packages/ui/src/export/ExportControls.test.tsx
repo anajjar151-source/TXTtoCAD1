@@ -115,3 +115,82 @@ it('restored requests reconnect by the same identity and ask for a new local des
   expect(chosen.write).toHaveBeenCalledTimes(1);
   expect(service.create).toHaveBeenCalledTimes(1);
 });
+
+it('says a STEP carries PMI only where the document has PMI', async () => {
+  const { service } = server();
+  mount(service, { choose: vi.fn() });
+  const user = userEvent.setup();
+  await open(user);
+  expect(screen.queryByText(/Includes the built model’s PMI/)).toBeNull();
+  cleanup();
+  service.options.mockResolvedValue({ ...formats, formats: [{ ...formats.formats[0], pmi: true }] });
+  mount(service, { choose: vi.fn() });
+  await open(user);
+  expect(screen.getByText(/Includes the built model’s PMI/)).toBeTruthy();
+});
+
+it('says the notes and named views stay in the XBF under a STEP, only the kinds the document holds', async () => {
+  const { service } = server();
+  const user = userEvent.setup();
+  const said = {
+    'notes,views': 'Notes and named views stay in the XBF: a STEP carries the GD&T.',
+    notes: 'Notes stay in the XBF: a STEP carries the GD&T.',
+    views: 'Named views stay in the XBF: a STEP carries the GD&T.',
+  };
+  for (const [kept, line] of Object.entries(said)) {
+    service.options.mockResolvedValue({ ...formats, formats: [{ ...formats.formats[0], pmi: true, kept: kept.split(',') }] });
+    mount(service, { choose: vi.fn() });
+    await open(user);
+    expect(screen.getByText(line)).toBeTruthy();
+    cleanup();
+  }
+  // None kept, or another format chosen: no line.
+  service.options.mockResolvedValue({ ...formats, formats: [{ ...formats.formats[0], pmi: true, kept: [] }] });
+  mount(service, { choose: vi.fn() });
+  await open(user);
+  expect(screen.queryByText(/stay in the XBF/)).toBeNull();
+  cleanup();
+  service.options.mockResolvedValue({ ...formats, formats: [{ ...formats.formats[0], reason: 'not offered', kept: ['notes'] },
+    { format: 'glb', label: 'GLB', extension: '.glb', reason: null }] });
+  mount(service, { choose: vi.fn() });
+  await open(user);
+  expect(screen.queryByText(/stay in the XBF/)).toBeNull();
+});
+
+it('says why a format is not offered where the PMI decided it, STEP and XBF alike, and only there', async () => {
+  const { service } = server();
+  // As the engine's rows are: `pmi` on a row the PMI decided, and on STEP wherever the document holds PMI.
+  const rows = (step: { pmi: boolean, reason: string | null }, xbf: { pmi: boolean, reason: string | null }) => ({ ...formats, formats: [
+    { format: 'step', label: 'STEP (AP242)', extension: '.step', ...step },
+    { format: 'glb', label: 'GLB', extension: '.glb', reason: null },
+    { format: 'xbf', label: 'XBF', extension: '.xbf', ...xbf }] });
+  const user = userEvent.setup();
+  // A part of a document holding PMI: neither would carry it.
+  service.options.mockResolvedValue(rows({ pmi: true, reason: 'part.xbf holds 1 PMI annotation(s): export it whole' },
+    { pmi: true, reason: 'an xbf of one part carries none of its PMI' }));
+  mount(service, { choose: vi.fn() });
+  await open(user);
+  expect(screen.getByText('STEP (AP242): part.xbf holds 1 PMI annotation(s): export it whole')).toBeTruthy();
+  expect(screen.getByText('XBF: an xbf of one part carries none of its PMI')).toBeTruthy();
+  cleanup();
+  // The whole document: its STEP carries the PMI, and its XBF is not offered for another reason, unsaid.
+  service.options.mockResolvedValue(rows({ pmi: true, reason: null }, { pmi: false, reason: 'Use Download original XBF, or select a part to extract.' }));
+  mount(service, { choose: vi.fn() });
+  await open(user);
+  expect(screen.getByText(/^Includes the built model’s PMI/)).toBeTruthy();
+  expect(screen.queryByText(/^XBF: /)).toBeNull();
+});
+
+it('shows verification from the completed STEP job with its importer limitation', async () => {
+  const { service, waiting, jobs } = server();
+  mount(service, { choose: vi.fn(async () => destination()) });
+  const user = userEvent.setup();
+  await open(user);
+  await user.click(screen.getByRole('button', { name: 'Choose location & export…' }));
+  await waitFor(() => expect(waiting.size).toBe(1));
+  const [id, job] = [...jobs.entries()][0];
+  await act(async () => waiting.get(id)!({ ...job, state: 'ready', stage: 'Ready to save', bytes: 5,
+    expiresAt: Date.now() / 1000 + 3600, pmiVerification: { matched: 7, total: 7, problems: [], sha256: 'checked-bytes' } }));
+  expect(await screen.findByText('7/7 PMI annotations verified in STEP')).toBeTruthy();
+  expect(screen.getByText('Factory importer compatibility has not been tested.')).toBeTruthy();
+});

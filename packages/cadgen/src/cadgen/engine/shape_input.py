@@ -61,7 +61,8 @@ def pack(shape: Any, name: str) -> dict:
             nodes.append({"name": node.name, "shape": base64.b64encode(shape_bytes(node.shape, read=True)).decode("ascii"),
                           "color": node.color, "face_colors": node.face_colors,
                           "material": document.material_json(node.material),
-                          "face_materials": {str(k): document.material_json(v) for k, v in node.face_materials.items()}})
+                          "face_materials": {str(k): document.material_json(v) for k, v in node.face_materials.items()},
+                          "pmi": _value(node.pmi)})
         else:
             nodes.append({"name": node.name, "components": [
                 {"prototype": index[id(c.prototype)], "matrix": _numpy(c.location).tolist(),
@@ -94,7 +95,8 @@ def build(payload: dict, script: Path, name: str, outputs: dict | None, cwd: Pat
             made = document.Part(shape, node["name"], tuple(node["color"]) if node["color"] else None,
                                  {int(k): tuple(v) for k, v in node["face_colors"].items()},
                                  key=document.geometry_key(shape), material=document.material_from_json(node["material"]),
-                                 face_materials={int(k): document.material_from_json(v) for k, v in node["face_materials"].items()})
+                                 face_materials={int(k): document.material_from_json(v) for k, v in node["face_materials"].items()},
+                                 pmi=_restore(node["pmi"]))
             parts.append(made)
         else:
             made = document.Assembly(node["name"], [document.Component(
@@ -108,6 +110,7 @@ def build(payload: dict, script: Path, name: str, outputs: dict | None, cwd: Pat
               "timings": {"collect": round(time.perf_counter() - started, 4)}}
     if tree.mechanism and tree.mechanism.warnings:
         report["kinematics"] = {"warnings": list(tree.mechanism.warnings)}
+    building._pmi(model, tree, None, report, log, next((path for kind, path in model.targets() if kind == "xbf"), None))
     building._write(model, model.plan(), tree, tree.signature, report, log)
     # An address reused after a source build cannot retain its previous feature provenance.
     building._BUILT.pop(os.path.normcase(model.address), None)
