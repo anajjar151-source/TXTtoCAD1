@@ -22,6 +22,39 @@ makes selectors simpler; constructing them in a profile can be more robust for
 some outlines. Through-cut tools should span the intended material; choose any
 extra extent relative to the geometry and nearby features, not a fixed distance.
 
+## Fillets and chamfers
+
+A sharp edge is a design decision, not a default. For a physical part, round or
+break the edges its manufacturing process and use call for, and keep sharp the
+edges they need sharp. Take the process from the request or project; when none
+is given, infer the likely one from the part and record it as an assumption.
+Fillets and chamfers round the geometry the design has; they are not a reason
+to add ribs, gussets or other features.
+
+- **Use.** Fillet inside corners that carry load: rib, boss and gusset roots,
+  wall-to-floor junctions, a stepped shaft's shoulder. Round or break exposed
+  edges that hands, cables, seals or soft parts touch. Keep mating faces, datum
+  edges, sealing edges and edges a drawing calls sharp as specified; a lead-in
+  chamfer helps where parts slide together.
+- **Molding and casting.** Round inside and outside corners so a wall keeps its
+  thickness around them: the outside radius is about the inside radius plus
+  the wall. Sharp inside corners concentrate stress and impede flow.
+- **CNC milling.** An internal corner parallel to the tool axis takes at least
+  the cutter's radius; model it at the intended cutter's radius or larger.
+  Break external edges; a chamfer is often cheaper than a fillet there.
+- **Additive.** Fillets on vertical edges and feature roots print well. A
+  bed-facing edge usually takes a chamfer: a fillet there starts as an
+  unsupported overhang.
+- **Sheet metal.** Bends carry the material's inside bend radius; flange
+  corners may be rounded. Bend reliefs belong to the flat pattern.
+
+Size each radius from the user's shop spec or the process source, within the
+local space, and name it as a parameter. `$dfm` (sheet metal, CNC, molding)
+and `$dfam-check` (additive) carry the process rules and their sources.
+Report added fillets and chamfers with the process they assume. They never
+change a specified dimension, and one that fails to build is reported, not
+silently dropped; see [finishing pitfalls](#boolean-and-finishing-pitfalls).
+
 ## Selection and topology
 
 An **occurrence** is a placed assembly node. Its geometry contains bodies,
