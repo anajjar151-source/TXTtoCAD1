@@ -3,7 +3,7 @@
 The repo's demo assemblies as one cad-project, one group per assembly:
 `src/<assembly>/` holds the root model plus every part model and helper that
 assembly owns, and its artifacts land in `STEP/<assembly>/` (meshes in
-`STL/<assembly>/`, `3MF/<assembly>/`, `GLB/<assembly>/`). Standalone parts
+`STL/<assembly>/`, `3MF/<assembly>/`, `GLB/<assembly>/`; documents in `PDF/<assembly>/`). Standalone parts
 live in the sibling `models/examples/` project and 2D drawings in
 `models/drawings/`. Nothing here is committed except this `src/` tree — build
 what you need.
@@ -45,6 +45,7 @@ One script per group: the assembly is composed inside one model body.
 | `pelican_riding_bicycle/pelican_riding_bicycle.py` | `STEP/pelican_riding_bicycle/pelican_riding_bicycle.step` | Pelican riding a bicycle (organic + mechanical mix) |
 | `photo_coffee_cup/photo_coffee_cup.py` | `STEP/photo_coffee_cup/photo_coffee_cup.step` | Photo-inspired takeaway coffee cup model |
 | `planetary_gear_assembly/planetary_gear_assembly.py` | `STEP/planetary_gear_assembly/planetary_gear_assembly.step + STL/planetary_gear_assembly/planetary_gear_assembly.stl, 3MF/planetary_gear_assembly/planetary_gear_assembly.3mf, GLB/planetary_gear_assembly/planetary_gear_assembly.glb` | Labeled simplified planetary gear assembly |
+| `planetary_gear_assembly/planetary_gear_assembly_wi.py` | `PDF/planetary_gear_assembly/planetary_gear_assembly_wi.pdf` | **Work instruction** (`@work_instruction`) for building that assembly: front pages and a procedure table, a figure per step. It cites no spec, so its open items show what a draft owes. Run the model above first. |
 | `planetary_gear_stage/planetary_gear_stage.py` | `STEP/planetary_gear_stage/planetary_gear_stage.step` | Simplified planetary gear assembly |
 | `robotic_hand_end_effector/robotic_hand_end_effector.py` | `STEP/robotic_hand_end_effector/robotic_hand_end_effector.step` | Labeled cybernetic robotic hand end-effector STEP assembly |
 | `sculpted_humanoid/sculpted_humanoid.py` | `STEP/sculpted_humanoid/sculpted_humanoid.step` | Sculpted full-scale humanoid research platform |

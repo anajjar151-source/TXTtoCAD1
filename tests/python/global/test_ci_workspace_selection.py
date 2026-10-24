@@ -248,7 +248,7 @@ class ChangesRunWhatCanBreak(unittest.TestCase):
         self.assertEqual(jobs_for("packages/cadgen/src/cadgen/step.py"), GATED - {"core-js", "mcp", "api", "docs"})
         chosen = tests_for("packages/cadgen/src/cadgen/step.py")
         self.assertEqual(chosen["cadgen_tests"], [CADGEN])
-        self.assertEqual(chosen["skills_tests"], [f"{SKILLS}/cad", f"{SKILLS}/dxf"])
+        self.assertEqual(chosen["skills_tests"], [f"{SKILLS}/cad", f"{SKILLS}/dxf", f"{SKILLS}/work-instructions"])
         self.assertEqual(set(chosen["skills_policy"]), {f"{POLICY}/{name}" for name in selector.HEAVY_POLICY})
         self.assertEqual(route("packages/cadgen/src/cadgen/step.py")["web_ui"], "false")
 

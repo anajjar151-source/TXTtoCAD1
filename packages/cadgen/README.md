@@ -184,7 +184,8 @@ The contracts live in [`step_scene.py`](src/cadgen/step_scene.py) and
 [`geometry.py`](src/cadgen/geometry.py). They import no kernel at namespace
 load and require no display artifacts.
 
-**The one exception: `@eng_drawing` has no public function and no CLI.**
+**The exception: documents over documents have no public function and no
+CLI.** There are two, `@eng_drawing` and `@work_instruction`.
 `cadgen.eng_drawing` declares a capability on a DOCUMENT OVER a part, not on a
 model: what it consumes is a `Sheet` the author composed in Python — views,
 their placement, and dimensions between points on the part's geometry — and no
@@ -193,6 +194,11 @@ a script path, which law 7 forbids, and nothing for a public function to add
 over the decorator. The decorator is the whole surface; the script is the
 program; the output is one PDF. Adding a `cadgen eng-drawing` verb would mean
 passing a script to a CLI, so it stays absent by design.
+
+`cadgen.work_instruction` is the same kind of document, for the same reason:
+what it consumes is an `Instruction` the author composed over an assembly STEP
+— steps in order, the parts each installs, and process values each cited to
+the document it came from — and the output is one PDF.
 
 ### 7. Documents-only CLIs; scripts are programs
 

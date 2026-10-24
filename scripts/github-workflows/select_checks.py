@@ -113,8 +113,9 @@ LIGHT_SKILL_TESTS = (
     f"{SKILL_SUITES}/sendcutsend",
     f"{SKILL_SUITES}/step-parts",
 )
-# The skill suites that drive cadgen's CLIs, and so read everything cadgen reads.
-CADGEN_SKILL_SUITES = (f"{SKILL_SUITES}/cad", f"{SKILL_SUITES}/dxf")
+# The skill suites that run cadgen (its CLIs, or a documented decorator script), and so read
+# everything cadgen reads.
+CADGEN_SKILL_SUITES = (f"{SKILL_SUITES}/cad", f"{SKILL_SUITES}/dxf", f"{SKILL_SUITES}/work-instructions")
 
 # Whatever runs cadgen: its suites on both platforms, the skill suites that drive it, the
 # policy tests that load it, the viewer gates that serve and build through it, the wheel.
@@ -270,6 +271,7 @@ RULES: tuple[Rule, ...] = (
     Rule(("skills/dxf/**",), select(skills=[f"{SKILL_SUITES}/dxf/test_documented_commands.py"])),
     Rule(("skills/dfam-check/**",), select(skills=[f"{SKILL_SUITES}/dfam-check"])),
     Rule(("skills/dfm/**",), select(skills=[f"{SKILL_SUITES}/dfm"])),
+    Rule(("skills/work-instructions/**",), select(skills=[f"{SKILL_SUITES}/work-instructions"])),
     # Files that must never appear here: the test that refuses one runs when one does.
     Rule(("skills/**/node_runtime.py",), select(cadgen=[f"{CADGEN_SUITE}/test_node_resolve_bootstrap.py"])),
     Rule(("skills/*/scripts/packages/**",), policy("test_node_builder_bundles.py")),
