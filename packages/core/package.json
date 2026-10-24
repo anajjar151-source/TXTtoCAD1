@@ -42,7 +42,7 @@
     "@types/three": "^0.186.0",
     "esbuild": "0.28.2",
     "playwright": "^1.64.1",
-    "typescript": "5.9.3"
+    "typescript": "7.0.2"
   },
   "files": [
     "dist",
