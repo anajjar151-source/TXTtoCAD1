@@ -67,7 +67,7 @@ dependencies = [
   # Playwright release fetches its own browser build, so a range would download a new
   # browser whenever it moved. The browser itself is fetched on the first snapshot
   # (snapshot_core.install_browser), not by the install.
-  "playwright==1.64.0",
+  "playwright==1.64.1",
   "shapely",
 ]
 
